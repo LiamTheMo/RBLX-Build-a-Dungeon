@@ -1,0 +1,155 @@
+# Build a Dungeon — Build Phases and Update Roadmap
+
+**Companion:** [Game Design Document](GDD.md)  
+**Status:** Working plan. Phases 0–6 deliver a playable MVP. Phases 7–11 lead to full release. Later updates are proposals and should respond to testing and player feedback.
+
+**Current phase:** Phase 0, in progress. The specification is written ([PHASE0.md](PHASE0.md)); the open items are listed there under "Phase 0 status".
+
+## Production rules
+
+- Build a complete vertical slice with placeholder assets before producing a large content set. Each phase has an explicit exit check.
+- Balance values in the GDD are hypotheses. Keep definitions data-driven and record meaningful changes.
+- Test desktop and mobile interaction from the first UI. Keep gameplay, ownership and economy authoritative on the server.
+- The current Rojo project maps `src/shared`, `src/server` and `src/client`; document the asset workflow when Studio-managed assets are introduced.
+- Address blocking defects and confusing interactions before expanding the scope. Estimates and final content counts depend on capacity and playtests.
+
+# MVP phases
+
+## Phase 0 — Prepare and specify
+
+**Goal:** Agree on a testable first experience.
+
+**Build:** Review the GDD and select placeholder values. Sketch the grid, the first route and the first five minutes. Connect a Studio place to the existing Rojo project; establish source control, a private published test place, naming conventions, asset ownership and issue tracking. Decide target inputs and devices. Create initial room/visitor definitions and a repeatable playtest checklist.
+
+**Exit:** Another developer can sync and run the empty plot. MVP scope, first-session flow and exclusions are written down.
+
+## Phase 1 — Grid and building graybox
+
+**Goal:** Make room arrangement satisfying and reliable before adding combat.
+
+**Build:** Create an isolated plot, a fixed entrance cell and a server-owned 5 × 4 prototype grid. Define one-cell open rooms (doorways on all sides), the single-chain route rule, the optional treasure room as the route's end, and starter ownership. Implement build camera, inventory, touch/mouse placement, preview, move/remove and useful rejection messages. Validate bounds, ownership, occupancy and room connectors on the server. Compute a continuous route; MVP permits one path without branches or loops. Show a temporary route overlay. Allow disconnected draft edits, but commit only valid layouts; cancel restores the last valid layout. Pause visitor spawning while editing and block edits during encounters. Use simple blocks with obvious doors.
+
+**Verify:** Valid and invalid placements, disconnected routes, branches and loops from touching rooms, a treasure room that is not last, overlaps, removals, separate plots and malformed requests. Check a small phone screen.
+
+**Exit:** Players can create a valid route and explain why an invalid placement is rejected.
+
+## Phase 2 — One complete encounter
+
+**Goal:** Prove the dungeon is fun to watch and ordering rooms matters.
+
+**Build:** Add a server state machine: idle → spawn → traverse → resolve → cleanup. Spawn one novice visitor on the validated path and show health. Add a slime defender, slow effect and telegraphed spike trap. Prevent layout changes during the encounter. Handle victory, treasure arrival, missing targets, player exit and NPC cleanup. Use temporary feedback and animation.
+
+**Verify:** Compare slime before spikes versus reversed order. Check independent plots, route correctness and encounter cleanup. Ask an uncoached player why the visitor won or lost.
+
+**Exit:** A player understands the encounter and can improve its outcome by changing the layout. Fix visual clarity and pacing before adding content if this fails.
+
+## Phase 3 — Economy and optional risk
+
+**Goal:** Complete the earn, bank, spend and risk loop.
+
+**Build:** Add server-owned bank and vault balances, one-time win rewards (banked directly without a treasure room, into the vault with one), banking, capped vault bonus, percentage robbery and the shorter visitor interval for the optional treasure room. Add a HUD, clear encounter result and guaranteed Guard Room purchase. Add an explicitly invited armored challenger with visible reward and theft risk. Give each encounter a unique resolution ID and serialize balance operations per player. Tune the first purchase for a short session.
+
+**Verify:** Wins, losses, empty vault, play with and without a treasure room, removing the treasure room while the vault holds gold, banking near resolution, duplicate requests, insufficient funds and disconnects. Confirm banked coins and owned rooms cannot be stolen. Observe a 10–15 minute playtest.
+
+**Exit:** Players make a purchase and understand the choice between safe banking and optional risk. Safe progression remains worthwhile.
+
+## Phase 4 — Persistence and security
+
+**Goal:** Make progress dependable enough for external testing.
+
+**Build:** Versioned profile with balances, stable inventory IDs, placements, upgrades, unlocks and tutorial state. Implement validation, defaults and migration/repair rules. Use server persistence with a session ownership strategy, retries/backoff, periodic saves and shutdown handling. A failed load must not be treated as a new profile or overwritten with defaults. Cancel interrupted encounters without win or robbery. Validate and throttle all client requests; clean up on exit. Document guarantees and known limits.
+
+**Verify:** Rejoin with balances/layout intact; published-place save failures, retries and shutdown; duplicate sessions; old schema; invalid IDs; duplicate instances; disconnect around a purchase or encounter result. Verify no duplication or lost room in tested cases.
+
+**Exit:** No known reproducible critical duplication or save-overwrite issue. Failed loads block progression safely and explain the problem.
+
+## Phase 5 — Onboarding and basic presentation
+
+**Goal:** A new player can learn the game without a developer explaining it.
+
+**Build:** Guided practice visitor, free spike placement, first bank and guaranteed purchase. Support tutorial recovery from unexpected actions and skipping on later visits. Add short room descriptions, outcome text, placement highlights and basic sounds. Make HUD, build and shop responsive for mouse and touch. Add text/icon contrast, reduced camera motion and basic settings.
+
+**Verify:** Watch fresh players without coaching. Record time to first placement and purchase, confusion around bank versus vault, and whether they change room order. Test small-phone UI and desktop controls.
+
+**Exit:** Testers independently finish the basic loop and understand a loss. Fix major confusion before the MVP gate.
+
+## Phase 6 — Stabilize and ship the playable MVP
+
+**MVP content:** Entrance, optional treasure room, Slime Nest, Spike Hall and purchasable Guard Room; novice and optional armored challenger; one connected route; banking, vault risk, guaranteed shop, at least one upgrade, tutorial and persistence. Placeholder art is fine. No gacha, offline earnings, player raiding or separate monster inventory required.
+
+**Build:** Fix playtest issues, add settings, reasonable room/NPC caps, event/error logging and a known-issues list. Profile several plots and limit effects. Tune a 15–30 minute session around meaningful purchases and layout changes without forcing unsafe play. Prepare a private multiplayer build.
+
+**Acceptance:** A new player joins, builds, watches visitors, sees correct win/loss and vault math, banks, buys, upgrades, rearranges and reconnects with progress intact. Touch and mouse work. Invalid requests are rejected. No known critical save, economy or progression bugs remain. Multiplayer is stable at the tested target count.
+
+**Decision:** If players do not enjoy watching and improving a dungeon, return to Phases 1–3. More rooms or polish alone do not solve a weak loop.
+
+# Full release phases
+
+## Phase 7 — Systems depth and collection
+
+**Goal:** Add strategic variety without obscuring the basic loop.
+
+**Build:** Add Monster Den, Mushroom Cavern and Restless Crypt with identifiable interactions and counters. Add two visitor traits, capped upgrades and a collection index. Prototype separately collectible monsters with compatibility slots; retain built-in defenders if two inventories feel confusing. If adding free gameplay-earned mystery chests, specify and display probabilities, duplicate conversion or pity, and guaranteed routes to useful rooms. Test economy growth, rarity value, interactions and migrations.
+
+**Exit:** Players can deliberately build at least two effective combinations, and a rare room is not required for a viable dungeon.
+
+## Phase 8 — Models, environment and animation
+
+**Goal:** Replace placeholders with a coherent toy-dungeon identity.
+
+**Build:** Produce art reference, palette, scale and doorway guide, then a reusable floor/wall/door kit. Model entrance, vault, slime nest, spikes, guard room, den, mushroom cavern, crypt and props. Model novice and armored visitors, slime, guard and skeleton defenders. Animate idle, walk, attack, hit and defeat/recovery as applicable, plus trap anticipation/activation and vault opening. Keep collision and paths consistent with graybox logic. Document source assets, attribution, export and versioning.
+
+**Exit:** Critical states are readable at default zoom, art does not break placement or navigation, and memory/rendering are profiled on representative mobile hardware.
+
+## Phase 9 — VFX, audio, UI and accessibility
+
+**Goal:** Make actions satisfying and outcomes clear.
+
+**Build:** Add placement confirmation, damage/slow indicators, trap warnings, monster recovery, theft and banking feedback. Create restrained discovery VFX; pool and cap particles. Add ambience and distinct sounds with music/effects controls. Polish HUD, build inventory, room details, collection, shop, onboarding and results in one visual system. Support safe-area layouts, readable text, icons plus color, reduced motion/effects and sound settings. UI animation must not delay actions.
+
+**Exit:** Players can understand results with audio off. Critical controls are usable on small phones and effects stay readable during busy encounters.
+
+## Phase 10 — Release content, balance and social viewing
+
+**Goal:** Provide a complete initial experience and clear longer-term goals.
+
+**Build:** Finalize a modest roster informed by Phase 7. Every room needs a role, source, icon and upgrade curve. Add a few cosmetic themes, collection milestones and read-only plot visits if the server layout permits. Tune new and experienced progression using observed sessions and telemetry; explain visitor traits and help players recover from weak layouts. If monetization is considered, conduct a separate ethical design and current-platform-policy review; paid randomized rewards are not a release dependency.
+
+**Exit:** Multiple viable builds exist, players can identify a next goal, and visits cannot modify another player's inventory or economy. Set exact release content quantities against actual capacity.
+
+## Phase 11 — Hardening and full release
+
+**Goal:** Ship a stable game and be able to operate it.
+
+**Build:** Run closed then broader tests. Validate save migration, remote security, purchase/placement bounds, reconnect and failure behavior. Profile target server load and mobile devices. Review accessibility, licenses and current Roblox policies. Prepare accurate store copy and thumbnails from actual play. Set up telemetry, issue triage, rollback/versioning, save recovery procedures and update checklists. Stage the release and monitor save failures, progression blockers and economy anomalies.
+
+**Release gate:** No known critical progression, data-loss or duplication defects; acceptable device performance at measured target load; complete onboarding and settings; documented incident owner and rollback path. Delay or reduce scope if a gate fails.
+
+# Future update proposals
+
+Each update needs a prototype, balance and migration plan, security review, device/performance pass, release notes and rollback plan. Reorder based on real feedback.
+
+## Update A — The Living Crypt
+
+Add a skeleton theme, cursed library and lantern hall, plus two visitor traits and themed cosmetics. Rare room idea: **Bone Orchard**, where defeated skeletons leave temporary bone piles that improve an adjacent crypt room, with a strict cap. Provide a non-random route to gameplay-relevant content. Test synergy caps and interaction with existing rooms.
+
+## Update B — Caverns and Curious Creatures
+
+Add glowing cavern rooms, mushroom variants and a burrowing visitor. Rare room idea: **Crystal Grotto**, which stores limited charge from adjacent traps and releases a visible burst on a cooldown. Add themed collection goals and decorations. Test effect readability, performance and continued usefulness of common rooms.
+
+## Update C — Raiding other dungeons
+
+Prototype what the visitor actually does before committing: personally navigate a copy, interact indirectly, or another short activity. Owners opt in to publish a versioned, validated snapshot and can unpublish it. A visitor interacts with an isolated copy; the owner never loses persistent gold or items. Display difficulty, expected duration and rewards. Pay capped rewards from the game, with cooldowns and self-farming safeguards. Add privacy, reporting and server validation; filter user-generated text as required by Roblox. Handle disconnects, stale snapshots and incompatible versions. Stress-test abuse and economy exploits before release.
+
+## Update D — Deeper building
+
+Prototype branching paths or a second floor after single-path routing is stable. Define route selection, unreachable rooms, validation, room caps and reward rules that prevent empty-loop farming. Add a layout save slot and risk-free test mode. Preserve existing routes through migration; keep starter building readable.
+
+## Update E — Seasonal expeditions
+
+Add limited-time visitor modifiers, a themed room set and cosmetic objectives. Give gameplay-affecting items a clear return or alternate acquisition path; avoid mandatory daily streaks. Test event start/end, time zones, stale clients, rewards and rollback. Make event currency and expiry explicit.
+
+## Ongoing operations
+
+Monitor onboarding, first purchases, layout edits, safe/risky choices, session and return behavior, crashes and save errors. Combine telemetry with observation; do not optimize for one metric alone. Review confusion, unfair risk and repetitive encounters before increasing grind. Keep migrations, security checks, staged rollout and rollback part of every update.
+
