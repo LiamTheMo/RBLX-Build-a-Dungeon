@@ -45,9 +45,11 @@ An angled overview camera makes the dungeon readable. In build mode, players sel
 | Spike Hall | Periodic damage while a visitor stands on the active trap | Free tutorial piece; basic shop |
 | Treasure Room | Optional destination and unbanked vault: more frequent visitors and a vault bonus, but visitors who reach it steal | Free starter piece, optional, at most one |
 | Guard Room | Reliable single-target defense with a distinct attack cadence | Guaranteed coin purchase, MVP |
-| Monster Den | Capped bonus to adjacent monster rooms | Post-MVP candidate |
-| Mushroom Cavern | Spores interact with certain attacks | Post-MVP candidate |
-| Restless Crypt | Skeleton defender with a distinct trait | Post-MVP candidate |
+| Monster Den | Support room, no monster of its own: each Defender room next to it on the route gets +20% damage and health (once per defender, however many Dens touch it). Not upgradable | Shop, 250 coins (Phase 7) |
+| Mushroom Cavern | A visitor entering becomes Spored for 5 s and takes +50% trap damage. Place before spikes. Not upgradable | Shop, 200 coins (Phase 7) |
+| Restless Crypt | Skeleton defender (60 health, 8 damage per 1.0 s) that rises once at 50% health the first time it is knocked out | Shop, 300 coins (Phase 7) |
+
+Phase 7 visitors (automatic, after the tutorial is done and 8 wins): **Scout** (50 health, fast, Sure-footed: immune to slows; reward 25, steals 10%) and **Cleric** (70 health, Mender: heals 4 HP/s while walking, not while duelling; reward 30, steals 10%). The automatic visitor follows a fixed Novice-heavy rotation and the next one is shown with its traits before it enters. A collection index records the rooms owned and visitors met.
 
 Each room has a role, visible state, cost and upgrade cap. Upgrades should preserve the room's identity. A common room must remain useful in combinations even after rare pieces appear.
 
@@ -91,9 +93,23 @@ These are placeholders. Test time to first purchase and the value of safe versus
 
 ## Collection and rarity
 
-MVP uses a guaranteed basic shop and no randomized room rolls. After the core loop is proven, test gameplay-earned mystery chests with displayed contents and actual probabilities, duplicate conversion or a pity route, and a guaranteed path to essential functional rooms. Describe and test these rules before launch. Any future paid randomized reward requires a separate review of current Roblox rules and applicable regional requirements.
+The MVP shop is guaranteed. Gameplay-earned boxes (see "Loot, rarity and progression") are the randomized route; as with any mystery chest, test with displayed contents and actual probabilities, duplicate conversion or a pity route, and a guaranteed path to essential functional rooms. Describe and test these rules before launch. Any future paid randomized reward requires a separate review of current Roblox rules and applicable regional requirements.
 
 Possible tiers are Common, Uncommon, Rare and Mythic. Rarity signals acquisition and discovery, not automatic superiority. Rare pieces should enable unusual combinations, not invalidate all starter pieces. A collection index shows owned items, their roles and sources, with silhouettes for undiscovered pieces.
+
+## Loot, rarity and progression (owner-approved 2026-11-04)
+
+All of this is earned through play. Boxes and blueprints are never sold for Robux. Every box shows its real odds before it is opened.
+
+- **Drops:** a defeated adventurer may drop a **Dungeon Box** and/or a **Blueprint**. Stronger visitors drop more often. The base chance is multiplied by the player's loot bonus.
+- **Boxes:** opening a Dungeon Box gives one random room instance (any shop room, weighted toward common roles) with a rolled **rarity**. A **Rare Box** (from level-ups and challengers) shifts the rarity odds upward. **Pity:** a box that would be the 10th in a row without Rare or better is guaranteed to be at least Rare.
+- **Blueprints:** each blueprint belongs to one room type. 5 blueprints of a type craft that room at Common rarity. This is the guaranteed, non-random route to every room. Scrapping an unwanted room returns 2 of its blueprints (duplicate conversion).
+- **Rarity variants:** Common, Uncommon, Rare and Mythic. Rarer rooms have higher stats (×1.00 / 1.10 / 1.25 / 1.45), a higher upgrade cap (3 / 4 / 5 / 6), and perks: extra **coins**, extra **loot chance** or extra **XP**. Uncommon and Rare get one perk, Mythic gets two. Perk bonuses from all placed rooms add up, with a cap. Rarity signals discovery: a well-arranged Common layout must stay viable.
+- **Room upgrades:** every placeable room can be upgraded with coins up to its rarity's cap. Defenders and traps hit harder and last longer. The Monster Den's boost grows. The Treasure Room raises its vault-bonus cap.
+- **XP and keeper level:** every defeated adventurer gives XP. Levels unlock the rarer shop rooms and give a box at each level-up (a Rare Box every 5 levels).
+- **Permanent upgrades:** account-wide keeper upgrades bought with banked coins, at rising costs: Golden Touch (more coins), Lucky Charm (more loot), Scholar (more XP), Stout Defenders (defender health), Lure (shorter visitor interval) and Deep Vault (higher vault-bonus cap). They never reset.
+
+Starting numbers live in `Balance.luau` and are listed in [PHASE0.md](PHASE0.md); they are hypotheses to tune in playtests. The non-random routes (shop purchases, blueprint crafting) keep every functional room reachable without luck.
 
 ## Interface and onboarding
 
@@ -139,5 +155,19 @@ Open questions: Is watching encounters engaging between edits? Is vault risk und
 
 ## Change log
 
+- **2026-11-04 (Phase 7 systems depth):** Monster Den, Mushroom Cavern and Restless Crypt (shop rooms), Scout and Cleric visitors with traits, a deterministic automatic-visitor rotation, a `Discovered` collection index (profile schema v2). Numbers in `Balance.luau`; no loot boxes in this step.
+- **2026-11-04 (owner-approved):** Added loot drops (Dungeon/Rare Boxes with shown odds and pity, room blueprints with crafting and scrapping), rarity variants with coin/loot/XP perks, upgrades for every room, keeper XP and levels, and permanent coin upgrades. No paid randomized rewards. See "Loot, rarity and progression".
 - **2026-11-04 (Phase 0, owner-approved):** The treasure room is optional (at most one, and it must end the route). Without it, rewards go straight to banked coins and nothing can be stolen. With it, visitors arrive more often and rewards go to the vault with a bonus, but visitors can steal from it. Rooms are small open squares about avatar height with a doorway on every side (no rotation), and visitors are miniature adventurers. This resolves a conflict in the earlier draft, where a fixed entrance and a fixed treasure room one room apart left no space to add the tutorial's spike hall. Derived details are in [PHASE0.md](PHASE0.md).
 
+
+## Central room shop and upgrader
+
+**Lobby layout:** Plan for six player plots around a shared central plaza. Put a clearly signposted Room Shop and Room Upgrader on the plaza so players can reach them from any plot. Their exact placement and six-plot server performance need prototyping. Players can browse without interrupting another player's dungeon. Keep shop and upgrade interactions accessible on mobile.
+
+**Room Shop:** Offer a rotating or fixed selection of guaranteed basic rooms purchased with banked coins, alongside room boxes earned or purchased using gameplay currency once that system has been tested. The guaranteed selection must include the essentials needed to build a functional dungeon. A box shows its actual possible contents and probabilities before purchase, and its contents are awarded by the server. Define duplicate conversion or a pity path before boxes ship. A rare room should enable a distinct strategy rather than simply outclass every basic room. The MVP launches with guaranteed purchases; boxes are a post-MVP addition.
+
+**Room Upgrader:** Select an owned room instance and preview its current stats, next upgrade, cost and maximum level before confirming. The server validates ownership, balance, upgrade cap and encounter/build state, deducts the cost and updates the instance atomically. The upgrade applies to that instance whether stored or placed; if placed, apply gameplay changes between encounters. A visible station supports discovery, while a future remote upgrade shortcut can be evaluated for convenience.
+
+**Rare visitor drops:** As a working assumption, rare drops come from defeated NPC adventurers, not the accounts of other players. A visitor may drop a room blueprint, room-box token, cosmetic or upgrade material in addition to its regular vault-gold reward. Show the source and actual chance in a collection or visitor panel once probabilities are defined. Permanent item drops are awarded to inventory by the server exactly once on encounter victory; an NPC stealing vault gold does not remove them. Duplicate blueprints need a defined conversion or guaranteed-progress route. In the MVP, use a scripted tutorial reward or no rare drops; introduce random drops after persistence and baseline balance have been validated.
+
+**Future player raids:** If other-player raids are added, the game may award capped rare rewards for completing a raid against an opted-in snapshot. Rewards must be generated by the game; never remove another player's rooms, items or banked money. Determine anti-farming, odds and reward limits during the raid prototype.

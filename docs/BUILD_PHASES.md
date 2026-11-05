@@ -3,7 +3,7 @@
 **Companion:** [Game Design Document](GDD.md)  
 **Status:** Working plan. Phases 0–6 deliver a playable MVP. Phases 7–11 lead to full release. Later updates are proposals and should respond to testing and player feedback.
 
-**Current phase:** Phase 0, in progress. The specification is written ([PHASE0.md](PHASE0.md)); the open items are listed there under "Phase 0 status".
+**Current phase (updated 2026-11-05):** Phases 1–5 and 7 systems are implemented in code and covered by automated specs (17 spec files, run in Studio). Phase 8 art is part-built as Studio models. Phase 9 UI, icons and sounds are implemented. No phase is marked exited: exit criteria need human playtests. Still open before release: real-device mobile testing, playtests with fresh players, balance tuning, audio and icon licensing review, published-place persistence failure testing, and the release checklist ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)). Known gaps are in [KNOWN_ISSUES.md](KNOWN_ISSUES.md). The Phase 0 spec is in [PHASE0.md](PHASE0.md).
 
 ## Production rules
 
@@ -87,15 +87,23 @@
 
 ## Phase 7 — Systems depth and collection
 
+**Status (2026-11-04, client UI added 2026-11-05):** Rules and data done and spec-tested: Monster Den, Mushroom Cavern, Restless Crypt, Scout and Cleric with traits, visitor rotation, `Discovered` index (schema v2). The collection panel is in code (`Ui/PanelsCollection`). Not started: separately collectible monsters. Pending: economy simulation with real sessions.
+
 **Goal:** Add strategic variety without obscuring the basic loop.
 
 **Build:** Add Monster Den, Mushroom Cavern and Restless Crypt with identifiable interactions and counters. Add two visitor traits, capped upgrades and a collection index. Prototype separately collectible monsters with compatibility slots; retain built-in defenders if two inventories feel confusing. If adding free gameplay-earned mystery chests, specify and display probabilities, duplicate conversion or pity, and guaranteed routes to useful rooms. Test economy growth, rarity value, interactions and migrations.
 
-**Exit:** Players can deliberately build at least two effective combinations, and a rare room is not required for a viable dungeon.
+**Loot and progression status (2026-11-04):** server rules, schema v3, remotes and specs done (`Rules/Loot`, `Rules/Progression`, server `Rules/Rewards`, `LootService`; 17 spec files pass in Studio). Client UI is in code (`Controllers/LootController`, `Ui/PanelsLoot`: box opening with shown odds, blueprints and crafting, scrapping, keeper level and XP, permanent upgrades; rarity badges in `Ui/Kit`). Pending: a Play-mode test of the new remotes, and economy tuning with real sessions.
+
+**Owner addition (2026-11-04):** loot drops (Dungeon and Rare Boxes with shown odds and pity, blueprints with crafting and scrapping), Common to Mythic room variants with coin, loot and XP perks, upgrades for every room up to a rarity cap, keeper XP and levels, and permanent coin upgrades (GDD "Loot, rarity and progression").
+
+**Exit:** Players can deliberately build at least two effective combinations, and a rare room is not required for a viable dungeon. Box odds are shown before opening, and every room is reachable without luck.
 
 ## Phase 8 — Models, environment and animation
 
 **Goal:** Replace placeholders with a coherent toy-dungeon identity.
+
+**Status (2026-11-05):** Part-built. Room, support-room, character and prop models exist as Studio-built primitive models under `ReplicatedStorage.Art` and `Workspace.Map`, exported to `Assets\BuildADungeon\models\` (see that folder's README). Not yet done: the full exit check (readability at default zoom, mobile profiling).
 
 **Build:** Produce art reference, palette, scale and doorway guide, then a reusable floor/wall/door kit. Model entrance, vault, slime nest, spikes, guard room, den, mushroom cavern, crypt and props. Model novice and armored visitors, slime, guard and skeleton defenders. Animate idle, walk, attack, hit and defeat/recovery as applicable, plus trap anticipation/activation and vault opening. Keep collision and paths consistent with graybox logic. Document source assets, attribution, export and versioning.
 
@@ -104,6 +112,8 @@
 ## Phase 9 — VFX, audio, UI and accessibility
 
 **Goal:** Make actions satisfying and outcomes clear.
+
+**Status (2026-11-05):** UI, icons and sounds are implemented in code: `src/client/Ui/*`, `src/shared/UI/IconIds.luau` and `SoundIds.luau`, with reduced-motion and sound settings. Four sound slots are unfilled (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md)). Not yet verified: the exit check, on real devices.
 
 **Build:** Add placement confirmation, damage/slow indicators, trap warnings, monster recovery, theft and banking feedback. Create restrained discovery VFX; pool and cap particles. Add ambience and distinct sounds with music/effects controls. Polish HUD, build inventory, room details, collection, shop, onboarding and results in one visual system. Support safe-area layouts, readable text, icons plus color, reduced motion/effects and sound settings. UI animation must not delay actions.
 
@@ -153,3 +163,10 @@ Add limited-time visitor modifiers, a themed room set and cosmetic objectives. G
 
 Monitor onboarding, first purchases, layout edits, safe/risky choices, session and return behavior, crashes and save errors. Combine telemetry with observation; do not optimize for one metric alone. Review confusion, unfair risk and repetitive encounters before increasing grind. Keep migrations, security checks, staged rollout and rollback part of every update.
 
+
+## Lobby shop and rare-drop implementation notes
+
+- **MVP, Phases 1–6:** Graybox a six-plot lobby and shared plaza when practical; test player capacity and plot isolation. Provide a discoverable Room Shop with guaranteed basic purchases and a simple Room Upgrader. Validate all costs and ownership on the server. The first MVP may use a basic interaction or UI rather than finished shop models. Do not require randomized boxes or drops.
+- **Phase 7:** Prototype gameplay-earned room boxes, displayed contents and odds, duplicates/guaranteed progression, and rare drops from NPC visitors. Persist each award transaction safely, avoid duplicate grants and simulate the economy. Define actual probabilities only after tuning and display those exact values in-game. Review applicable platform requirements before any paid randomized offering.
+- **Phases 8–10:** Model and animate the shared plaza shop and upgrader; add signage, interaction prompts, icons, box-opening presentation, drop feedback, audio and responsive shop/upgrade UI. Test six active plots, NPC limits, visibility and performance on desktop and mobile.
+- **Post-launch raid update:** Explore game-funded, capped raid rewards only after the opt-in snapshot and anti-farming systems are validated. Never take items or persistent currency from another player.

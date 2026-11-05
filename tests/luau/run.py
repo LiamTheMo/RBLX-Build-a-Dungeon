@@ -69,6 +69,17 @@ def build_bundle(spec: Path) -> str:
 
 def main() -> int:
     specs = sorted(HERE.glob("*.spec.luau"))
+    if len(sys.argv) == 2 and sys.argv[1] == "--studio":
+        # Writes every bundle plus index.txt to build/specs/ for tests/luau/studio_runner.luau.
+        out = ROOT / "build" / "specs"
+        out.mkdir(parents=True, exist_ok=True)
+        for old in out.glob("*.luau"):
+            old.unlink()
+        for spec in specs:
+            (out / (spec.stem + ".bundle.luau")).write_text(build_bundle(spec), encoding="utf-8")
+        (out / "index.txt").write_text("\n".join(s.stem + ".bundle.luau" for s in specs), encoding="utf-8")
+        print(f"Wrote {len(specs)} bundles to {out}")
+        return 0
     if len(sys.argv) == 3 and sys.argv[1] == "--bundle":
         matches = [s for s in specs if s.name.startswith(sys.argv[2])]
         if len(matches) != 1:

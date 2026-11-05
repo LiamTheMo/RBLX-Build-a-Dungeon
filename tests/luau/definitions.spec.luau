@@ -56,7 +56,10 @@ test("defenders and traps have balance entries", function()
 			end
 		elseif def.Kind == "Trap" then
 			expect(stats ~= nil, id .. " has no balance")
-			if stats then
+			if stats and stats.SporeDuration then
+				expect(isPositive(stats.SporeDuration), id .. " SporeDuration")
+				expect(isPositive(stats.TrapDamageBonus), id .. " TrapDamageBonus")
+			elseif stats then
 				expect(isPositive(stats.Damage), id .. " Damage")
 				expect(isPositive(stats.Cycle), id .. " Cycle")
 				expect(stats.Telegraph > 0 and stats.Telegraph < stats.Cycle, id .. " telegraph fits in the cycle")
