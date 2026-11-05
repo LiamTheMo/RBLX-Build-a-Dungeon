@@ -130,3 +130,36 @@ test("a handler that errors yields Busy and does not break later calls", functio
 	end, true)
 	expect(not refused and why == "NotEnough", "handler refusal passes through")
 end)
+
+test("CallOpen skips the ready check but keeps args and rate limit", function()
+	local guard = setup(function()
+		return false
+	end)
+	local noArgs = function(...)
+		return select("#", ...) == 0
+	end
+	local ok, data = guard:CallOpen("p", "GetCatalog", noArgs, okHandler)
+	expect(ok and data == "done", "served without a loaded profile")
+	local _, reason = guard:CallOpen("p", "GetCatalog", noArgs, okHandler, "extra")
+	expectEq(reason, "BadArgs", "args still checked")
+	local _, closed = guard:Call("p", "PreviewLayout", noArgs, okHandler)
+	expectEq(closed, "ProfileNotLoaded", "Call still needs the profile")
+	local limited = 0
+	for _ = 1, 40 do
+		local passed, r = guard:CallOpen("q", "GetCatalog", noArgs, okHandler)
+		if not passed and r == "RateLimited" then
+			limited += 1
+		end
+	end
+	expect(limited > 0, "rate limited")
+end)
+
+test("a handler's third value (e.g. the offending cell) is passed through", function()
+	local guard = setup()
+	local ok, reason, cell = guard:Call("p", "PreviewLayout", isBool, function()
+		return false, "Branch", "3,3"
+	end, true)
+	expect(not ok, "refused")
+	expectEq(reason, "Branch", "reason")
+	expectEq(cell, "3,3", "cell")
+end)

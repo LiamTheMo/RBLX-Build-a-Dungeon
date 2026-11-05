@@ -109,7 +109,7 @@ test("v3 fields are validated and clamped", function()
 		Rarity = "Rare",
 		Perks = { { Kind = "Coins", Amount = 50 }, { Kind = "Loot", Amount = 0.2 } },
 	}
-	s.Rooms.r4 = { Id = "SlimeNest", Level = 6, Rarity = "Legendary", Perks = { { Kind = "Coins", Amount = 0.2 } } }
+	s.Rooms.r4 = { Id = "SlimeNest", Level = 6, Rarity = "Bogus", Perks = { { Kind = "Coins", Amount = 0.2 } } }
 	s.Rooms.r5 = {
 		Id = "MonsterDen",
 		Level = 6,
@@ -133,7 +133,8 @@ test("v3 fields are validated and clamped", function()
 	expectEq(p.Rooms.r4.Level, 3, "common cap 3")
 	expectEq(#p.Rooms.r4.Perks, 0, "common has no perks")
 	local r5 = p.Rooms.r5
-	expectEq(r5.Level, 6, "mythic 6")
+	expectEq(r5.Level, 6, "saved mythic level kept (cap is now 8)")
+	expectEq(r5.Rarity, "Mythic", "mythic kept")
 	expectEq(#r5.Perks, 2, "two distinct")
 	expectEq(r5.Perks[1].Kind, "Xp", "xp")
 	expectEq(r5.Perks[2].Kind, "Loot", "loot, duplicates and junk skipped")

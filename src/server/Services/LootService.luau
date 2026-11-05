@@ -2,9 +2,7 @@
 -- The rules (and every refusal) are in Rules/Rewards; each request mutates the
 -- profile without yielding. Boxes and blueprints are gameplay-earned only.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Rooms = require(ReplicatedStorage.Shared.Definitions.Rooms)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local Rewards = require(script.Parent.Parent.Rules.Rewards)
 local ProfileService = require(script.Parent.ProfileService)

@@ -1,6 +1,6 @@
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Economy = require(Shared.Rules.Economy)
-local Balance = require(Shared.Definitions.Balance)
+local Server = game:GetService("ServerScriptService").Server
+local Economy = require(Server.Rules.Economy)
+local Balance = require(Server.Definitions.Balance)
 
 test("vault bonus steps per 100 and caps", function()
 	expectEq(Economy.VaultBonus(0), 0, "empty")
@@ -44,7 +44,7 @@ end)
 test("upgrade costs end at the max level", function()
 	expectEq(Economy.UpgradeCost(1), Balance.Upgrades.Costs[1], "to level 2")
 	expectEq(Economy.UpgradeCost(2), Balance.Upgrades.Costs[2], "to level 3")
-	expectEq(Economy.UpgradeCost(Balance.Upgrades.MaxLevel), nil, "max")
+	expectEq(Economy.UpgradeCost(Economy.MaxLevel()), nil, "max")
 	expectEq(Economy.UpgradeCost(0), nil, "zero")
 	expectEq(Economy.UpgradeCost(1.5), nil, "fraction")
 	expectEq(Economy.UpgradeCost("1"), nil, "string")

@@ -139,25 +139,47 @@ Balance.Rooms = table.freeze({
 })
 
 Balance.Upgrades = table.freeze({
-	-- Coins to reach level 2, 3, 4, 5 and 6. A room stops at its rarity's MaxLevel.
-	Costs = table.freeze({ 60, 150, 350, 800, 1800 }),
-	MaxLevel = 6, -- the highest any rarity allows
+	-- Coins to reach level 2, 3, ... A room stops at its rarity's MaxLevel (the
+	-- list must have MaxLevel - 1 entries for the highest tier).
+	Costs = table.freeze({ 60, 150, 350, 800, 1800, 3500, 6000, 10000, 16000 }),
 	-- Per level above 1: scales defender damage and health, and trap damage.
 	DamageBonusPerLevel = 0.25,
 	HealthBonusPerLevel = 0.25,
 })
 
--- Room rarity (GDD "Loot, rarity and progression"). Weight is the Dungeon Box
--- odds. StatMultiplier scales defender health and damage, trap damage, the
--- Monster Den boost and the Mushroom spore bonus. Perks: PerkCount different
--- kinds, each of PerkSize. Shop, starter, tutorial and crafted rooms are Common.
+-- Room rarity (GDD "Loot, rarity and progression"). THE ordered list: index is
+-- rank (lowest first), and every rule and UI iterates it, so a new tier is one
+-- new entry here (plus its colour in the client's Ui/RarityColors). Weight = Dungeon
+-- Box odds, RareWeight = Rare Box odds (each column sums to 100). StatMultiplier
+-- scales defender health and damage, trap damage, the Monster Den boost and the
+-- Mushroom spore bonus. Perks: PerkCount different kinds, each of PerkSize.
+-- Shop, starter, tutorial and crafted rooms are Common. Keep Common first and
+-- never rename an Id: it is saved in profiles (unknown ids load as Common).
+local function tier(id: string, weight: number, rareWeight: number, stat: number, maxLevel: number, perkCount: number, perkSize: string)
+	return table.freeze({
+		Id = id,
+		Weight = weight,
+		RareWeight = rareWeight,
+		StatMultiplier = stat,
+		MaxLevel = maxLevel,
+		PerkCount = perkCount,
+		PerkSize = perkSize,
+	})
+end
 Balance.Rarities = table.freeze({
-	Order = table.freeze({ "Common", "Uncommon", "Rare", "Mythic" }),
-	Common = table.freeze({ Weight = 70, StatMultiplier = 1.00, MaxLevel = 3, PerkCount = 0, PerkSize = "Small" }),
-	Uncommon = table.freeze({ Weight = 22, StatMultiplier = 1.10, MaxLevel = 4, PerkCount = 1, PerkSize = "Small" }),
-	Rare = table.freeze({ Weight = 7, StatMultiplier = 1.25, MaxLevel = 5, PerkCount = 1, PerkSize = "Medium" }),
-	Mythic = table.freeze({ Weight = 1, StatMultiplier = 1.45, MaxLevel = 6, PerkCount = 2, PerkSize = "Large" }),
+	tier("Common", 60, 0, 1.00, 3, 0, "Small"),
+	tier("Uncommon", 25, 45, 1.10, 4, 1, "Small"),
+	tier("Rare", 10, 32, 1.25, 5, 1, "Medium"),
+	tier("Epic", 3.5, 14, 1.40, 6, 2, "Medium"),
+	tier("Legendary", 1.2, 6, 1.60, 7, 2, "Large"),
+	tier("Mythic", 0.28, 2.5, 1.85, 8, 3, "Large"),
+	tier("Secret", 0.02, 0.5, 2.20, 10, 3, "Huge"),
 })
+local byId = {}
+for _, r in Balance.Rarities do
+	byId[r.Id] = r
+end
+Balance.RarityById = table.freeze(byId)
 
 -- Room perks, as fractions. Perks of every PLACED room add up with the
 -- permanent upgrades, then each total is capped (Progression.Bonuses).
@@ -166,6 +188,7 @@ Balance.Perks = table.freeze({
 	Small = table.freeze({ Coins = 0.05, Loot = 0.10, Xp = 0.10 }),
 	Medium = table.freeze({ Coins = 0.10, Loot = 0.20, Xp = 0.20 }),
 	Large = table.freeze({ Coins = 0.20, Loot = 0.40, Xp = 0.40 }),
+	Huge = table.freeze({ Coins = 0.30, Loot = 0.60, Xp = 0.60 }),
 	Caps = table.freeze({ Coins = 1.00, Loot = 1.00, Xp = 1.00 }),
 })
 
@@ -188,8 +211,6 @@ Balance.Loot = table.freeze({
 		MonsterDen = 10,
 		RestlessCrypt = 8,
 	}),
-	-- Rarity odds of a Rare Box (a Dungeon Box uses Rarities[*].Weight).
-	RareBoxRarity = table.freeze({ Uncommon = 60, Rare = 32, Mythic = 8 }),
 	-- After PityAfter boxes in a row below PityRarity, the next is at least PityRarity.
 	PityAfter = 9,
 	PityRarity = "Rare",

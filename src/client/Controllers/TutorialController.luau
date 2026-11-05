@@ -9,10 +9,12 @@ local Kit = require(Ui.Kit)
 local Net = require(Ui.Net)
 local Scale = require(Ui.Scale)
 local Settings = require(Ui.Settings)
+local Sprites = require(Ui.Sprites)
+local SpriteIds = require(Ui.SpriteIds)
 local State = require(Ui.State)
 local Theme = require(Ui.Theme)
 local Toast = require(Ui.Toast)
-local ReasonText = require(game:GetService("ReplicatedStorage").Shared.UI.ReasonText)
+local ReasonText = require(Ui.ReasonText)
 
 local make = Kit.Make
 
@@ -71,7 +73,9 @@ local function action(name: string)
 end
 
 local function clearTarget()
-	if target and target.Stroke then
+	if target and target.Button then
+		target.Button.SetHighlight(nil)
+	elseif target and target.Stroke then
 		target.Stroke.Thickness = 3
 		target.Stroke.Color = Theme.Stroke
 	end
@@ -90,6 +94,10 @@ local function layout()
 	ui.Bubble.Position = if phone then UDim2.new(0.5, 0, 1, -120) else UDim2.new(0.5, 0, 1, -170)
 	ui.Bubble.Size = if phone then UDim2.fromOffset(420, 88) else UDim2.fromOffset(520, 96)
 	ui.Text.TextSize = if phone then 16 else 20
+	local m = if phone then 64 else 76
+	ui.Mascot.Size = UDim2.fromOffset(m, m)
+	ui.Text.Position = UDim2.fromOffset(m + 24, 6)
+	ui.Text.Size = UDim2.new(1, -(m + 36), 1, -12)
 end
 
 local function refresh()
@@ -132,10 +140,23 @@ local function buildUi()
 	local gui = Kit.Screen("Tutorial", 3)
 	ui = {}
 	ui.Root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, gui)
-	ui.Bubble = Kit.Panel(ui.Root, { AnchorPoint = Vector2.new(0.5, 1), Visible = false, BackgroundColor3 = Theme.TextPrimary })
+	-- Cream bubble (drawn, dark text) with the Keeper portrait as the mascot at the left.
+	ui.Bubble = Kit.Panel(ui.Root, { Sprite = false, AnchorPoint = Vector2.new(0.5, 1), Visible = false, BackgroundColor3 = Theme.TextPrimary })
+	ui.Mascot = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), AnchorPoint = Vector2.new(0, 0.5), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Bubble)
+	ui.Mascot.Position = UDim2.new(0, 12, 0.5, 0)
+	local portrait = SpriteIds.Portraits.Keeper
+	if Sprites.Ok(portrait) then
+		ui.Mascot.Image = portrait
+		Sprites.Watch(portrait, function()
+			ui.Mascot.Image = ""
+			ui.Mascot.Visible = false
+		end)
+	else
+		ui.Mascot.Visible = false
+	end
 	ui.Text = Kit.Label(ui.Bubble, "", 20, Theme.BgDeep)
-	ui.Text.Position = UDim2.fromOffset(12, 6)
-	ui.Text.Size = UDim2.new(1, -24, 1, -12)
+	ui.Text.Position = UDim2.fromOffset(100, 6)
+	ui.Text.Size = UDim2.new(1, -112, 1, -12)
 	ui.Text.TextXAlignment = Enum.TextXAlignment.Left
 	ui.Text.TextYAlignment = Enum.TextYAlignment.Top
 
@@ -201,7 +222,9 @@ function Tutorial.Start()
 		local pulse = if Settings.Reduced() then 0 else math.sin(os.clock() * 5)
 		ui.Arrow.Position = UDim2.fromOffset(p.X, p.Y - 4 + pulse * 4)
 		ui.Arrow.Visible = inst.Visible
-		if target.Stroke then
+		if target.Button then
+			target.Button.SetHighlight(5 + pulse)
+		elseif target.Stroke then
 			target.Stroke.Color = Theme.Gold
 			target.Stroke.Thickness = 5 + pulse
 		end

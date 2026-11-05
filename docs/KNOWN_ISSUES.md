@@ -4,12 +4,14 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 
 ## Art, icons and sound
 
-- **Icons blocked: wrong owner.** The experience belongs to group 33284082, but the 11 icons in `src/shared/UI/IconIds.luau` were uploaded through Studio to the owner's personal account (user 855002824). In game they fail with "not authorized" and fall back to text. Fix: re-upload them to the group (Open Cloud key with group asset write access; the files are in `Assets\BuildADungeon\ui\icons\`), or grant the experience use of each asset in Creator Hub, then update `IconIds.luau`.
+- **Icons awaiting moderation.** The 11 icons in `src/client/Ui/IconIds.luau` are now uploaded to group 33284082 with `Assets\BuildADungeon\tools\roblox_upload.py`. On 2026-11-05, Coin, Upgrade, Shield, Sword and Vault still failed to load, probably because moderation hadn't finished yet. Re-check them in Studio, and confirm they are approved in Creator Hub.
 - **Unknown asset warning.** `rbxassetid://203785492` logs "Asset type does not match requested type" at start. Nothing in `src/` or the place references it; it is probably Studio or plugin noise.
 
-- **Icons reused for buttons.** The Loot, Collection and Keeper buttons use the Vault, Shield and Upgrade icons (`src/client/Controllers/HudController.luau`). The Support room kind also uses the Upgrade icon. There are no dedicated icons for these yet.
-- **Icon rights unconfirmed.** The icons are cut from a ChatGPT-generated sheet. Do not release them until the owner confirms rights (`src/shared/UI/IconIds.luau`).
-- **Four sound slots are empty.** Theft, SlimeAttack, Ambience and Music have no entry in `src/shared/UI/SoundIds.luau`.
+- **Sprite fallback untested live.** `src/client/Ui/Sprites.luau` preloads the 70 UI sprites and falls back to code-drawn UI for any that fail. In Studio Play, `PreloadAsync` reports Failure even for sprites that render, so the fallback switch only acts on real servers. Check on the published place that the sprites show and the fallback doesn't trigger by mistake.
+- **Desktop layout unseen.** The last checks ran in a 1175×599 window, which uses the phone layout. Check the desktop layout and real phones.
+- **Image and model rights unconfirmed.** The icons, sprites and concept references come from ChatGPT through the owner's account. The models were made in Blender from those references. Confirm rights before release (see the Assets README).
+- **Minor UI rough edges.** Shop cards have a small notch at the top-right corner, and the build-card count pill sits tight against the frame.
+- **Four sound slots are empty.** Theft, SlimeAttack, Ambience and Music have no entry in `src/client/Ui/SoundIds.luau`.
 - **Sounds not listened to.** Every sound was picked from Creator Store search metadata. Rise is a weak fit (per the Assets README).
 - **Studio art only in the place file.** `ReplicatedStorage.Art` and `Workspace.Map` are not synced by Rojo. Weld and Motor6D offsets in the exported models are approximate and need a check after import (per the Assets README).
 

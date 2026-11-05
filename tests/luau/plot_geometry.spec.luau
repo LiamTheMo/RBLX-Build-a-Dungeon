@@ -1,6 +1,6 @@
-local Shared = game:GetService("ReplicatedStorage").Shared
-local PlotGeometry = require(Shared.Rules.PlotGeometry)
-local Grid = require(Shared.Definitions.Grid)
+local Server = game:GetService("ServerScriptService").Server
+local PlotGeometry = require(Server.Rules.PlotGeometry)
+local Grid = require(Server.Definitions.Grid)
 
 test("entrance cell is front and centre", function()
 	local v = PlotGeometry.CellLocal(3, 1)

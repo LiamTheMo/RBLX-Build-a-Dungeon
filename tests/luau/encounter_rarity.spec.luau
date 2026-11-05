@@ -1,7 +1,7 @@
 -- Rarity, room upgrades and Stout Defenders in the encounter simulation.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Balance = require(Shared.Definitions.Balance)
+local Server = game:GetService("ServerScriptService").Server
+local Balance = require(Server.Definitions.Balance)
 local EncounterSim = require(game:GetService("ServerScriptService").Server.Rules.EncounterSim)
 
 local function run(visitorId, config)
@@ -19,12 +19,25 @@ end
 test("rarity multiplies defender health and damage and trap damage", function()
 	local up = Balance.Upgrades
 	local mythic = EncounterSim.new({ route = { "GuardRoom" }, rarities = { "Mythic" }, visitorId = "Novice" })
-	expectNear(mythic.Defenders[1].MaxHealth, 80 * 1.45, 1e-9, "health")
-	expectNear(mythic.Defenders[1].Damage, 12 * 1.45, 1e-9, "damage")
+	expectNear(mythic.Defenders[1].MaxHealth, 80 * 1.85, 1e-9, "health")
+	expectNear(mythic.Defenders[1].Damage, 12 * 1.85, 1e-9, "damage")
 	local rare = EncounterSim.new({ route = { "SpikeHall" }, levels = { 2 }, rarities = { "Rare" }, visitorId = "Novice" })
 	expectNear(rare._traps[1].Damage, 15 * (1 + up.DamageBonusPerLevel) * 1.25, 1e-9, "trap")
 	local bogus = EncounterSim.new({ route = { "GuardRoom" }, rarities = { "Order" }, visitorId = "Novice" })
 	expectEq(bogus.Defenders[1].MaxHealth, 80, "unknown rarity is Common")
+end)
+
+test("every tier scales stats by its Balance multiplier and caps levels", function()
+	for _, tier in Balance.Rarities do
+		local sim = EncounterSim.new({ route = { "GuardRoom" }, levels = { 99 }, rarities = { tier.Id }, visitorId = "Novice" })
+		local above = tier.MaxLevel - 1
+		expectNear(
+			sim.Defenders[1].MaxHealth,
+			80 * (1 + above * Balance.Upgrades.HealthBonusPerLevel) * tier.StatMultiplier,
+			1e-9,
+			tier.Id
+		)
+	end
 end)
 
 test("levels are capped by rarity", function()
@@ -32,7 +45,7 @@ test("levels are capped by rarity", function()
 	local common = EncounterSim.new({ route = { "GuardRoom" }, levels = { 6 }, visitorId = "Novice" })
 	expectNear(common.Defenders[1].MaxHealth, 80 * (1 + 2 * up.HealthBonusPerLevel), 1e-9, "common stops at 3")
 	local mythic = EncounterSim.new({ route = { "GuardRoom" }, levels = { 6 }, rarities = { "Mythic" }, visitorId = "Novice" })
-	expectNear(mythic.Defenders[1].MaxHealth, 80 * (1 + 5 * up.HealthBonusPerLevel) * 1.45, 1e-9, "mythic 6")
+	expectNear(mythic.Defenders[1].MaxHealth, 80 * (1 + 5 * up.HealthBonusPerLevel) * 1.85, 1e-9, "mythic 6")
 	expectNear(EncounterSim.DefenderHealth("GuardRoom", 6, "Common", 0), 80 * (1 + 2 * up.HealthBonusPerLevel), 1e-9, "helper")
 	expectEq(EncounterSim.DefenderHealth("SpikeHall", 1), nil, "no defender")
 end)

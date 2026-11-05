@@ -4,11 +4,11 @@
 -- the step that sets Result. Room i (1-based) is centred i * CellSize studs from
 -- the entrance centre; the visitor walks the route and stops to duel defenders.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Grid = require(Shared.Definitions.Grid)
-local Rooms = require(Shared.Definitions.Rooms)
-local Balance = require(Shared.Definitions.Balance)
-local Visitors = require(Shared.Definitions.Visitors)
+local Definitions = script.Parent.Parent.Definitions
+local Grid = require(Definitions.Grid)
+local Rooms = require(Definitions.Rooms)
+local Balance = require(Definitions.Balance)
+local Visitors = require(Definitions.Visitors)
 
 local SUBSTEP = 0.05 -- seconds; keeps big dt values from skipping strikes
 local EPS = 1e-9
@@ -27,8 +27,7 @@ local EncounterSim = {}
 EncounterSim.__index = EncounterSim
 
 local function rarityOf(name: string?): any
-	local r = Balance.Rarities[name or "Common"]
-	return if type(r) == "table" and r.StatMultiplier then r else Balance.Rarities.Common
+	return Balance.RarityById[name or "Common"] or Balance.RarityById.Common
 end
 
 -- (levelsAbove1, statMultiplier) for a room at `level` of `rarity`.

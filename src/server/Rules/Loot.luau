@@ -2,7 +2,7 @@
 -- Box odds, rarity, perk and drop rolls (GDD "Loot, rarity and progression").
 -- Pure: every roll takes an injected Random (`rng:NextNumber()` in [0, 1)), so
 -- specs are deterministic; the server passes Random.new(). Weighted picks walk
--- a fixed order (Rarities.Order / Rooms.Order), never dictionary order.
+-- a fixed order (the Balance.Rarities list / Rooms.Order), never dictionary order.
 -- Gameplay-earned only: nothing here is sold.
 
 local Balance = require(script.Parent.Parent.Definitions.Balance)
@@ -16,34 +16,45 @@ local Loot = {}
 
 Loot.BoxTypes = table.freeze({ "Dungeon", "Rare" })
 
-local RARITY_RANK: { [string]: number } = {}
-for i, id in Balance.Rarities.Order do
-	RARITY_RANK[id] = i
-end
+-- Rarity functions take an optional ordered tier list (default Balance.Rarities)
+-- so specs can try an extra tier without touching Balance.
+type Tiers = { any }
 
-function Loot.RarityRank(rarity: any): number?
-	return RARITY_RANK[rarity]
-end
-
-local function rarityWeights(boxType: string): { [string]: number }?
-	if boxType == "Dungeon" then
-		local out = {}
-		for _, id in Balance.Rarities.Order do
-			out[id] = Balance.Rarities[id].Weight
+-- 1-based rank (index in the ordered list), nil for an unknown id.
+function Loot.RarityRank(rarity: any, tiers: Tiers?): number?
+	for i, r in tiers or Balance.Rarities do
+		if r.Id == rarity then
+			return i
 		end
-		return out
-	elseif boxType == "Rare" then
-		return Balance.Loot.RareBoxRarity
 	end
 	return nil
 end
 
--- Ordered {Id, Weight} entries with Weight > 0 (and rank >= minRank for rarities).
-local function entries(weights: { [string]: number }, order: { string }, minRank: number?): { any }
+-- Ordered {Id, Weight} entries with Weight > 0 and rank >= minRank, for one box
+-- type ("Dungeon" uses Weight, "Rare" uses RareWeight).
+local function rarityEntries(boxType: string, pity: number, tiers: Tiers?): { any }?
+	local field = if boxType == "Dungeon" then "Weight" elseif boxType == "Rare" then "RareWeight" else nil
+	if field == nil then
+		return nil
+	end
+	local list = tiers or Balance.Rarities
+	local minRank = if pity >= Balance.Loot.PityAfter then Loot.RarityRank(Balance.Loot.PityRarity, list) else nil
+	local out = {}
+	for i, r in list do
+		local w = r[field]
+		if type(w) == "number" and w > 0 and (minRank == nil or i >= minRank) then
+			table.insert(out, { Id = r.Id, Weight = w })
+		end
+	end
+	return out
+end
+
+-- Ordered {Id, Weight} entries of a room-weight table with Weight > 0.
+local function entries(weights: { [string]: number }, order: { string }): { any }
 	local out = {}
 	for _, id in order do
 		local w = weights[id]
-		if type(w) == "number" and w > 0 and (minRank == nil or (RARITY_RANK[id] or 0) >= minRank) then
+		if type(w) == "number" and w > 0 then
 			table.insert(out, { Id = id, Weight = w })
 		end
 	end
@@ -103,20 +114,11 @@ local function gatedRooms(weights: { [string]: number }, level: number?): { any 
 	return if #out > 0 then out else lowestList
 end
 
-local function rarityEntries(boxType: string, pity: number): { any }?
-	local weights = rarityWeights(boxType)
-	if weights == nil then
-		return nil
-	end
-	local minRank = if pity >= Balance.Loot.PityAfter then RARITY_RANK[Balance.Loot.PityRarity] else nil
-	return entries(weights, Balance.Rarities.Order, minRank)
-end
-
 -- The exact distribution the NEXT open of this box rolls from (pity-adjusted and
 -- gate-filtered): {Rooms = {{Id, Chance}}, Rarities = {{Id, Chance}}, PityAfter,
 -- PityRarity}. Chances are fractions summing to 1. Rolls use the same lists.
-function Loot.Odds(boxType: string, pity: number?, level: number?): any
-	local list = rarityEntries(boxType, pity or 0)
+function Loot.Odds(boxType: string, pity: number?, level: number?, tiers: Tiers?): any
+	local list = rarityEntries(boxType, pity or 0, tiers)
 	if list == nil then
 		return nil
 	end
@@ -130,8 +132,8 @@ end
 
 -- Rolls a box's rarity. `pity` = boxes opened in a row below PityRarity; once it
 -- reaches PityAfter the roll is restricted to PityRarity or better (renormalised).
-function Loot.RollRarity(boxType: string, pity: number, rng: any): string?
-	local list = rarityEntries(boxType, pity)
+function Loot.RollRarity(boxType: string, pity: number, rng: any, tiers: Tiers?): string?
+	local list = rarityEntries(boxType, pity, tiers)
 	if list == nil then
 		return nil
 	end
@@ -139,8 +141,8 @@ function Loot.RollRarity(boxType: string, pity: number, rng: any): string?
 end
 
 -- Pity counter after opening a box of `rarity`.
-function Loot.NextPity(pity: number, rarity: string): number
-	if (RARITY_RANK[rarity] or 0) >= RARITY_RANK[Balance.Loot.PityRarity] then
+function Loot.NextPity(pity: number, rarity: string, tiers: Tiers?): number
+	if (Loot.RarityRank(rarity, tiers) or 0) >= (Loot.RarityRank(Balance.Loot.PityRarity, tiers) :: number) then
 		return 0
 	end
 	return math.min(pity + 1, Balance.Loot.PityAfter)
@@ -154,19 +156,25 @@ function Loot.RollBlueprint(rng: any, level: number?): string?
 	return pick(gatedRooms(Balance.Loot.BlueprintRooms, level), rng)
 end
 
+-- The tier entry for an id (nil if unknown).
+local function tierOf(rarity: any, tiers: Tiers?): any
+	local i = Loot.RarityRank(rarity, tiers)
+	return if i then (tiers or Balance.Rarities)[i] else nil
+end
+
 -- The configured amount of a `kind` perk on a `rarity` room; nil if it has none.
-function Loot.PerkAmount(rarity: any, kind: any): number?
-	local r = Balance.Rarities[rarity]
-	if type(r) ~= "table" or r.PerkCount == nil or r.PerkCount < 1 then
+function Loot.PerkAmount(rarity: any, kind: any, tiers: Tiers?): number?
+	local r = tierOf(rarity, tiers)
+	if r == nil or r.PerkCount < 1 then
 		return nil
 	end
 	local size = Balance.Perks[r.PerkSize]
 	return size and size[kind]
 end
 
--- PerkCount different kinds, each at the rarity's size.
-function Loot.RollPerks(rarity: string, rng: any): { Perk }
-	local r = Balance.Rarities[rarity]
+-- PerkCount different kinds (at most one of each), each at the tier's size.
+function Loot.RollPerks(rarity: string, rng: any, tiers: Tiers?): { Perk }
+	local r = tierOf(rarity, tiers)
 	local perks = {}
 	if r == nil then
 		return perks
@@ -174,7 +182,7 @@ function Loot.RollPerks(rarity: string, rng: any): { Perk }
 	local pool = table.clone(Balance.Perks.Kinds)
 	for _ = 1, math.min(r.PerkCount, #pool) do
 		local kind = table.remove(pool, math.floor(rng:NextNumber() * #pool) + 1) :: string
-		table.insert(perks, { Kind = kind, Amount = Loot.PerkAmount(rarity, kind) :: number })
+		table.insert(perks, { Kind = kind, Amount = Loot.PerkAmount(rarity, kind, tiers) :: number })
 	end
 	return perks
 end

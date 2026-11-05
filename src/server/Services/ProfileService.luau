@@ -39,7 +39,7 @@ ProfileService.Left = Signal.new()
 local store = nil -- nil when no DataStore could be opened on a live server
 local usingMemoryStore = false
 local states = {} -- player -> { loadState: string, transient: { [string]: any } }
-local rules = nil -- { Economy, Progression }, required on first snapshot
+local rules = nil -- { StateView }, required on first snapshot
 local activeGateway = nil
 local shuttingDown = false
 local loading = {} -- userId -> true while a load/release for that user is running
@@ -78,10 +78,7 @@ end
 local function getRules()
 	if rules == nil then
 		local ok, loaded = pcall(function()
-			return {
-				Economy = require(ReplicatedStorage.Shared.Rules.Economy),
-				Progression = require(ReplicatedStorage.Shared.Rules.Progression),
-			}
+			return { StateView = require(script.Parent.Parent.Rules.StateView) }
 		end)
 		if not ok then
 			warn("[ProfileService] Rules unavailable: " .. tostring(loaded))
@@ -99,15 +96,19 @@ local function snapshot(player: Player)
 	if profile and (state.loadState == "Loaded" or state.loadState == "Studio") then
 		out.Coins = profile.Coins
 		out.Vault = profile.Vault
+		out.Rooms = profile.Rooms
+		-- Server-computed display values (Rules/StateView): the client runs no game rules.
 		local r = getRules()
 		if r then
-			local extraCap = r.Progression.VaultCapBonus(profile)
-			out.VaultBonus = r.Economy.VaultBonus(profile.Vault, extraCap)
-			out.VaultBonusCap = r.Economy.VaultBonus(1e12, extraCap) -- the effective cap
-			out.XpToNext = r.Progression.XpToNext(profile.Level)
-			out.Bonuses = r.Progression.Bonuses(profile)
+			local ok, derived = pcall(r.StateView.Derived, profile)
+			if ok then
+				for key, value in derived do
+					out[key] = value
+				end
+			else
+				warn("[ProfileService] Snapshot rules failed: " .. tostring(derived))
+			end
 		end
-		out.Rooms = profile.Rooms
 		out.Layout = profile.Layout
 		out.Tutorial = profile.Tutorial
 		out.Settings = profile.Settings

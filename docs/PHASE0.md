@@ -13,7 +13,7 @@ These are recorded in the GDD change log. They also resolve a conflict in the ea
 
 ## Grid and route
 
-Values live in `src/shared/Definitions/Grid.luau`.
+Values live in `src/server/Definitions/Grid.luau`.
 
 - 5 columns × 4 rows. Each cell is 6 × 6 studs and walls are 5 studs high, so a room is roughly avatar height. A plot's dungeon is about 30 × 24 studs.
 - Cells are addressed (column, row). Row 1 is the front edge, where visitors arrive.
@@ -73,7 +73,7 @@ These are the rules the placeholder numbers assume. Phase 2 implements and tunes
 
 ## Placeholder values
 
-Values live in `src/shared/Definitions/Balance.luau`. All are hypotheses for playtesting.
+Values live in `src/server/Definitions/Balance.luau`. All are hypotheses for playtesting.
 
 | Visitor | Health | Attack | Walk speed | Reward | Theft |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -105,18 +105,23 @@ All gameplay-earned; never sold. Values in `Balance.Rarities`, `Balance.Perks`, 
 
 | Rarity | Dungeon Box weight | Rare Box weight | Stat multiplier | Max level | Perks |
 | --- | ---: | ---: | ---: | ---: | --- |
-| Common | 70 | 0 | x1.00 | 3 | none |
-| Uncommon | 22 | 60 | x1.10 | 4 | 1 small |
-| Rare | 7 | 32 | x1.25 | 5 | 1 medium |
-| Mythic | 1 | 8 | x1.45 | 6 | 2 different large |
+| Common | 60 | 0 | x1.00 | 3 | none |
+| Uncommon | 25 | 45 | x1.10 | 4 | 1 small |
+| Rare | 10 | 32 | x1.25 | 5 | 1 medium |
+| Epic | 3.5 | 14 | x1.40 | 6 | 2 medium |
+| Legendary | 1.2 | 6 | x1.60 | 7 | 2 large |
+| Mythic | 0.28 | 2.5 | x1.85 | 8 | 3 large |
+| Secret | 0.02 | 0.5 | x2.20 | 10 | 3 huge |
+
+Both weight columns sum to 100. Perks on one room are different kinds (Coins, Loot, Xp), so three perks is one of each. Upgrade costs to reach levels 2 to 10: 60, 150, 350, 800, 1800, 3500, 6000, 10000, 16000 (`Balance.Upgrades.Costs`). Rooms saved as Mythic keep it; their cap rises from 6 to 8 and no level is reduced.
 
 The stat multiplier scales defender health and damage, trap damage, the Monster Den boost and the Mushroom spore bonus. Shop, starter, tutorial and crafted rooms are Common with no perks.
 
-| Perk | Small | Medium | Large | Cap (all sources) |
-| --- | ---: | ---: | ---: | ---: |
-| Coins (win rewards) | +5% | +10% | +20% | +100% |
-| Loot (drop chances) | +10% | +20% | +40% | +100% |
-| Xp | +10% | +20% | +40% | +100% |
+| Perk | Small | Medium | Large | Huge | Cap (all sources) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Coins (win rewards) | +5% | +10% | +20% | +30% | +100% |
+| Loot (drop chances) | +10% | +20% | +40% | +60% | +100% |
+| Xp | +10% | +20% | +40% | +60% | +100% |
 
 **Bonus order:** perks of every *placed* room are summed, the matching permanent upgrade is added, then the total is capped. The coin bonus multiplies the visitor's reward before the vault bonus: `floor(reward * (1 + coins) * (1 + vaultBonus))`.
 
@@ -131,7 +136,7 @@ The stat multiplier scales defender health and damage, trap damage, the Monster 
 Chances are rolled independently on Defeated only and multiplied by (1 + loot bonus), capped at 100%. XP is multiplied by (1 + XP bonus), rounded down.
 
 - **Box room** (both box types): Slime Nest 25, Spike Hall 25, Guard Room 20, Mushroom Cavern 12, Monster Den 10, Restless Crypt 8. Never a Treasure Room.
-- **Pity:** after 9 boxes in a row below Rare, the next box is Rare or Mythic (weights renormalised). `BoxPity` counts the streak.
+- **Pity:** after 9 boxes in a row below Rare, the next box is Rare or better (weights renormalised; rank comes from the list order). `BoxPity` counts the streak.
 - **Blueprint type:** Guard Room 40, Mushroom Cavern 25, Monster Den 20, Restless Crypt 15. 5 blueprints craft a Common room of that type; scrapping an unplaced room (any rarity, not the Treasure Room) returns 2. The 30-room cap applies to opening and crafting (the box or blueprints are kept).
 - **Keeper level:** XP to the next level = 50 + 25 * (level - 1); max level 100. Each level-up gives a Dungeon Box, every 5th level a Rare Box instead. Shop gates: Mushroom Cavern level 3, Monster Den level 5, Restless Crypt level 8.
 - **Assumption (owner review):** v2 profiles are migrated with Xp = 10 * `Stats.Wins` (the Novice rate) converted into levels, so existing testers are not locked out of shop rooms; no retroactive level-up boxes.
@@ -191,7 +196,7 @@ The tutorial must recover from unexpected actions: removing the slime, skipping 
 | GDD reviewed; grid and treasure-room conflict resolved with the owner | Done |
 | Placeholder values selected | Done, in `Balance.luau` |
 | Grid, first route and first five minutes sketched | Done, above |
-| Initial room and visitor definitions | Done, in `src/shared/Definitions/` and checked by `tests/luau/definitions.spec.luau` |
+| Initial room and visitor definitions | Done, in `src/server/Definitions/` and checked by `tests/luau/definitions.spec.luau` |
 | Rojo project repaired (missing `Loader` module) | Done |
 | Naming conventions, asset ownership, source control, issue tracking | Done, in [DEVELOPMENT.md](DEVELOPMENT.md) |
 | Repeatable playtest checklist | Done, in [PLAYTEST_CHECKLIST.md](PLAYTEST_CHECKLIST.md) |

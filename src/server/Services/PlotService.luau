@@ -5,11 +5,11 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Balance = require(ReplicatedStorage.Shared.Definitions.Balance)
-local Grid = require(ReplicatedStorage.Shared.Definitions.Grid)
-local PlotGeometry = require(ReplicatedStorage.Shared.Rules.PlotGeometry)
-local Progression = require(ReplicatedStorage.Shared.Rules.Progression)
-local Route = require(ReplicatedStorage.Shared.Rules.Route)
+local Balance = require(script.Parent.Parent.Definitions.Balance)
+local Grid = require(script.Parent.Parent.Definitions.Grid)
+local PlotGeometry = require(script.Parent.Parent.Rules.PlotGeometry)
+local Progression = require(script.Parent.Parent.Rules.Progression)
+local Route = require(script.Parent.Parent.Rules.Route)
 local EncounterSim = require(script.Parent.Parent.Rules.EncounterSim)
 local LayoutRules = require(script.Parent.Parent.Rules.LayoutRules)
 local ProfileService = require(script.Parent.ProfileService)
@@ -26,7 +26,12 @@ local VISITOR_ATTRS = {
 	"VisitorProgress",
 	"VisitorFighting",
 	"VisitorSlowed",
+	"VisitorReward",
+	"VisitorRewardDestination",
+	"VisitorTheft",
 }
+local TILE_LIFT = 0.04 -- studs; keeps EmptyCellTile art off the base slab (no z-fighting)
+local entranceKey = Route.Key(Grid.EntranceCell.Column, Grid.EntranceCell.Row)
 
 local plots = {} -- index -> { Index, Model, Anchor: CFrame, Owner: Player?, Sign: TextLabel }
 local byPlayer = {} -- Player -> plot
@@ -62,6 +67,7 @@ local function anchorFor(index: number): CFrame
 	local anchors = map and map:FindFirstChild("PlotAnchors")
 	local anchor = anchors and anchors:FindFirstChild("Plot" .. index)
 	if anchor and anchor:IsA("BasePart") then
+		anchor.CastShadow = false -- invisible marker part: must not cast a soft shadow blob on the pad
 		return anchor.CFrame
 	end
 	return CFrame.new((index - 1) * 60 - 150, 0.5, 0)
@@ -154,14 +160,64 @@ local function buildBase(plot)
 		arch.Parent = base
 	end
 
+	-- Cell tiles, one per grid cell (Base.Cells.<"c,r">): the client picks cells by
+	-- raycasting them and reads their pivots for paths, overlays and ghosts, so it
+	-- needs no grid maths. Attributes CellKey, Column, Row, Placeable (false on the
+	-- entrance). Persistent, so every client always has every plot's tiles.
+	local cells = Instance.new("Model")
+	cells.Name = "Cells"
+	cells.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+	local tileArt = art("Rooms", "EmptyCellTile")
+	for column = 1, Grid.Columns do
+		for row = 1, Grid.Rows do
+			local key = Route.Key(column, row)
+			local cellCf = cf * CFrame.new(PlotGeometry.CellLocal(column, row))
+			local tile
+			if tileArt and tileArt:IsA("Model") then
+				tile = tileArt:Clone()
+				tile:PivotTo(cellCf)
+				for _, d in tile:GetDescendants() do
+					if d:IsA("BasePart") then
+						d.Anchored = true
+						d.CanCollide = false
+						d.CanTouch = false
+						d.CanQuery = true
+						if d ~= tile.PrimaryPart then
+							d.CFrame = d.CFrame + cellCf.UpVector * TILE_LIFT
+							d:SetAttribute("TileT", d.Transparency) -- restored when the cell empties
+						end
+					end
+				end
+			else
+				tile = part(cells, key, Vector3.new(CELL, 0.05, CELL), cellCf, Color3.fromRGB(70, 66, 74))
+				tile.Transparency = 1
+				tile.CanTouch = false
+			end
+			tile.Name = key
+			tile:SetAttribute("CellKey", key)
+			tile:SetAttribute("Column", column)
+			tile:SetAttribute("Row", row)
+			tile:SetAttribute("Placeable", key ~= entranceKey)
+			tile.Parent = cells
+		end
+	end
+	-- Where visitors appear (one cell in front of the entrance): the path's first point.
+	local spawn = part(cells, "VisitorSpawn", Vector3.new(0.2, 0.2, 0.2), cf * CFrame.new(PlotGeometry.SpawnLocal()), Color3.new(1, 1, 1))
+	spawn.Transparency = 1
+	spawn.CanQuery = false
+	spawn.CanTouch = false
+	cells.Parent = base
+	plot.Cells = cells
+
 	-- Owner sign on a post in front of the plot.
 	part(base, "SignPost", Vector3.new(0.4, 3, 0.4), cf * CFrame.new(0, 1.5, 17), Color3.fromRGB(90, 70, 50)).CanQuery = false
-	local anchor = part(base, "Sign", Vector3.new(0.2, 0.2, 0.2), cf * CFrame.new(0, 3.6, 17), Color3.fromRGB(90, 70, 50))
+	local anchor = part(base, "Sign", Vector3.new(0.2, 0.2, 0.2), cf * CFrame.new(0, 3.3, 17), Color3.fromRGB(90, 70, 50))
 	anchor.Transparency = 1
 	anchor.CanQuery = false
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(240, 40)
-	gui.MaxDistance = 150
+	gui.Size = UDim2.fromScale(6, 1) -- studs, so the sign does not grow with the camera or overlap from above
+	gui.MaxDistance = 60
+	gui.LightInfluence = 0
 	gui.Adornee = anchor
 	gui.Parent = anchor
 	local label = Instance.new("TextLabel")
@@ -177,10 +233,27 @@ local function buildBase(plot)
 	base.Parent = plot.Model
 end
 
+-- Shows tile art only on empty cells (a placed room or the entrance covers it).
+local function showTiles(plot, occupied: { [string]: any })
+	for _, tile in plot.Cells:GetChildren() do
+		local key = tile:GetAttribute("CellKey")
+		if key then
+			local shown = key ~= entranceKey and occupied[key] == nil
+			for _, d in tile:GetDescendants() do
+				local t = d:GetAttribute("TileT")
+				if t ~= nil and d:IsA("BasePart") then
+					d.Transparency = if shown then t else 1
+				end
+			end
+		end
+	end
+end
+
 local function clearRooms(plot)
 	for _, child in plot.Model.Rooms:GetChildren() do
 		child:Destroy()
 	end
+	showTiles(plot, {})
 end
 
 local function resetPlot(plot)
@@ -295,6 +368,7 @@ function PlotService.Render(player: Player)
 			model.Parent = plot.Model.Rooms
 		end
 	end
+	showTiles(plot, cells)
 	plot.Model:SetAttribute("Route", table.concat(routeCells, "|"))
 end
 

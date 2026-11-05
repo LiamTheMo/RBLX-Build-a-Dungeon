@@ -1,9 +1,9 @@
 -- Keeper levels, permanent upgrades, bonus aggregation and the economy hooks.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Balance = require(Shared.Definitions.Balance)
-local Economy = require(Shared.Rules.Economy)
-local Progression = require(Shared.Rules.Progression)
+local Server = game:GetService("ServerScriptService").Server
+local Balance = require(Server.Definitions.Balance)
+local Economy = require(Server.Rules.Economy)
+local Progression = require(Server.Rules.Progression)
 local ProfileSchema = require(game:GetService("ServerScriptService").Server.Rules.ProfileSchema)
 
 test("level curve: 50 + 25 * (level - 1)", function()
@@ -120,8 +120,15 @@ test("upgrade caps follow rarity", function()
 	expectEq(Economy.UpgradeCost(3, "Uncommon"), 350, "uncommon to 4")
 	expectEq(Economy.UpgradeCost(4, "Uncommon"), nil, "uncommon max 4")
 	expectEq(Economy.UpgradeCost(4, "Rare"), 800, "rare to 5")
-	expectEq(Economy.UpgradeCost(5, "Mythic"), 1800, "mythic to 6")
-	expectEq(Economy.UpgradeCost(6, "Mythic"), nil, "mythic max 6")
+	expectEq(Economy.UpgradeCost(5, "Epic"), 1800, "epic to 6")
+	expectEq(Economy.UpgradeCost(6, "Epic"), nil, "epic max 6")
+	expectEq(Economy.UpgradeCost(6, "Legendary"), 3500, "legendary to 7")
+	expectEq(Economy.UpgradeCost(7, "Legendary"), nil, "legendary max 7")
+	expectEq(Economy.UpgradeCost(7, "Mythic"), 6000, "mythic to 8")
+	expectEq(Economy.UpgradeCost(8, "Mythic"), nil, "mythic max 8")
+	expectEq(Economy.UpgradeCost(8, "Secret"), 10000, "secret to 9")
+	expectEq(Economy.UpgradeCost(9, "Secret"), 16000, "secret to 10")
+	expectEq(Economy.UpgradeCost(10, "Secret"), nil, "secret max 10")
 	expectEq(Economy.UpgradeCost(2, "Bogus"), 150, "unknown rarity treated as Common")
 	expectEq(Economy.UpgradeCost(3, "Bogus"), nil, "unknown rarity capped as Common")
 end)

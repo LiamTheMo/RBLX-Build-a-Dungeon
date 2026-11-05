@@ -50,7 +50,7 @@ function Toast.Show(text: string, kind: string?)
 	-- While the Loot/Collection/Keeper panel is open, drop the stack below its header and tab row.
 	local panels = Players.LocalPlayer.PlayerGui:FindFirstChild("Panels")
 	local dim = panels and panels:IsA("ScreenGui") and panels.Enabled and panels:FindFirstChildWhichIsA("TextButton")
-	local panelFrame = dim and dim:FindFirstChildWhichIsA("Frame")
+	local panelFrame = dim and dim:FindFirstChildWhichIsA("GuiObject")
 	local toastGui = parent.Parent :: ScreenGui
 	if panelFrame then
 		local y = (panelFrame.AbsolutePosition.Y - toastGui.AbsolutePosition.Y) / Scale.Value + 132

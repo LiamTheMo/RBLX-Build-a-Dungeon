@@ -1,7 +1,7 @@
-local Shared = game:GetService("ReplicatedStorage").Shared
-local VisitorRotation = require(Shared.Rules.VisitorRotation)
-local Visitors = require(Shared.Definitions.Visitors)
-local Balance = require(Shared.Definitions.Balance)
+local Server = game:GetService("ServerScriptService").Server
+local VisitorRotation = require(Server.Rules.VisitorRotation)
+local Visitors = require(Server.Definitions.Visitors)
+local Balance = require(Server.Definitions.Balance)
 
 test("Novice only until the tutorial is done and Wins reaches the threshold", function()
 	for encounters = 0, 12 do

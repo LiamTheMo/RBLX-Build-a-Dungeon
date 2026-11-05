@@ -1,5 +1,6 @@
 --!strict
--- Player-facing text for every refusal code in docs/ARCHITECTURE.md.
+-- Player-facing text for every refusal code in docs/ARCHITECTURE.md (client
+-- presentation: the server only ever sends the codes).
 
 local TEXT: { [string]: string } = {
 	BadCell = "That spot isn't on the grid.",

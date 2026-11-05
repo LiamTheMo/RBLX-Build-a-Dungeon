@@ -1,8 +1,8 @@
 -- Phase 7 systems depth: Monster Den, Mushroom Cavern, Restless Crypt, visitor
 -- traits and the combinations they enable.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Balance = require(Shared.Definitions.Balance)
+local Server = game:GetService("ServerScriptService").Server
+local Balance = require(Server.Definitions.Balance)
 local EncounterSim = require(game:GetService("ServerScriptService").Server.Rules.EncounterSim)
 
 local function run(visitorId, route, levels, dt)

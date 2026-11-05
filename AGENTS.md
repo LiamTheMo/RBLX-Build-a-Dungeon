@@ -27,7 +27,7 @@ These instructions apply to all AI agents and LLM-assisted work in this reposito
 
 ## Implementation and scope
 
-- Follow the existing Rojo layout: shared definitions in `src/shared`, server logic in `src/server`, client input and presentation in `src/client`. Inspect the current project before introducing a framework or new dependency.
+- Follow the existing Rojo layout. `src/shared` holds only the remote contract (`Net/Remotes`) and tiny generic utilities (`Core/Loader`, `Core/Signal`). Definitions, balance and game rules are server-only (`src/server/Definitions`, `src/server/Rules`). `src/client` holds input and presentation only: it receives display data through the `GetCatalog` remote, the `State` snapshot and replicated plot attributes, asks the server to check layouts (`PreviewLayout`), and does no game math beyond presentation (tweens, interpolation). Do not move rules or balance back into `src/shared` for the client's convenience; add a catalog, State or attribute field instead. Inspect the current project before introducing a framework or new dependency.
 - Build to the current approved phase. Prefer a small playable vertical slice, reusable room definitions and clear interfaces over speculative systems or a large content dump. Keep tunable balance separate from core logic.
 - Keep room layout and encounter behavior understandable to players. Protect the established vision: dungeon building and NPC visitors are the core; direct dungeon crawling, player-controlled troops and raiding are not MVP requirements.
 - Do not silently change the economy, monetization, save schema or player-facing rules. Document design assumptions and migration needs. Check current platform requirements before implementing any paid randomized rewards.

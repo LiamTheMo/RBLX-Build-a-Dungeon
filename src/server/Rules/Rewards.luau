@@ -3,16 +3,14 @@
 -- RNG (Random.new() on the server, seeded in specs), then call
 -- ProfileService.Changed. Each returns (ok, dataOrReason) like a remote handler.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Balance = require(ReplicatedStorage.Shared.Definitions.Balance)
-local Loot = require(ReplicatedStorage.Shared.Rules.Loot)
-local Progression = require(ReplicatedStorage.Shared.Rules.Progression)
+local Balance = require(script.Parent.Parent.Definitions.Balance)
+local Loot = require(script.Parent.Loot)
+local Progression = require(script.Parent.Progression)
 local RoomInventory = require(script.Parent.RoomInventory)
 
 local Rewards = {}
 
-local Rooms = require(ReplicatedStorage.Shared.Definitions.Rooms)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
 
 local function isDefender(roomId: string): boolean
 	local def = Rooms.Get(roomId)

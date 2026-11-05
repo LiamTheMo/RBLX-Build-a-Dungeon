@@ -3,13 +3,11 @@
 -- The store metadata (profileRevision, sessionLease) rides along but is not part
 -- of the gameplay schema.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Rooms = require(ReplicatedStorage.Shared.Definitions.Rooms)
-local Balance = require(ReplicatedStorage.Shared.Definitions.Balance)
-local Visitors = require(ReplicatedStorage.Shared.Definitions.Visitors)
-local Loot = require(ReplicatedStorage.Shared.Rules.Loot)
-local Progression = require(ReplicatedStorage.Shared.Rules.Progression)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
+local Balance = require(script.Parent.Parent.Definitions.Balance)
+local Visitors = require(script.Parent.Parent.Definitions.Visitors)
+local Loot = require(script.Parent.Loot)
+local Progression = require(script.Parent.Progression)
 
 local ProfileSchema = {}
 
@@ -19,7 +17,6 @@ local ProfileSchema = {}
 -- Novice rate (levels only, no retroactive level-up boxes).
 ProfileSchema.VERSION = 3
 ProfileSchema.MAX_MONEY = 1e12
-ProfileSchema.MAX_LEVEL = Balance.Upgrades.MaxLevel
 
 local function deepCopy(value)
 	if type(value) ~= "table" then
@@ -135,13 +132,14 @@ function ProfileSchema.Migrate(stored: any)
 		local def = type(room) == "table" and type(room.Id) == "string" and Rooms.All[room.Id] or nil
 		if serial and def and def.Placeable then
 			local rarity = if Loot.RarityRank(room.Rarity) then room.Rarity else "Common"
-			local maxLevel = Balance.Rarities[rarity].MaxLevel
+			local tier = Balance.RarityById[rarity]
+			local maxLevel = tier.MaxLevel
 			local level = isFinite(room.Level) and math.clamp(math.floor(room.Level), 1, maxLevel) or 1
 			local perks, seen = {}, {}
 			for _, perk in asTable(room.Perks) do
 				local kind = type(perk) == "table" and perk.Kind or nil
 				local amount = Loot.PerkAmount(rarity, kind)
-				if amount and not seen[kind] and #perks < Balance.Rarities[rarity].PerkCount then
+				if amount and not seen[kind] and #perks < tier.PerkCount then
 					seen[kind] = true
 					table.insert(perks, { Kind = kind, Amount = amount })
 				end
@@ -174,7 +172,7 @@ function ProfileSchema.Migrate(stored: any)
 			used[instanceId] = true
 		end
 	end
-	local Route = require(ReplicatedStorage.Shared.Rules.Route)
+	local Route = require(script.Parent.Route)
 	local routeOk = Route.Build(cells)
 	profile.Layout = if routeOk then layout else {}
 

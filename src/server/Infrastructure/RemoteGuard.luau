@@ -59,9 +59,7 @@ function RemoteGuard:Forget(owner: any)
 	self._buckets[owner] = nil
 end
 
--- Runs one request. `check(...)` must return exactly true; `handler(owner, ...)`
--- returns (ok, reasonOrData). Returns (ok, reasonOrData).
-function RemoteGuard:Call(owner: any, name: string, check: (...any) -> boolean, handler: (any, ...any) -> (boolean, any), ...)
+local function run(self, owner: any, name: string, check: (...any) -> boolean, handler: (any, ...any) -> (boolean, any, any), needsReady: boolean, ...)
 	if not self:Take(owner, name) then
 		return false, "RateLimited"
 	end
@@ -73,18 +71,31 @@ function RemoteGuard:Call(owner: any, name: string, check: (...any) -> boolean, 
 	if not checked or valid ~= true then
 		return false, "BadArgs"
 	end
-	if self._ready then
+	if needsReady and self._ready then
 		local readyOk, ready = pcall(self._ready, owner)
 		if not readyOk or ready ~= true then
 			return false, "ProfileNotLoaded"
 		end
 	end
-	local ran, ok, data = pcall(handler, owner, ...)
+	local ran, ok, data, extra = pcall(handler, owner, ...)
 	if not ran then
 		self._warn(("[Net] %s handler failed: %s"):format(name, tostring(ok)))
 		return false, "Busy"
 	end
-	return ok == true, data
+	return ok == true, data, extra
+end
+
+-- Runs one request. `check(...)` must return exactly true; `handler(owner, ...)`
+-- returns (ok, reasonOrData, extra?). Returns (ok, reasonOrData, extra?); the
+-- optional third value carries e.g. PreviewLayout's offending cell key.
+function RemoteGuard:Call(owner: any, name: string, check: (...any) -> boolean, handler: (any, ...any) -> (boolean, any, any), ...)
+	return run(self, owner, name, check, handler, true, ...)
+end
+
+-- Same as Call without the ready check, for static data that needs no loaded
+-- profile (GetCatalog). Rate limit and argument check still apply.
+function RemoteGuard:CallOpen(owner: any, name: string, check: (...any) -> boolean, handler: (any, ...any) -> (boolean, any, any), ...)
+	return run(self, owner, name, check, handler, false, ...)
 end
 
 return RemoteGuard

@@ -1,9 +1,7 @@
 -- Build mode and layout commits. The server re-validates every layout against the
 -- player's owned rooms and the route rules; the client only proposes.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Grid = require(ReplicatedStorage.Shared.Definitions.Grid)
+local Grid = require(script.Parent.Parent.Definitions.Grid)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local LayoutRules = require(script.Parent.Parent.Rules.LayoutRules)
 local PlotService = require(script.Parent.PlotService)
@@ -122,11 +120,28 @@ function BuildService.CommitLayout(player: Player, layout: { [string]: string })
 	return true, routeCells
 end
 
+-- Validates a draft exactly like CommitLayout's layout check (ownership, each
+-- instance once, Route.Build) without applying anything, so the build UI can show
+-- the route and the offending cell. Returns (true, routeCells) or (false, reason,
+-- cellKey?). CommitLayout re-validates; this result is never trusted.
+function BuildService.PreviewLayout(player: Player, layout: { [string]: string })
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "ProfileNotLoaded"
+	end
+	local ok, routeOrReason, cellsOrKey = LayoutRules.Validate(profile, layout)
+	if not ok then
+		return false, routeOrReason, cellsOrKey
+	end
+	return true, routeOrReason
+end
+
 function BuildService.Init()
 	Net.Handle("SetBuilding", function(...)
 		return select("#", ...) == 1 and type((...)) == "boolean"
 	end, BuildService.SetBuilding)
 	Net.Handle("CommitLayout", checkLayout, BuildService.CommitLayout)
+	Net.Handle("PreviewLayout", checkLayout, BuildService.PreviewLayout)
 end
 
 function BuildService.Start()

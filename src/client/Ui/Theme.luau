@@ -3,6 +3,8 @@ local function hex(s: string): Color3
 	return Color3.fromHex(s)
 end
 
+local RarityColors = require(script.Parent.RarityColors)
+
 local Theme = {
 	BgDeep = hex("#1E1630"),
 	BgPanel = hex("#2E2347"),
@@ -22,7 +24,7 @@ local Theme = {
 	DangerText = hex("#1E0A0A"),
 
 	-- Rarity accents (always paired with the rarity name, never colour alone).
-	Rarity = { Common = hex("#BDB0D6"), Uncommon = hex("#4ADE80"), Rare = hex("#4DA3FF"), Mythic = hex("#D58BFF") },
+	Rarity = RarityColors.Accent,
 
 	TextSize = { Title = 32, Heading = 24, Button = 22, Number = 26, Body = 18, Caption = 14 },
 	CornerPanel = UDim.new(0, 16),

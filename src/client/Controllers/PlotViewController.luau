@@ -1,21 +1,18 @@
 -- Local rendering of every plot: the visitor, defenders, traps, doorways and
 -- end-of-encounter effects. Everything here is cosmetic and driven by the
 -- replicated plot attributes and EncounterFx events; it never decides outcomes.
+-- Positions come from the plot's server-built cell tiles (Ui/Cells), names and
+-- trap timing from the Catalog.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
-local Shared = ReplicatedStorage.Shared
-local Balance = require(Shared.Definitions.Balance)
-local Grid = require(Shared.Definitions.Grid)
-local PlotGeometry = require(Shared.Rules.PlotGeometry)
-local Route = require(Shared.Rules.Route)
-local Rooms = require(Shared.Definitions.Rooms)
-local SoundIds = require(Shared.UI.SoundIds)
-
 local Ui = script.Parent.Parent.Ui
+local Catalog = require(Ui.Catalog)
+local Cells = require(Ui.Cells)
 local Doors = require(Ui.Doors)
 local Net = require(Ui.Net)
+local RarityColors = require(Ui.RarityColors)
 local Settings = require(Ui.Settings)
 local Sound = require(Ui.Sound)
 local Theme = require(Ui.Theme)
@@ -23,11 +20,7 @@ local Theme = require(Ui.Theme)
 local View = {}
 
 local DEFENDER_ART = { SlimeNest = "Slime", GuardRoom = "Guard", RestlessCrypt = "Skeleton" }
-local RARITY_COLOR = {
-	Uncommon = Theme.Success,
-	Rare = Color3.fromRGB(90, 160, 255),
-	Mythic = Color3.fromRGB(190, 110, 255),
-}
+local RARITY_COLOR = RarityColors.Accent
 local SPORE_GREEN = Color3.fromRGB(150, 220, 60)
 local BOX_COLOR = { Dungeon = Theme.Gold, Rare = Color3.fromRGB(90, 160, 255) }
 local JOINTS = { "Neck", "LeftShoulder", "RightShoulder", "LeftHip", "RightHip" }
@@ -289,33 +282,68 @@ local function floatText(pos: Vector3, text: string, color: Color3)
 	end)
 end
 
+local coinTemplate: any = nil
+local function coinModel(): Model?
+	if coinTemplate == nil then
+		local art = ReplicatedStorage:FindFirstChild("Art")
+		local props = art and art:FindFirstChild("Props")
+		local c = props and props:FindFirstChild("Coin")
+		coinTemplate = if c and c:IsA("Model") and c.PrimaryPart then c else false
+	end
+	return coinTemplate or nil
+end
+
 local function coinBurst(pos: Vector3)
 	if Settings.Reduced() then
 		return
 	end
+	local template = coinModel()
 	for _ = 1, 8 do
 		if fxCoins >= COIN_CAP then
 			return
 		end
 		fxCoins += 1
-		local coin = make("Part", {
-			Anchored = true,
-			CanCollide = false,
-			CanQuery = false,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.12, 0.6, 0.6),
-			Color = Theme.Gold,
-			Material = Enum.Material.Neon,
-			CFrame = CFrame.new(pos + Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, math.pi / 2),
-		}, fxFolder)
+		local start = CFrame.new(pos + Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+		local coin: Instance, mover: Instance, fade: boolean
+		if template then
+			local m = template:Clone()
+			for _, d in m:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Anchored, d.CanCollide, d.CanQuery, d.CanTouch = true, false, false, false
+				end
+			end
+			m.PrimaryPart.Anchored = true
+			m:PivotTo(CFrame.new(pos + Vector3.new(0, 1, 0)))
+			m.Parent = fxFolder
+			-- Models do not tween; drive the pivot through a CFrameValue.
+			local cv = make("CFrameValue", { Value = m:GetPivot() }, m)
+			cv.Changed:Connect(function(v)
+				m:PivotTo(v)
+			end)
+			coin, mover, fade = m, cv, false
+		else
+			local p = make("Part", {
+				Anchored = true,
+				CanCollide = false,
+				CanQuery = false,
+				Shape = Enum.PartType.Cylinder,
+				Size = Vector3.new(0.12, 0.6, 0.6),
+				Color = Theme.Gold,
+				Material = Enum.Material.Neon,
+				CFrame = start,
+			}, fxFolder)
+			coin, mover, fade = p, p, true
+		end
+		local function at(v: Vector3): any
+			return if template then { Value = CFrame.new(v) } else { Position = v }
+		end
 		local spread = Vector3.new(math.random() * 5 - 2.5, 0, math.random() * 5 - 2.5)
-		local up = TweenService:Create(coin, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Position = pos + Vector3.new(0, 3.5, 0) + spread * 0.5,
-		})
-		local down = TweenService:Create(coin, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			Position = pos + Vector3.new(0, 0.3, 0) + spread,
-			Transparency = 1,
-		})
+		local up = TweenService:Create(mover, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), at(pos + Vector3.new(0, 3.5, 0) + spread * 0.5))
+		local downGoal = at(pos + Vector3.new(0, 0.3, 0) + spread)
+		if fade then
+			downGoal.Transparency = 1
+		end
+		local down = TweenService:Create(mover, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), downGoal)
 		up.Completed:Once(function()
 			down:Play()
 		end)
@@ -353,21 +381,25 @@ local function puff(pos: Vector3, color: Color3, count: number, speed: number, l
 	e:Emit(if Settings.Reduced() then math.ceil(count / 4) else count)
 end
 
--- Pulse a named part of a room model (art), or flash a temporary ring when the art has none.
+-- Pulse every part with this name in a room model (art), or flash a temporary ring when the art has none.
 local function pulseRoom(model: Model, partName: string, color: Color3, diameter: number)
-	local part = model:FindFirstChild(partName, true)
-	if part and part:IsA("BasePart") then
-		if pulsing[part] or Settings.Reduced() then
-			return
+	local found = false
+	for _, part in model:GetDescendants() do
+		if part.Name == partName and part:IsA("BasePart") then
+			found = true
+			if not pulsing[part] and not Settings.Reduced() then
+				pulsing[part] = true
+				local size = part.Size
+				local t = TweenService:Create(part, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), { Size = size * 1.25 })
+				t.Completed:Once(function()
+					part.Size = size
+					pulsing[part] = nil
+				end)
+				t:Play()
+			end
 		end
-		pulsing[part] = true
-		local size = part.Size
-		local t = TweenService:Create(part, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), { Size = size * 1.25 })
-		t.Completed:Once(function()
-			part.Size = size
-			pulsing[part] = nil
-		end)
-		t:Play()
+	end
+	if found then
 		return
 	end
 	if fxRings >= 6 then
@@ -439,20 +471,32 @@ end
 
 -- Paths ----------------------------------------------------------------------
 
+-- Plot-local points: the visitor spawn, the entrance, then each route cell (tile pivots).
 local function buildPath(plot: Instance)
-	local entrance = Grid.EntranceCell
-	local pts = { PlotGeometry.SpawnLocal(), PlotGeometry.CellLocal(entrance.Column, entrance.Row) }
-	for _, key in string.split((plot:GetAttribute("Route") :: string) or "", "|") do
-		local c, r = Route.Parse(key)
-		if c and r then
-			table.insert(pts, PlotGeometry.CellLocal(c, r))
+	local anchor = (plot :: Model):GetPivot()
+	local spawn = Cells.Spawn(plot)
+	local entrance = Cells.World(plot, Catalog.Current.Grid.EntranceKey)
+	local pts = {}
+	for _, cf in { spawn, entrance } do
+		if cf then
+			table.insert(pts, anchor:PointToObjectSpace(cf.Position))
 		end
+	end
+	for _, key in string.split((plot:GetAttribute("Route") :: string) or "", "|") do
+		local cf = key ~= "" and Cells.World(plot, key)
+		if cf then
+			table.insert(pts, anchor:PointToObjectSpace(cf.Position))
+		end
+	end
+	if #pts == 0 then
+		pts[1] = Vector3.zero
 	end
 	local cum = { 0 }
 	for i = 2, #pts do
 		cum[i] = cum[i - 1] + (pts[i] - pts[i - 1]).Magnitude
 	end
-	return { Points = pts, Cum = cum }
+	-- Rebuilt every frame until the tiles have replicated.
+	return { Points = pts, Cum = cum, Complete = Cells.Folder(plot) ~= nil }
 end
 
 -- Returns local position and direction at distance d along the path.
@@ -508,26 +552,40 @@ local function newVisitor(view, id: string)
 	view.Chase = nil
 end
 
+-- Frame bars of shimmer-tier rooms: hue-cycled each frame (see Heartbeat below).
+local shimmerBars: { BasePart } = {}
+
 local function clearDeco(view, m: Instance)
 	local d = view.Deco[m]
 	if d then
+		for i = #shimmerBars, 1, -1 do
+			if shimmerBars[i] == d.Trim or shimmerBars[i]:IsDescendantOf(d.Folder) then
+				table.remove(shimmerBars, i)
+			end
+		end
 		d.Folder:Destroy()
 		view.Deco[m] = nil
 	end
 end
 
 -- Subtle rarity mark: a thin glowing frame on the floor edge plus a small badge
--- (Common none). Mythic also sparkles unless motion is reduced.
+-- (Common none). Sparkle tiers also sparkle, and shimmer tiers cycle a soft
+-- rainbow on the frame, unless motion is reduced.
 local function applyRarity(view, m: Model)
 	local rarity = m:GetAttribute("Rarity")
 	local d = view.Deco[m]
 	if d and d.Rarity == rarity then
-		d.Sparkle.Enabled = d.Mythic and not Settings.Reduced()
+		d.Sparkle.Enabled = d.Sparkles and not Settings.Reduced()
 		return
 	end
 	clearDeco(view, m)
-	local color = RARITY_COLOR[rarity]
-	if not color then
+	local color = RARITY_COLOR[rarity] or RARITY_COLOR.Common
+	-- The art's floor trim (a gold ring in the Blender models) takes the tier colour.
+	local trim = m:FindFirstChild("RarityTrim", true)
+	if trim and trim:IsA("BasePart") then
+		trim.Color = color
+	end
+	if not RARITY_COLOR[rarity] or rarity == "Common" then
 		return
 	end
 	local folder = make("Folder", { Name = "Rarity" }, fxFolder)
@@ -546,8 +604,12 @@ local function applyRarity(view, m: Model)
 			CFrame = cf * CFrame.new(side[1], 0.15, side[2]),
 		}, folder)
 		front = front or bar
+		if RarityColors.Shimmer[rarity] then
+			table.insert(shimmerBars, bar)
+		end
 	end
-	local badge = make("BillboardGui", { Adornee = front, Size = UDim2.fromOffset(96, 24), StudsOffset = Vector3.new(0, 1.6, 0), MaxDistance = 70 }, folder)
+	-- Hidden beyond 45 studs (it rendered as a black capsule from high camera distances).
+	local badge = make("BillboardGui", { Adornee = front, Size = UDim2.fromOffset(96, 24), StudsOffset = Vector3.new(0, 1.6, 0), MaxDistance = 45, LightInfluence = 0, AlwaysOnTop = false }, folder)
 	local pill = make("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Theme.BgDeep,
@@ -558,9 +620,9 @@ local function applyRarity(view, m: Model)
 	}, badge)
 	make("UICorner", { CornerRadius = UDim.new(1, 0) }, pill)
 	make("UIStroke", { Color = color, Thickness = 2 }, pill)
-	local mythic = rarity == "Mythic"
+	local sparkles = RarityColors.Sparkle[rarity]
 	local sparkle = make("ParticleEmitter", {
-		Enabled = mythic and not Settings.Reduced(),
+		Enabled = sparkles and not Settings.Reduced(),
 		Color = ColorSequence.new(color),
 		Rate = 4,
 		Lifetime = NumberRange.new(1, 1.6),
@@ -569,7 +631,10 @@ local function applyRarity(view, m: Model)
 		LightEmission = 0.6,
 		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) }),
 	}, front)
-	view.Deco[m] = { Folder = folder, Rarity = rarity, Mythic = mythic, Sparkle = sparkle }
+	if trim and trim:IsA("BasePart") and RarityColors.Shimmer[rarity] then
+		table.insert(shimmerBars, trim)
+	end
+	view.Deco[m] = { Folder = folder, Rarity = rarity, Sparkles = sparkles, Sparkle = sparkle, Trim = trim }
 end
 
 local function roomAt(view, index: number): Model?
@@ -595,12 +660,9 @@ local function refreshRooms(view)
 		for _, m in rooms:GetChildren() do
 			seen[m] = true
 			local roomId = m:GetAttribute("RoomId")
-			local c, r = Route.Parse(m.Name)
-			if c and r then
-				Doors.Apply(m, c, r, function(k)
-					return occupied[k] == true
-				end)
-			end
+			Doors.Apply(m, m.Name, function(k)
+				return occupied[k] == true
+			end)
 			applyRarity(view, m)
 			if DEFENDER_ART[roomId] and not view.Defenders[m] then
 				view.Defenders[m] = { Actor = newActor(DEFENDER_ART[roomId]), Model = m }
@@ -707,14 +769,16 @@ local function stepView(view, dt: number)
 		end
 		local v = view.Visitor
 		local routeStr = plot:GetAttribute("Route") or ""
-		if view.RouteStr ~= routeStr or not view.Path then
+		if view.RouteStr ~= routeStr or not view.Path or not view.Path.Complete then
 			view.RouteStr = routeStr
 			view.Path = buildPath(plot)
 		end
-		local target = (plot:GetAttribute("VisitorProgress") or 0) + Grid.CellSize
+		-- Progress counts from the entrance centre; the path starts at the spawn point.
+		local cellSize = Catalog.Current.Grid.CellSize
+		local target = (plot:GetAttribute("VisitorProgress") or 0) + (view.Path.Cum[2] or 0)
 		local chase = view.Chase or 0
 		local step = math.clamp(target - chase, -MAX_SPEED * dt, MAX_SPEED * dt)
-		if math.abs(target - chase) > 3 * Grid.CellSize then
+		if math.abs(target - chase) > 3 * cellSize then
 			step = target - chase
 		end
 		view.Chase = chase + step
@@ -804,10 +868,10 @@ local function stepView(view, dt: number)
 	end
 
 	-- Traps: telegraph from the fixed cycle, strike from Trap events.
-	local cfg = Balance.Rooms.SpikeHall
+	local cfg = Catalog.Room("SpikeHall")
 	local telegraph = false
-	if view.EncStart then
-		telegraph = (os.clock() - view.EncStart) % cfg.Cycle < cfg.Telegraph
+	if view.EncStart and cfg and cfg.TrapCycle and cfg.TrapTelegraph then
+		telegraph = (os.clock() - view.EncStart) % cfg.TrapCycle < cfg.TrapTelegraph
 	end
 	for _, trap in view.Traps do
 		local raise = 0
@@ -980,8 +1044,8 @@ local function onFx(e: any)
 	elseif kind == "End" then
 		local pos = view.VisitorPos
 		if not pos then
-			local entrance = Grid.EntranceCell
-			pos = view.Plot:GetPivot():PointToWorldSpace(PlotGeometry.CellLocal(entrance.Column, entrance.Row))
+			local entrance = Cells.World(view.Plot, Catalog.Current.Grid.EntranceKey)
+			pos = if entrance then entrance.Position else view.Plot:GetPivot().Position
 		end
 		local amount = if type(e.Amount) == "number" then e.Amount else 0
 		if e.Result == "Defeated" then
@@ -1004,7 +1068,7 @@ local function onFx(e: any)
 			end
 			local text, color
 			if d.Kind == "Blueprint" then
-				local def = Rooms.Get(tostring(d.RoomId))
+				local def = Catalog.Room(tostring(d.RoomId))
 				text, color = "Blueprint: " .. (def and def.DisplayName or "?"), Theme.Accent
 			else
 				text, color = tostring(d.Type or "Dungeon") .. " Box", BOX_COLOR[d.Type] or Theme.Gold
@@ -1029,9 +1093,14 @@ function View.Init() end
 function View.Start()
 	fxFolder = make("Folder", { Name = "ClientFx" }, workspace)
 
-	Net.OnEvent("EncounterFx", onFx)
+	Net.OnEvent("EncounterFx", function(e)
+		if Catalog.Current then -- before the catalog arrives there is nothing to animate
+			onFx(e)
+		end
+	end)
 
 	task.spawn(function()
+		Catalog.Wait()
 		local folder = workspace:WaitForChild("Plots")
 		for _, p in folder:GetChildren() do
 			addPlot(p)
@@ -1041,6 +1110,15 @@ function View.Start()
 	end)
 
 	RunService.Heartbeat:Connect(function(dt)
+		if Catalog.Current == nil then
+			return
+		end
+		if #shimmerBars > 0 and not Settings.Reduced() then
+			local t = os.clock()
+			for i, bar in shimmerBars do
+				bar.Color = Color3.fromHSV((t * 0.15 + i * 0.12) % 1, 0.45, 1)
+			end
+		end
 		for _, view in views do
 			local ok, err = pcall(stepView, view, dt)
 			if not ok then

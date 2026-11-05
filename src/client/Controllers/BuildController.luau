@@ -1,24 +1,25 @@
 -- Build mode: overview camera, local DRAFT layout, inventory of unplaced rooms,
--- ghost preview, route overlay and Commit/Cancel. The draft is only a request;
--- the server validates CommitLayout and owns the real layout.
+-- ghost preview, route overlay and Commit/Cancel. The draft is only a request:
+-- the server checks it (PreviewLayout, debounced) to draw the route and the
+-- offending cell, re-validates CommitLayout and owns the real layout. Cells come
+-- from the plot's server-built tiles (Ui/Cells); room data from the Catalog.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
-local Shared = ReplicatedStorage.Shared
-local Balance = require(Shared.Definitions.Balance)
-local Grid = require(Shared.Definitions.Grid)
-local Rooms = require(Shared.Definitions.Rooms)
-local PlotGeometry = require(Shared.Rules.PlotGeometry)
-local Route = require(Shared.Rules.Route)
-local ReasonText = require(Shared.UI.ReasonText)
-
 local Ui = script.Parent.Parent.Ui
 local Bus = require(Ui.Bus)
+local Catalog = require(Ui.Catalog)
+local Cells = require(Ui.Cells)
 local Doors = require(Ui.Doors)
 local Kit = require(Ui.Kit)
 local Net = require(Ui.Net)
 local Plots = require(Ui.Plots)
+local P = require(Ui.PanelsKit)
+local Sprites = require(Ui.Sprites)
+local SpriteIds = require(Ui.SpriteIds)
+local RarityColors = require(Ui.RarityColors)
+local ReasonText = require(Ui.ReasonText)
 local Scale = require(Ui.Scale)
 local Settings = require(Ui.Settings)
 local Sound = require(Ui.Sound)
@@ -37,7 +38,7 @@ local KIND_COLOR = {
 	Support = Color3.fromRGB(90, 160, 230),
 }
 local GOOD, BAD = Color3.fromRGB(74, 222, 128), Color3.fromRGB(255, 92, 92)
-local entranceKey = Route.Key(Grid.EntranceCell.Column, Grid.EntranceCell.Row)
+local PREVIEW_DELAY = 0.15 -- seconds after the last draft change before asking the server
 
 local active = false
 local plot: Model? = nil
@@ -57,26 +58,31 @@ local markers: { [string]: Part } = {}
 local lastTap = 0
 local lastHint = -10
 local returnAt = 0
+-- Latest server answer for the draft (PreviewLayout). Sig identifies the draft it
+-- belongs to; Pending while a check for the current draft is outstanding.
+local preview = { Sig = nil :: string?, Gen = 0, Pending = false, Ok = true, Data = {} :: any, Cell = nil :: string? }
+
+local function cellSize(): number
+	return Catalog.Current.Grid.CellSize
+end
+
+local function entranceKey(): string
+	return Catalog.Current.Grid.EntranceKey
+end
 
 local function cellWorld(key: string, y: number?): CFrame
-	local c, r = Route.Parse(key)
-	return anchor * CFrame.new(PlotGeometry.CellLocal(c :: number, r :: number) + Vector3.new(0, y or 0, 0))
+	return (plot and Cells.World(plot, key, y)) or anchor
+end
+
+-- False for the entrance cell (tile attribute Placeable).
+local function placeable(key: string): boolean
+	local tile = plot and Cells.Tile(plot, key)
+	return tile ~= nil and tile:GetAttribute("Placeable") == true
 end
 
 local function roomOf(instanceId: string): any
 	local s = State.Current
 	return s and s.Rooms and s.Rooms[instanceId]
-end
-
-local function cellsMap(): { [string]: string }
-	local cells = {}
-	for key, instanceId in draft do
-		local room = roomOf(instanceId)
-		if room then
-			cells[key] = room.Id
-		end
-	end
-	return cells
 end
 
 local function placedSet(): { [string]: boolean }
@@ -103,7 +109,7 @@ local function inventory(): ({ [string]: any }, { string })
 	local groups: { [string]: any } = {}
 	local keys = {}
 	for instanceId, room in (s and s.Rooms) or {} do
-		local def = Rooms.Get(room.Id)
+		local def = Catalog.Room(room.Id)
 		if def and def.Placeable then
 			local k = groupKey(room)
 			local g = groups[k]
@@ -122,11 +128,12 @@ local function inventory(): ({ [string]: any }, { string })
 	end
 	table.sort(keys, function(a, b)
 		local ga, gb = groups[a], groups[b]
-		local ia, ib = table.find(Rooms.Order, ga.Id) or 99, table.find(Rooms.Order, gb.Id) or 99
+		local order = Catalog.Current.RoomOrder
+		local ia, ib = table.find(order, ga.Id) or 99, table.find(order, gb.Id) or 99
 		if ia ~= ib then
 			return ia < ib
 		end
-		local ra, rb = table.find(Balance.Rarities.Order, ga.Rarity) or 0, table.find(Balance.Rarities.Order, gb.Rarity) or 0
+		local ra, rb = Catalog.RarityRank(ga.Rarity) or 0, Catalog.RarityRank(gb.Rarity) or 0
 		if ra ~= rb then
 			return ra < rb
 		end
@@ -153,7 +160,7 @@ local function marker(name: string, key: string?, color: Color3?)
 			CanTouch = false,
 			Material = Enum.Material.Neon,
 			Transparency = 0.55,
-			Size = Vector3.new(Grid.CellSize - 0.4, 0.2, Grid.CellSize - 0.4),
+			Size = Vector3.new(cellSize() - 0.4, 0.2, cellSize() - 0.4),
 		})
 		markers[name] = part
 	end
@@ -175,18 +182,32 @@ local function artRoom(roomId: string): Instance?
 	return rooms and rooms:FindFirstChild(roomId)
 end
 
+-- Tile art is hidden locally under draft rooms (the server hides it under placed ones).
+local function setTilesHidden(hiddenAt: (string) -> boolean)
+	local folder = plot and Cells.Folder(plot)
+	for _, tile in if folder then folder:GetChildren() else {} do
+		local key = tile:GetAttribute("CellKey")
+		if type(key) == "string" then
+			local modifier = if hiddenAt(key) then 1 else 0
+			for _, part in Cells.Parts(tile) do
+				part.LocalTransparencyModifier = modifier
+			end
+		end
+	end
+end
+
 local function renderDraft()
 	clearDraftModels()
 	local function occupied(k: string): boolean
 		return draft[k] ~= nil
 	end
+	setTilesHidden(occupied)
 	for key, instanceId in draft do
 		local room = roomOf(instanceId)
-		local def = room and Rooms.Get(room.Id)
+		local def = room and Catalog.Room(room.Id)
 		if def then
 			local model: Instance
 			local art = artRoom(room.Id)
-			local c, r = Route.Parse(key)
 			if art then
 				model = art:Clone()
 				for _, d in model:GetDescendants() do
@@ -199,13 +220,13 @@ local function renderDraft()
 				if model:IsA("Model") then
 					model:PivotTo(cellWorld(key))
 				end
-				Doors.Apply(model, c :: number, r :: number, occupied)
+				Doors.Apply(model, key, occupied)
 			else
 				local p = make("Part", {
 					Anchored = true,
 					CanCollide = false,
 					CanQuery = false,
-					Size = Vector3.new(Grid.CellSize - 0.6, 3, Grid.CellSize - 0.6),
+					Size = Vector3.new(cellSize() - 0.6, 3, cellSize() - 0.6),
 					Color = KIND_COLOR[def.Kind] or Theme.Accent,
 					Material = Enum.Material.SmoothPlastic,
 					CFrame = cellWorld(key, 1.5),
@@ -231,7 +252,7 @@ local function renderRoute(order: { string }?)
 		return
 	end
 	local overlay = make("Folder", { Name = "Overlay" }, worldFolder)
-	local prev = cellWorld(entranceKey, 0.4).Position
+	local prev = cellWorld(entranceKey(), 0.4).Position
 	for _, key in order do
 		local nextPos = cellWorld(key, 0.4).Position
 		local len = (nextPos - prev).Magnitude
@@ -261,16 +282,16 @@ local function refreshInventory()
 	end
 	local groups, keys = inventory()
 	local phone = Scale.Phone
-	local card = if phone then 100 else 112
+	local cardW, cardH = if phone then 112 else 132, if phone then 128 else 150
 	for i, key in keys do
 		local g = groups[key]
-		local def = Rooms.Get(g.Id)
+		local def = Catalog.Room(g.Id)
 		local count = #g.Free
 		local btn = Kit.Button(ui.Scroll, {
 			Text = "",
-			Size = UDim2.fromOffset(card, card),
+			Size = UDim2.fromOffset(cardW, cardH),
 			LayoutOrder = i,
-			Edge = if g.Rarity ~= "Common" then Theme.Rarity[g.Rarity] else nil,
+			Rarity = g.Rarity,
 			OnClick = function()
 				carry = nil
 				selectedCell = nil
@@ -278,37 +299,48 @@ local function refreshInventory()
 				Build.Refresh()
 			end,
 		})
-		local inner = make("CanvasGroup", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), GroupTransparency = if count > 0 then 0 else 0.5 }, btn.Instance)
-		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, inner)
-		make("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 24), PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2) }, inner)
+		local inner = make("CanvasGroup", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), GroupTransparency = if count > 0 then 0 else 0.5, ZIndex = 2 }, btn.Instance)
+		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, inner)
+		make("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 28), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, inner)
+		P.RoomImage(inner, g.Id, if phone then 38 else 52, def.Kind).LayoutOrder = 0
 		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 14 else 16, Theme.TextPrimary, true)
-		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 30 else 36), 1
+		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 28 else 34), 1
 		Kit.Rarity(inner, g.Rarity).LayoutOrder = 2
 		if #g.Perks > 0 then
 			Kit.Perks(inner, g.Perks, phone).LayoutOrder = 3
 		end
+		if RarityColors.Shimmer[g.Rarity] then
+			btn.Shimmer()
+		end
+		local gem = Kit.Gem(btn.Instance, g.Rarity, UDim2.fromOffset(if phone then 20 else 24, if phone then 20 else 24))
+		gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, -8, 0, 8), 4
 		local pill = Kit.Pill(btn.Instance, ("x%d"):format(count), if count > 0 then Theme.Gold else Theme.Disabled, if count > 0 then Theme.TextOnGold else Theme.DisabledText, 20)
-		pill.AnchorPoint, pill.Position = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -4)
+		pill.AnchorPoint, pill.Position, pill.ZIndex = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -10), 4
 		btn.SetSelected(selectedType == key)
 		btn.SetEnabled(count > 0)
-		if selectedType == key then
+		if selectedType == key and btn.Stroke.Enabled then
 			btn.Stroke.Thickness = 5
 		end
 	end
 end
 
--- Recompute route status and everything drawn from the draft.
-function Build.Refresh()
+-- Banner, Commit button, route overlay and offender marker from the latest
+-- server check of the draft ("checking" while one is outstanding).
+local function showRouteStatus()
 	if not active then
 		return
 	end
-	-- Prune instances the server no longer lists.
-	for key, instanceId in draft do
-		if not roomOf(instanceId) then
-			draft[key] = nil
-		end
+	if preview.Pending then
+		routeValid = false
+		ui.Status.Text = "Checking route..."
+		ui.IconOk.Visible, ui.IconBad.Visible = false, false
+		ui.StatusStroke.Color = Theme.TextMuted
+		ui.Commit.SetEnabled(false, "Checking...")
+		ui.Commit.SetStyle("Primary")
+		marker("Offender", nil)
+		return
 	end
-	local ok, orderOrReason, offender = Route.Build(cellsMap())
+	local ok, orderOrReason, offender = preview.Ok, preview.Data, preview.Cell
 	routeValid = ok
 	if ok then
 		local n = #orderOrReason
@@ -325,6 +357,67 @@ function Build.Refresh()
 	ui.Commit.SetEnabled(ok, "Fix route")
 	ui.Commit.SetStyle(if ok then "Success" else "Primary")
 	marker("Offender", if ok then nil else offender, BAD)
+end
+
+local function draftSignature(): string
+	local parts = {}
+	for key, instanceId in draft do
+		table.insert(parts, key .. "=" .. instanceId)
+	end
+	table.sort(parts)
+	return table.concat(parts, ";")
+end
+
+-- Asks the server to check the draft PREVIEW_DELAY s after it last changed. Only
+-- the newest request's answer is shown; Commit is still validated on its own.
+local function requestPreview()
+	local sig = draftSignature()
+	if sig == preview.Sig then
+		return -- this draft is already checked or being checked
+	end
+	preview.Sig = sig
+	preview.Gen += 1
+	preview.Pending = true
+	local gen = preview.Gen
+	task.delay(PREVIEW_DELAY, function()
+		if gen ~= preview.Gen or not active then
+			return
+		end
+		local ok, data, cell = Net.Invoke("PreviewLayout", table.clone(draft))
+		if gen ~= preview.Gen or not active then
+			return
+		end
+		if not ok and (data == "RateLimited" or data == "Busy") then
+			task.delay(0.5, function()
+				if gen == preview.Gen and active then
+					preview.Sig = nil -- ask again
+					requestPreview()
+					showRouteStatus()
+				end
+			end)
+			return
+		end
+		preview.Pending = false
+		preview.Ok = ok
+		preview.Data = if ok and type(data) ~= "table" then {} else data
+		preview.Cell = if type(cell) == "string" then cell else nil
+		showRouteStatus()
+	end)
+end
+
+-- Recompute route status and everything drawn from the draft.
+function Build.Refresh()
+	if not active then
+		return
+	end
+	-- Prune instances the server no longer lists.
+	for key, instanceId in draft do
+		if not roomOf(instanceId) then
+			draft[key] = nil
+		end
+	end
+	requestPreview()
+	showRouteStatus()
 	marker("Selected", selectedCell, Theme.TextPrimary)
 	marker("Hint", if hintCell and not draft[hintCell] then hintCell else nil, Theme.Gold)
 	renderDraft()
@@ -333,27 +426,15 @@ function Build.Refresh()
 	local room = selectedCell and roomOf(draft[selectedCell])
 	ui.Callout.Visible = room ~= nil
 	if room then
-		ui.CalloutName.Text = Rooms.Get(room.Id).DisplayName
+		local def = Catalog.Room(room.Id)
+		ui.CalloutName.Text = if def then def.DisplayName else room.Id
+		local rid = SpriteIds.Rooms[room.Id]
+		ui.CalloutIcon.Image = if Sprites.Ok(rid) then rid else ""
 	end
 end
 
 local function cellAtViewport(pos: Vector2): string?
-	local cam = workspace.CurrentCamera
-	local ray = cam:ViewportPointToRay(pos.X, pos.Y)
-	local n = anchor.UpVector
-	local denom = ray.Direction:Dot(n)
-	if math.abs(denom) < 1e-4 then
-		return nil
-	end
-	local t = (anchor.Position - ray.Origin):Dot(n) / denom
-	if t <= 0 then
-		return nil
-	end
-	local c, r = PlotGeometry.LocalToCell(anchor:PointToObjectSpace(ray.Origin + ray.Direction * t))
-	if c == nil or r == nil then
-		return nil
-	end
-	return Route.Key(c, r)
+	return plot and Cells.KeyAt(plot, pos)
 end
 
 local function placeAt(key: string)
@@ -393,7 +474,7 @@ local function tapAt(pos: Vector2)
 		Build.Refresh()
 		return
 	end
-	if key == entranceKey then
+	if not placeable(key) then
 		Toast.Show(ReasonText.Get("OnEntrance"), "Bad")
 		Sound.Play("Error")
 		return
@@ -424,7 +505,7 @@ local function updateGhost()
 		end
 		return
 	end
-	local valid = key ~= entranceKey and draft[key] == nil
+	local valid = placeable(key) and draft[key] == nil
 	local tag = key .. (valid and "1" or "0")
 	if tag == ghostKey and ghost and ghost.Parent then
 		return
@@ -450,7 +531,7 @@ local function updateGhost()
 				CanQuery = false,
 				Transparency = 0.5,
 				Material = Enum.Material.Neon,
-				Size = Vector3.new(Grid.CellSize - 0.6, 3, Grid.CellSize - 0.6),
+				Size = Vector3.new(cellSize() - 0.6, 3, cellSize() - 0.6),
 			})
 		end
 	end
@@ -530,9 +611,14 @@ local function enter()
 	end
 	local s = State.Current
 	plot = Plots.WaitOwn()
+	Cells.WaitFolder(plot)
+	if active then
+		return -- entered while waiting
+	end
 	anchor = plot:GetPivot()
 	draft = table.clone((s and s.Layout) or {})
 	selectedType, carry, selectedCell = nil, nil, nil
+	preview.Sig, preview.Gen = nil, preview.Gen + 1
 	active = true
 	worldFolder = make("Folder", { Name = "BuildDraft" }, workspace)
 	setServerRoomsHidden(true)
@@ -547,8 +633,12 @@ local function exit()
 		return
 	end
 	active = false
+	preview.Gen += 1
 	ui.Gui.Enabled = false
 	clearDraftModels()
+	setTilesHidden(function()
+		return false
+	end)
 	if worldFolder then
 		worldFolder:Destroy()
 	end
@@ -581,14 +671,14 @@ function Build.Layout()
 	local bn, bs = ui.Banner, ui.Inventory
 	if phone then
 		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 52), UDim2.fromOffset(420, 40)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -4), UDim2.fromOffset(560, 116)
+		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -4), UDim2.fromOffset(560, 148)
 		ui.Buttons.AnchorPoint, ui.Buttons.Position, ui.Buttons.Size = Vector2.new(1, 0.5), UDim2.new(1, -8, 0.5, 0), UDim2.fromOffset(120, 120)
 		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 0), UDim2.new(0, 8, 0, 100)
 	else
 		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 96), UDim2.fromOffset(640, 44)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -16), UDim2.fromOffset(900, 132)
-		ui.Buttons.AnchorPoint, ui.Buttons.Position, ui.Buttons.Size = Vector2.new(1, 1), UDim2.new(1, -16, 1, -160), UDim2.fromOffset(160, 120)
-		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 16, 1, -160)
+		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -16), UDim2.fromOffset(900, 176)
+		ui.Buttons.AnchorPoint, ui.Buttons.Position, ui.Buttons.Size = Vector2.new(1, 1), UDim2.new(1, -16, 1, -204), UDim2.fromOffset(160, 120)
+		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 16, 1, -204)
 	end
 	ui.Commit.Instance.Size = UDim2.new(1, 0, 0, 56)
 	ui.Cancel.Instance.Size = UDim2.new(1, 0, 0, 56)
@@ -599,23 +689,25 @@ local function buildUi()
 	gui.Enabled = false
 	ui = { Gui = gui }
 
-	ui.Banner = Kit.Panel(gui, { BackgroundColor3 = Theme.BgPanel })
+	-- Plain drawn pill: its border colour is the route state (green / red / grey) next to a check or "!".
+	ui.Banner = Kit.Panel(gui, { Sprite = false, BackgroundColor3 = Theme.BgPanel })
+	ui.Banner:FindFirstChildOfClass("UICorner").CornerRadius = Theme.CornerPill
 	ui.StatusStroke = ui.Banner:FindFirstChildOfClass("UIStroke")
-	ui.IconOk = Kit.Check(ui.Banner, UDim2.fromOffset(28, 28), Theme.Success)
-	ui.IconOk.Position = UDim2.fromOffset(10, 6)
+	ui.IconOk = Kit.Icon(ui.Banner, "Check", UDim2.fromOffset(28, 28), Theme.Success)
+	ui.IconOk.Position = UDim2.fromOffset(12, 6)
 	ui.IconBad = Kit.Label(ui.Banner, "!", 24, Theme.Danger, true)
 	ui.IconBad.Size = UDim2.fromOffset(40, 40)
 	ui.IconBad.Visible = false
 	ui.Status = Kit.Label(ui.Banner, "", Theme.TextSize.Body, Theme.TextPrimary)
-	ui.Status.Position = UDim2.fromOffset(44, 0)
-	ui.Status.Size = UDim2.new(1, -52, 1, 0)
+	ui.Status.Position = UDim2.fromOffset(48, 0)
+	ui.Status.Size = UDim2.new(1, -60, 1, 0)
 	ui.Status.TextXAlignment = Enum.TextXAlignment.Left
 
-	ui.Inventory = Kit.Panel(gui)
+	ui.Inventory = Kit.Panel(gui, { Sprite = "Large" })
 	ui.Scroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -16, 1, -8),
-		Position = UDim2.fromOffset(8, 4),
+		Size = UDim2.new(1, -28, 1, -16),
+		Position = UDim2.fromOffset(14, 8),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.X,
 		ScrollingDirection = Enum.ScrollingDirection.X,
@@ -668,9 +760,11 @@ local function buildUi()
 		end,
 	})
 
-	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(300, 120) })
+	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(300, 128) })
+	ui.CalloutIcon = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 6), Size = UDim2.fromOffset(44, 44), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Callout)
 	ui.CalloutName = Kit.Label(ui.Callout, "", 20, Theme.TextPrimary, true)
-	ui.CalloutName.Size = UDim2.new(1, 0, 0, 40)
+	ui.CalloutName.Position = UDim2.fromOffset(64, 0)
+	ui.CalloutName.Size = UDim2.new(1, -72, 0, 52)
 	Kit.Button(ui.Callout, {
 		Text = "Move",
 		Size = UDim2.fromOffset(130, 52),
@@ -685,7 +779,7 @@ local function buildUi()
 				Build.Refresh()
 			end
 		end,
-	}).Instance.Position = UDim2.fromOffset(10, 56)
+	}).Instance.Position = UDim2.fromOffset(14, 58)
 	Kit.Button(ui.Callout, {
 		Text = "Remove",
 		Style = "Danger",
@@ -698,7 +792,7 @@ local function buildUi()
 				Build.Refresh()
 			end
 		end,
-	}).Instance.Position = UDim2.fromOffset(160, 56)
+	}).Instance.Position = UDim2.fromOffset(156, 58)
 
 	Scale.Changed:Connect(function()
 		Build.Layout()
@@ -715,6 +809,7 @@ end
 
 function Build.Start()
 	task.spawn(function()
+		Catalog.Wait()
 		buildUi()
 		Plots.WaitOwn()
 	end)

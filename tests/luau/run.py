@@ -5,7 +5,8 @@ Adapted from RBLX-Flintborn's tests/luau/run.py (same owner). Game modules are
 written for Roblox: they `require(script.Parent.X)` and use Roblox datatypes.
 Each spec runs as one generated bundle: prelude.luau (datatype stubs, a fake
 instance tree and a require that resolves it), then every module under
-src/shared and src/server as a loader function, then the spec itself.
+src/shared, src/server and src/client as a loader function (only required
+modules run), then the spec itself.
 
 Only pure-logic modules are testable this way; anything touching Instances,
 services or the network still needs a Studio playtest.
@@ -30,6 +31,8 @@ HERE = Path(__file__).resolve().parent
 MOUNTS = {
     ("ReplicatedStorage", "Shared"): ROOT / "src" / "shared",
     ("ServerScriptService", "Server"): ROOT / "src" / "server",
+    # Client presentation data some specs cross-check (e.g. a colour per rarity).
+    ("StarterPlayer", "StarterPlayerScripts", "Client"): ROOT / "src" / "client",
     ("ServerStorage", "TestSupport"): HERE / "support",
 }
 

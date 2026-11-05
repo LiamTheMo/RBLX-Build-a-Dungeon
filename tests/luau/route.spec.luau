@@ -1,5 +1,5 @@
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Route = require(Shared.Rules.Route)
+local Server = game:GetService("ServerScriptService").Server
+local Route = require(Server.Rules.Route)
 
 local function expectFail(cells, reason, key, label)
 	local ok, r, k = Route.Build(cells)

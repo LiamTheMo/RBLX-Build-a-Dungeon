@@ -1,9 +1,8 @@
--- Named sound slots backed by shared/UI/SoundIds. Names without an id stay
+-- Named sound slots backed by Ui/SoundIds. Names without an id stay
 -- silent (Remove, Escaped, Robbed, Music). Volume follows the SFX setting.
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 
-local SoundIds = require(ReplicatedStorage.Shared.UI.SoundIds)
+local SoundIds = require(script.Parent.SoundIds)
 local Settings = require(script.Parent.Settings)
 
 local Sound = {}

@@ -1,10 +1,9 @@
 -- Profile mutations for loot: drops and XP on a defeat, opening boxes,
 -- crafting, scrapping and permanent upgrades.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Balance = require(Shared.Definitions.Balance)
-local Loot = require(Shared.Rules.Loot)
 local Server = game:GetService("ServerScriptService").Server
+local Balance = require(Server.Definitions.Balance)
+local Loot = require(Server.Rules.Loot)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local RoomInventory = require(Server.Rules.RoomInventory)
 local Rewards = require(Server.Rules.Rewards)
@@ -59,7 +58,7 @@ test("opening a box adds a rolled room and spends the box", function()
 	expectEq(room.Id, data.RoomId, "room stored")
 	expectEq(room.Rarity, data.Rarity, "rarity stored")
 	expect(data.Rarity ~= "Common", "a Rare Box is never Common")
-	expectEq(#room.Perks, Balance.Rarities[data.Rarity].PerkCount, "perks rolled")
+	expectEq(#room.Perks, Balance.RarityById[data.Rarity].PerkCount, "perks rolled")
 	expectEq(room.Level, 1, "level 1")
 	expectEq(p.Discovered[data.RoomId], true, "discovered")
 	expect(data.Perks ~= room.Perks, "returned perks are a copy")

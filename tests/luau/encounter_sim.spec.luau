@@ -1,6 +1,6 @@
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Balance = require(Shared.Definitions.Balance)
-local Grid = require(Shared.Definitions.Grid)
+local Server = game:GetService("ServerScriptService").Server
+local Balance = require(Server.Definitions.Balance)
+local Grid = require(Server.Definitions.Grid)
 local EncounterSim = require(game:GetService("ServerScriptService").Server.Rules.EncounterSim)
 
 local function run(visitorId, route, levels, dt)

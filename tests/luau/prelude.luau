@@ -48,6 +48,10 @@ end
 function Color3.fromRGB(r, g, b)
 	return Color3.new((r or 0) / 255, (g or 0) / 255, (b or 0) / 255)
 end
+function Color3.fromHex(hex)
+	local n = tonumber((string.gsub(hex, "#", "")), 16)
+	return Color3.fromRGB(n // 65536, (n // 256) % 256, n % 256)
+end
 function Color3Meta:Lerp(other, t)
 	return Color3.new(self.R + (other.R - self.R) * t, self.G + (other.G - self.G) * t, self.B + (other.B - self.B) * t)
 end

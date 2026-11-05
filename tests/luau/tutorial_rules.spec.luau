@@ -30,6 +30,16 @@ test("decline, skip and recovery", function()
 	expectEq(T.Reduce("Welcome", "EncounterEnd", ctx()), "Welcome", "ignored event")
 end)
 
+-- Investigated "tutorial jumped to Done right after the Practice encounter": the only rules paths are
+-- (1) a profile that already owns a GuardRoom (stale Studio profile; recovery rule) and (2) Skip,
+-- which becomes allowed once the first encounter ends (Encounters >= 1), while its button sits on the bubble.
+test("jump to Done after the practice encounter needs a guard or Skip", function()
+	expectEq(T.Reduce("PracticeEncounter", "EncounterEnd", ctx({ guard = true })), "Done", "stale profile owning a guard")
+	expectEq(T.Reduce("PracticeEncounter", "EncounterEnd", ctx()), "PlaceSpike", "fresh profile goes to PlaceSpike")
+	expectEq(T.Reduce("PlaceSpike", "Skip", ctx()), "Done", "skip after the practice encounter")
+	expectEq(T.Reduce("PracticeEncounter", "Next", ctx()), "PracticeEncounter", "stray Next does nothing")
+end)
+
 test("skip is locked until an encounter was finished", function()
 	expect(not T.CanSkip({ Stats = { Encounters = 0 } }), "locked on a fresh profile")
 	expect(T.CanSkip({ Stats = { Encounters = 1 } }), "unlocked after one encounter")

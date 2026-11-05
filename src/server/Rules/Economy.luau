@@ -52,8 +52,7 @@ end
 
 -- Most levels a room of `rarity` (default Common) can reach.
 function Economy.MaxLevel(rarity: string?): number
-	local r = Balance.Rarities[rarity or "Common"]
-	return if type(r) == "table" and r.MaxLevel then r.MaxLevel else Balance.Rarities.Common.MaxLevel
+	return (Balance.RarityById[rarity or "Common"] or Balance.RarityById.Common).MaxLevel
 end
 
 -- Cost to go from currentLevel to the next; nil at the rarity's max level or for bad input.

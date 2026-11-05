@@ -1,6 +1,7 @@
 -- Server side of ReplicatedStorage.Remotes: creates every remote declared in
--- Shared.Net.Remotes and guards every client request (RemoteGuard).
---   Net.Handle(name, check, handler)  -- RemoteFunction: handler(player, ...) -> (ok, reasonOrData)
+-- Shared.Net.Remotes (the client/server contract) and guards every client request (RemoteGuard).
+--   Net.Handle(name, check, handler)  -- RemoteFunction: handler(player, ...) -> (ok, reasonOrData, extra?)
+--   Net.HandleOpen(name, check, handler)  -- same, without the profile-loaded check (static data)
 --   Net.Fire(name, player, payload) / Net.FireAll(name, payload)  -- RemoteEvents
 --   Net.SetReadyCheck(fn(player) -> boolean)  -- false => "ProfileNotLoaded"
 
@@ -38,10 +39,17 @@ function Net.SetReadyCheck(ready: (Player) -> boolean)
 	guard:SetReady(ready)
 end
 
-function Net.Handle(name: string, check: (...any) -> boolean, handler: (Player, ...any) -> (boolean, any))
+function Net.Handle(name: string, check: (...any) -> boolean, handler: (Player, ...any) -> (boolean, any, any))
 	local remote = getRemote(name, "RemoteFunction")
 	remote.OnServerInvoke = function(player: Player, ...)
 		return guard:Call(player, name, check, handler, ...)
+	end
+end
+
+function Net.HandleOpen(name: string, check: (...any) -> boolean, handler: (Player, ...any) -> (boolean, any, any))
+	local remote = getRemote(name, "RemoteFunction")
+	remote.OnServerInvoke = function(player: Player, ...)
+		return guard:CallOpen(player, name, check, handler, ...)
 	end
 end
 

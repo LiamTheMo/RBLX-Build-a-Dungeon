@@ -4,15 +4,14 @@
 -- A player who leaves mid-encounter cancels it: no payout, no theft. A defeat's
 -- drops and XP are rolled in that same non-yielding step (Rules/Rewards).
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Balance = require(ReplicatedStorage.Shared.Definitions.Balance)
-local Economy = require(ReplicatedStorage.Shared.Rules.Economy)
-local Progression = require(ReplicatedStorage.Shared.Rules.Progression)
-local VisitorRotation = require(ReplicatedStorage.Shared.Rules.VisitorRotation)
-local Rooms = require(ReplicatedStorage.Shared.Definitions.Rooms)
-local Visitors = require(ReplicatedStorage.Shared.Definitions.Visitors)
+local Balance = require(script.Parent.Parent.Definitions.Balance)
+local Economy = require(script.Parent.Parent.Rules.Economy)
+local Progression = require(script.Parent.Parent.Rules.Progression)
+local VisitorRotation = require(script.Parent.Parent.Rules.VisitorRotation)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
+local Visitors = require(script.Parent.Parent.Definitions.Visitors)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local EncounterSim = require(script.Parent.Parent.Rules.EncounterSim)
 local LayoutRules = require(script.Parent.Parent.Rules.LayoutRules)
@@ -26,8 +25,18 @@ local EncounterService = {}
 
 local STEP = 0.1
 local FIRST_VISITOR = { Tutorial = 3, Normal = 10 }
-local VISITOR_ATTRS =
-	{ "VisitorId", "VisitorHealth", "VisitorMaxHealth", "VisitorProgress", "VisitorFighting", "VisitorSlowed", "VisitorSpored" }
+local VISITOR_ATTRS = {
+	"VisitorId",
+	"VisitorHealth",
+	"VisitorMaxHealth",
+	"VisitorProgress",
+	"VisitorFighting",
+	"VisitorSlowed",
+	"VisitorSpored",
+	"VisitorReward",
+	"VisitorRewardDestination",
+	"VisitorTheft",
+}
 
 local runs = {} -- Player -> { Id, Sim, Keys, VisitorId, HasTreasure, Paid }
 local challengerReadyAt = {} -- Player -> server time the next challenger invite is allowed
@@ -175,8 +184,21 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	announce(player, plot, profile) -- after the tutorial step advanced, so it never announces a stale Practice
 end
 
+-- What the encounter panel shows: the payout if the visitor is defeated now (coin
+-- bonus and vault bonus applied) and what it would steal on reaching the treasure.
+-- Display only; finish() computes the real payout in the same step as the result.
+local function setOutcomePreview(plot: Instance, profile, run)
+	local bonuses = Progression.Bonuses(profile)
+	local amount, destination =
+		Economy.WinPayout(run.VisitorId, profile.Vault, run.HasTreasure, bonuses.Coins, Progression.VaultCapBonus(profile))
+	plot:SetAttribute("VisitorReward", amount)
+	plot:SetAttribute("VisitorRewardDestination", destination)
+	plot:SetAttribute("VisitorTheft", if run.HasTreasure then Economy.Theft(run.VisitorId, profile.Vault) else 0)
+end
+
 local function stepRun(player: Player, plot: Instance, profile, run, dt: number, now: number)
 	local sim = run.Sim
+	setOutcomePreview(plot, profile, run) -- unchanged values do not replicate
 	local events = sim:Step(dt)
 	plot:SetAttribute("VisitorHealth", sim.Health)
 	plot:SetAttribute("VisitorMaxHealth", sim.MaxHealth)
@@ -210,6 +232,9 @@ end
 local function trySpawn(player: Player, plot: Instance, profile, now: number)
 	if plot:GetAttribute("State") ~= "Idle" then
 		return
+	end
+	if tutorialStep(profile) == "PracticeEncounter" and plot:GetAttribute("NextVisitorId") ~= "Practice" then
+		announce(player, plot, profile) -- the tutorial moved on after the first announcement
 	end
 	local nextAt = plot:GetAttribute("NextVisitorAt")
 	if nextAt == nil then
@@ -269,6 +294,7 @@ local function trySpawn(player: Player, plot: Instance, profile, now: number)
 	}
 	runs[player] = run
 	plot:SetAttribute("State", "Encounter")
+	setOutcomePreview(plot, profile, run) -- before VisitorId, so the panel never shows a stale value
 	plot:SetAttribute("VisitorId", visitorId)
 	stepRun(player, plot, profile, run, STEP, now)
 end

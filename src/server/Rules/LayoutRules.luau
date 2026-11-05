@@ -2,9 +2,9 @@
 -- Server-side check of a client-submitted layout (cellKey -> room instance id)
 -- against the player's profile, then the shared route rules.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Grid = require(Shared.Definitions.Grid)
-local Route = require(Shared.Rules.Route)
+local Definitions = script.Parent.Parent.Definitions
+local Grid = require(Definitions.Grid)
+local Route = require(script.Parent.Route)
 
 local MAX_CELLS = Grid.Columns * Grid.Rows - 1 -- every cell but the entrance
 

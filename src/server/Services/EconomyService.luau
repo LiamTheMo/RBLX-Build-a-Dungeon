@@ -1,12 +1,10 @@
 -- Bank, Buy, Upgrade, BuyPermanent. Every mutation reads and writes the profile without
 -- yielding, so each request is atomic; the client never supplies a price.
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Balance = require(ReplicatedStorage.Shared.Definitions.Balance)
-local Rooms = require(ReplicatedStorage.Shared.Definitions.Rooms)
-local Economy = require(ReplicatedStorage.Shared.Rules.Economy)
-local Progression = require(ReplicatedStorage.Shared.Rules.Progression)
+local Balance = require(script.Parent.Parent.Definitions.Balance)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
+local Economy = require(script.Parent.Parent.Rules.Economy)
+local Progression = require(script.Parent.Parent.Rules.Progression)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local Rewards = require(script.Parent.Parent.Rules.Rewards)
 local RoomInventory = require(script.Parent.Parent.Rules.RoomInventory)

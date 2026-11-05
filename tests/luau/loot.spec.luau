@@ -1,9 +1,9 @@
 -- Loot rules: shown odds, rarity rolls with pity, perks and drop rates.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Balance = require(Shared.Definitions.Balance)
-local Rooms = require(Shared.Definitions.Rooms)
-local Loot = require(Shared.Rules.Loot)
+local Server = game:GetService("ServerScriptService").Server
+local Balance = require(Server.Definitions.Balance)
+local Rooms = require(Server.Definitions.Rooms)
+local Loot = require(Server.Rules.Loot)
 
 local function sum(list)
 	local total = 0
@@ -30,8 +30,9 @@ test("shown odds sum to 1 and match the tables", function()
 		expectEq(odds.PityAfter, 9, "pity shown")
 	end
 	local d = Loot.Odds("Dungeon")
-	expectNear(chanceOf(d.Rarities, "Common"), 0.70, 1e-9, "common 70%")
-	expectNear(chanceOf(d.Rarities, "Mythic"), 0.01, 1e-9, "mythic 1%")
+	expectNear(chanceOf(d.Rarities, "Common"), 0.60, 1e-9, "common 60%")
+	expectNear(chanceOf(d.Rarities, "Mythic"), 0.0028, 1e-9, "mythic 0.28%")
+	expectNear(chanceOf(d.Rarities, "Secret"), 0.0002, 1e-9, "secret 0.02%")
 	expectNear(chanceOf(d.Rooms, "SlimeNest"), 0.25, 1e-9, "slime 25%")
 	expectNear(chanceOf(d.Rooms, "RestlessCrypt"), 0.08, 1e-9, "crypt 8%")
 	expectEq(chanceOf(d.Rooms, "TreasureRoom"), 0, "never a treasure room")
@@ -58,10 +59,10 @@ test("rarity frequencies roughly match the odds", function()
 		local r = Loot.RollRarity("Dungeon", 0, rng)
 		counts[r] = (counts[r] or 0) + 1
 	end
-	expectNear(counts.Common / n, 0.70, 0.015, "common")
-	expectNear(counts.Uncommon / n, 0.22, 0.015, "uncommon")
-	expectNear(counts.Rare / n, 0.07, 0.01, "rare")
-	expectNear((counts.Mythic or 0) / n, 0.01, 0.004, "mythic")
+	expectNear(counts.Common / n, 0.60, 0.015, "common")
+	expectNear(counts.Uncommon / n, 0.25, 0.015, "uncommon")
+	expectNear(counts.Rare / n, 0.10, 0.01, "rare")
+	expectNear((counts.Epic or 0) / n, 0.035, 0.006, "epic")
 end)
 
 test("pity: after 9 boxes below Rare the next is at least Rare, then resets", function()
@@ -75,6 +76,7 @@ test("pity: after 9 boxes below Rare the next is at least Rare, then resets", fu
 	expectEq(Loot.NextPity(9, "Common"), 9, "never above PityAfter")
 	expectEq(Loot.NextPity(9, "Rare"), 0, "Rare resets")
 	expectEq(Loot.NextPity(4, "Mythic"), 0, "Mythic resets")
+	expectEq(Loot.NextPity(9, "Epic"), 0, "Epic resets")
 	-- Simulated streak: no run of 10 below Rare ever happens.
 	local pity, streak, worst = 0, 0, 0
 	for _ = 1, 5000 do
@@ -95,13 +97,29 @@ test("perks: count, size and distinct kinds follow the rarity", function()
 		expectEq(u[1].Amount, Balance.Perks.Small[u[1].Kind], "small")
 		local r = Loot.RollPerks("Rare", rng)
 		expectEq(r[1].Amount, Balance.Perks.Medium[r[1].Kind], "medium")
-		local m = Loot.RollPerks("Mythic", rng)
-		expectEq(#m, 2, "Mythic two")
-		expect(m[1].Kind ~= m[2].Kind, "different kinds")
-		expectEq(m[2].Amount, Balance.Perks.Large[m[2].Kind], "large")
+		local e = Loot.RollPerks("Epic", rng)
+		expectEq(#e, 2, "Epic two")
+		expect(e[1].Kind ~= e[2].Kind, "different kinds")
+		expectEq(e[2].Amount, Balance.Perks.Medium[e[2].Kind], "medium")
+		local g = Loot.RollPerks("Legendary", rng)
+		expectEq(#g, 2, "Legendary two")
+		expectEq(g[2].Amount, Balance.Perks.Large[g[2].Kind], "large")
+		for id, size in { Mythic = "Large", Secret = "Huge" } do
+			local m = Loot.RollPerks(id, rng)
+			expectEq(#m, 3, id .. " three")
+			local kinds = {}
+			for _, perk in m do
+				kinds[perk.Kind] = true
+				expectEq(perk.Amount, Balance.Perks[size][perk.Kind], id .. " size")
+			end
+			expectEq(#Balance.Perks.Kinds, 3, "three kinds exist")
+			expect(kinds.Coins and kinds.Loot and kinds.Xp, id .. " one of each kind")
+		end
 	end
 	expectEq(Loot.PerkAmount("Common", "Coins"), nil, "no common perk")
 	expectEq(Loot.PerkAmount("Mythic", "Loot"), 0.40, "large loot")
+	expectEq(Loot.PerkAmount("Secret", "Coins"), 0.30, "huge coins")
+	expectEq(Loot.PerkAmount("Secret", "Xp"), 0.60, "huge xp")
 	expectEq(Loot.PerkAmount("Rare", "Bogus"), nil, "unknown kind")
 	expectEq(Loot.PerkAmount("Order", "Coins"), nil, "not a rarity")
 end)

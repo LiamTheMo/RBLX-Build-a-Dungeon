@@ -1,21 +1,18 @@
 -- HUD, encounter panel, shop, settings, toasts and the blocking load-failure
--- message. Presents server state only; every button is a request.
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local Shared = ReplicatedStorage.Shared
-local Balance = require(Shared.Definitions.Balance)
-local Rooms = require(Shared.Definitions.Rooms)
-local Visitors = require(Shared.Definitions.Visitors)
-local Economy = require(Shared.Rules.Economy)
-local Progression = require(Shared.Rules.Progression)
-local ReasonText = require(Shared.UI.ReasonText)
-
+-- message. Presents server state only (State snapshot, Catalog, plot
+-- attributes); every button is a request.
 local Ui = script.Parent.Parent.Ui
 local Bus = require(Ui.Bus)
+local Catalog = require(Ui.Catalog)
 local Kit = require(Ui.Kit)
 local Net = require(Ui.Net)
 local Plots = require(Ui.Plots)
+local ReasonText = require(Ui.ReasonText)
 local Scale = require(Ui.Scale)
+local Sprites = require(Ui.Sprites)
+local SpriteIds = require(Ui.SpriteIds)
+local IconIds = require(Ui.IconIds)
+local P = require(Ui.PanelsKit)
 local Settings = require(Ui.Settings)
 local Sound = require(Ui.Sound)
 local State = require(Ui.State)
@@ -26,7 +23,7 @@ local make = Kit.Make
 
 local Hud = {}
 
-local ROLE_ICON = { Defender = "Shield", Trap = "Sword", Treasure = "Vault", Support = "Upgrade" }
+local ROLE_ICON = { Defender = "Defender", Trap = "Trap", Treasure = "CoinStack", Support = "Support" }
 local X = Enum.AutomaticSize.X
 
 local function request(name: string, ...: any): boolean
@@ -106,33 +103,28 @@ local modals = {}
 local function modal(gui: ScreenGui, title: string, desktop: Vector2, phone: Vector2)
 	local group = make("CanvasGroup", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundColor3 = Theme.BgDeep,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Visible = false,
 		GroupTransparency = 1,
 	}, gui)
-	Kit.Corner(group, Theme.CornerPanel)
-	Kit.Stroke(group)
+	-- The panel look (PanelLarge sprite, or the drawn panel) sits behind everything in the group.
+	Kit.Panel(group, { Sprite = "Large", Size = UDim2.fromScale(1, 1), ZIndex = 0, Active = false })
 	local head = Kit.Label(group, title, Theme.TextSize.Heading, Theme.Gold, true)
-	head.Position = UDim2.fromOffset(16, 0)
-	head.Size = UDim2.new(1, -96, 0, 56)
+	head.Position = UDim2.fromOffset(26, 4)
+	head.Size = UDim2.new(1, -110, 0, 56)
 	head.TextXAlignment = Enum.TextXAlignment.Left
 	local self: any = { Group = group, IsOpen = false }
-	Kit.Button(group, {
-		Text = "X",
-		Size = UDim2.fromOffset(56, 44),
-		Style = "Cancel",
-		OnClick = function()
-			self.Close()
-		end,
-	}).Instance.Position = UDim2.new(1, -64, 0, 6)
-	local body = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 56) }, group)
+	Kit.CloseButton(group, UDim2.fromOffset(52, 52), function()
+		self.Close()
+	end).Instance.Position = UDim2.new(1, -66, 0, 8)
+	local body = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 64) }, group)
 	self.Body = body
 
 	function self.Layout()
 		local size = if Scale.Phone then phone else desktop
 		group.Size = UDim2.fromOffset(size.X, size.Y)
-		body.Size = UDim2.new(1, 0, 1, -56)
+		body.Size = UDim2.new(1, -28, 1, -80)
 	end
 	local gen = 0
 	function self.Open()
@@ -214,31 +206,34 @@ local function buildShop(gui: ScreenGui)
 
 	local cards = {}
 	local order = 0
-	for _, id in Rooms.Order do
-		local def = Rooms.Get(id)
-		local cost = Balance.Rooms[id] and Balance.Rooms[id].Cost
+	for _, id in Catalog.Current.RoomOrder do
+		local def = Catalog.Room(id)
+		local cost = def and def.Cost
 		if def and def.Source == "Shop" and cost then
 			order += 1
 			local card = Kit.Panel(grid, { BackgroundColor3 = Theme.BgPanel, LayoutOrder = order })
-			pad(card, 12, 8)
-			make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, card)
+			pad(card, 14, 10)
+			make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, card)
+			local art = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, if Scale.Phone then 40 else 64), LayoutOrder = 0 }, card)
+			local artImg = P.RoomImage(art, id, if Scale.Phone then 40 else 64, def.Kind)
+			artImg.AnchorPoint, artImg.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
 			local roleRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 1 }, card)
 			hlist(roleRow, 6)
-			Kit.Icon(roleRow, ROLE_ICON[def.Kind] or "Shield", UDim2.fromOffset(20, 20)).LayoutOrder = 1
+			Kit.Icon(roleRow, ROLE_ICON[def.Kind] or "Defender", UDim2.fromOffset(20, 20)).LayoutOrder = 1
 			Kit.Pill(roleRow, def.Kind, Theme.BgRaised, Theme.TextPrimary, 20).LayoutOrder = 2
 			local name = Kit.Label(card, def.DisplayName, Theme.TextSize.Button, Theme.TextPrimary, true)
 			name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, 26), 2
 			name.TextXAlignment = Enum.TextXAlignment.Left
 			local costRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 3 }, card)
 			hlist(costRow, 6)
-			Kit.Icon(costRow, "Coin", UDim2.fromOffset(20, 20)).LayoutOrder = 1
+			Kit.Icon(costRow, "CoinStack", UDim2.fromOffset(22, 22)).LayoutOrder = 1
 			local costLabel = Kit.Label(costRow, tostring(cost), Theme.TextSize.Body, Theme.Gold, true)
 			costLabel.Size, costLabel.LayoutOrder = UDim2.fromOffset(80, 22), 2
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
 			local owned = Kit.Label(card, "Owned: 0", 16, Theme.TextMuted)
 			owned.Size, owned.LayoutOrder = UDim2.new(1, 0, 0, 20), 4
 			owned.TextXAlignment = Enum.TextXAlignment.Left
-			local entry = { Id = id, Cost = cost, Owned = owned, Name = name, Confirm = 0, Level = Progression.ShopLevel(id) }
+			local entry = { Id = id, Cost = cost, Owned = owned, Name = name, Confirm = 0, Level = def.ShopLevel }
 			entry.Button = Kit.Button(card, {
 				Text = "Buy",
 				Style = "Primary",
@@ -272,7 +267,7 @@ local function buildShop(gui: ScreenGui)
 	local upSignature = ""
 
 	function shop.Refresh()
-		gl.CellSize = if Scale.Phone then UDim2.fromOffset(180, 170) else UDim2.fromOffset(200, 220)
+		gl.CellSize = if Scale.Phone then UDim2.fromOffset(180, 214) else UDim2.fromOffset(200, 262)
 		local s = State.Current
 		if not s then
 			return
@@ -302,9 +297,9 @@ local function buildShop(gui: ScreenGui)
 		local rows = {}
 		for cellKey, instanceId in s.Layout or {} do
 			local room = s.Rooms and s.Rooms[instanceId]
-			local def = room and Rooms.Get(room.Id)
+			local def = room and Catalog.Room(room.Id)
 			if def and def.Upgradable then
-				table.insert(rows, { Cell = cellKey, Id = instanceId, Def = def, Level = room.Level or 1, Rarity = room.Rarity or "Common", Perks = room.Perks })
+				table.insert(rows, { Cell = cellKey, Id = instanceId, Def = def, Level = room.Level or 1, Rarity = room.Rarity or "Common", Perks = room.Perks, NextCost = room.NextUpgradeCost })
 			end
 		end
 		table.sort(rows, function(a, b)
@@ -322,15 +317,18 @@ local function buildShop(gui: ScreenGui)
 			end
 			table.clear(upRows)
 			for i, r in rows do
-				local f = Kit.Panel(upList, { BackgroundColor3 = Theme.BgPanel, Size = UDim2.new(1, 0, 0, 68), LayoutOrder = i })
-				local left = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -190, 1, 0) }, f)
+				local f = Kit.Panel(upList, { BackgroundColor3 = Theme.BgPanel, Size = UDim2.new(1, 0, 0, 76), LayoutOrder = i, Rarity = r.Rarity })
+					local roomImg = P.RoomImage(f, r.Def.Id, 56, r.Def.Kind)
+					roomImg.AnchorPoint, roomImg.Position = Vector2.new(0, 0.5), UDim2.new(0, 16, 0.5, 0)
+					local left = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(80, 0), Size = UDim2.new(1, -266, 1, 0) }, f)
 				make("UIListLayout", { VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2) }, left)
 				local line1 = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 1 }, left)
 				hlist(line1, 8)
 				local nm = Kit.Label(line1, r.Def.DisplayName, Theme.TextSize.Button, Theme.TextPrimary, true)
 				nm.AutomaticSize, nm.Size, nm.TextWrapped, nm.LayoutOrder = X, UDim2.fromOffset(0, 24), false, 1
-				Kit.Rarity(line1, r.Rarity).LayoutOrder = 2
-				local nextCost = Economy.UpgradeCost(r.Level, r.Rarity)
+				Kit.Gem(line1, r.Rarity, UDim2.fromOffset(22, 22)).LayoutOrder = 2
+					Kit.Rarity(line1, r.Rarity).LayoutOrder = 3
+				local nextCost = r.NextCost -- server-computed (nil at the rarity's max level)
 				local line2 = Kit.Label(left, if nextCost then ("Lv %d -> %d  |  %d coins"):format(r.Level, r.Level + 1, nextCost) else ("Lv %d (max for %s)"):format(r.Level, r.Rarity), 16, Theme.TextMuted)
 				line2.Size, line2.LayoutOrder = UDim2.new(1, 0, 0, 20), 2
 				line2.TextXAlignment = Enum.TextXAlignment.Left
@@ -348,8 +346,8 @@ local function buildShop(gui: ScreenGui)
 					end,
 				})
 				btn.Instance.AnchorPoint = Vector2.new(1, 0.5)
-				btn.Instance.Position = UDim2.new(1, -8, 0.5, 0)
-				upRows[r.Id] = { Frame = f, Button = btn, Cost = nextCost }
+				btn.Instance.Position = UDim2.new(1, -18, 0.5, 0)
+					upRows[r.Id] = { Frame = f, Button = btn, Cost = nextCost }
 			end
 		end
 		upEmpty.Visible = #rows == 0
@@ -371,30 +369,33 @@ local function buildShop(gui: ScreenGui)
 end
 
 local function buildSettings(gui: ScreenGui)
-	local panel = modal(gui, "Settings", Vector2.new(520, 420), Vector2.new(460, 300))
+	local panel = modal(gui, "Settings", Vector2.new(580, 380), Vector2.new(560, 300))
 	local list = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, panel.Body)
 	make("UIListLayout", { Padding = UDim.new(0, 8) }, list)
-	pad(list, 16)
-	local function row(text: string)
+	pad(list, 10)
+local function row(text: string, icon: string)
 		local r = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56) }, list)
+		local ic = Kit.Icon(r, icon, UDim2.fromOffset(32, 32))
+		ic.AnchorPoint, ic.Position = Vector2.new(0, 0.5), UDim2.new(0, 0, 0.5, 0)
 		local l = Kit.Label(r, text, Theme.TextSize.Body, Theme.TextPrimary)
-		l.Size = UDim2.new(0, 150, 1, 0)
+		l.Position = UDim2.fromOffset(40, 0)
+		l.Size = UDim2.new(0, 130, 1, 0)
 		l.TextXAlignment = Enum.TextXAlignment.Left
 		return r
 	end
 	local v = Settings.Values
-	local toggle = Kit.Toggle(row("Reduced motion"), v.ReducedMotion, function(on)
+	local toggle = Kit.Toggle(row("Reduced motion", "Check"), v.ReducedMotion, function(on)
 		Settings.Set("ReducedMotion", on)
 	end)
-	toggle.Instance.Position = UDim2.fromOffset(160, 6)
-	local music = Kit.Slider(row("Music"), v.MusicVolume, function(x)
+	toggle.Instance.Position = UDim2.fromOffset(180, 4)
+	local music = Kit.Slider(row("Music", "Music"), v.MusicVolume, function(x)
 		Settings.Set("MusicVolume", x)
 	end)
-	music.Instance.Position = UDim2.fromOffset(160, 6)
-	local sfx = Kit.Slider(row("Sound effects"), v.SfxVolume, function(x)
+	music.Instance.Position = UDim2.fromOffset(180, 4)
+	local sfx = Kit.Slider(row("Sound effects", "SoundOn"), v.SfxVolume, function(x)
 		Settings.Set("SfxVolume", x)
 	end)
-	sfx.Instance.Position = UDim2.fromOffset(160, 6)
+	sfx.Instance.Position = UDim2.fromOffset(180, 4)
 	Settings.Changed:Connect(function()
 		toggle.Set(Settings.Values.ReducedMotion)
 		music.Set(Settings.Values.MusicVolume)
@@ -417,9 +418,8 @@ local function build()
 	end)
 
 	-- Currency pill: banked coins, vault (with bonus) once a treasure room exists.
-	local currency = Kit.Panel(gui, { BackgroundColor3 = Theme.BgPanel, AutomaticSize = X })
-	currency:FindFirstChildOfClass("UICorner").CornerRadius = Theme.CornerPill
-	pad(currency, 16)
+	local currency = Kit.Panel(gui, { Sprite = "Pill", BackgroundColor3 = Theme.BgPanel, AutomaticSize = X })
+	pad(currency, 26)
 	hlist(currency, 12)
 	local banked = cell(currency, "Coin", "Banked", 1)
 	local vault = cell(currency, "Vault", "Vault", 2)
@@ -428,36 +428,42 @@ local function build()
 	bonus.Size = UDim2.fromOffset(0, 26)
 
 	-- Keeper level and XP.
-	local levelPanel = Kit.Panel(gui, { BackgroundColor3 = Theme.BgPanel })
+	local levelPanel = Kit.Panel(gui, { Sprite = "Pill", BackgroundColor3 = Theme.BgPanel })
 	-- The glow overlay must not sit inside the list layout, so the row is its own frame.
 	local levelRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, levelPanel)
-	pad(levelRow, 10)
+	pad(levelRow, 20, 8)
 	hlist(levelRow, 8)
+	local levelIcon = Kit.Icon(levelRow, "Level", UDim2.fromOffset(30, 30))
+	levelIcon.LayoutOrder = 0
 	local levelPill = Kit.Pill(levelRow, "Lv 1", Theme.Gold, Theme.TextOnGold, 28)
 	levelPill.TextSize, levelPill.LayoutOrder = 18, 1
-	local xpBar = Kit.Bar(levelRow, UDim2.fromOffset(200, 22), Theme.Accent)
+	local xpBar = Kit.Bar(levelRow, UDim2.fromOffset(190, 26))
 	xpBar.Instance.LayoutOrder = 2
 	local levelGlow = make("Frame", { BackgroundColor3 = Theme.Gold, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 10, Active = false }, levelPanel)
-	Kit.Corner(levelGlow, Theme.CornerPanel)
+	Kit.Corner(levelGlow, Theme.CornerPill)
 	local levelPop = make("UIScale", {}, levelPanel)
 	local levelStroke = levelPanel:FindFirstChildOfClass("UIStroke")
+	-- Sprite panels have no stroke: tint the image instead.
+	local function levelMark(on: boolean)
+		levelStroke.Color = if on then Theme.Gold else Theme.Stroke
+		levelPanel.ImageColor3 = if on then Color3.fromRGB(255, 226, 150) else Color3.new(1, 1, 1)
+	end
 
 	-- Active bonuses chip.
-	local bonusChip = Kit.Pill(gui, "", Theme.BgPanel, Theme.Gold, 28)
-	Kit.Stroke(bonusChip, Theme.Stroke, 2)
+	local bonusChip = Kit.Pill(gui, "", Theme.BgPanel, Theme.Gold, 30)
 	bonusChip.Visible = false
 
 	-- Next visitor chip: clock, countdown, name and trait chips.
-	local chip = Kit.Panel(gui, { BackgroundColor3 = Theme.BgPanel, AutomaticSize = X })
-	chip:FindFirstChildOfClass("UICorner").CornerRadius = Theme.CornerPill
-	pad(chip, 14)
+	local chip = Kit.Panel(gui, { Sprite = "Pill", BackgroundColor3 = Theme.BgPanel, AutomaticSize = X })
+	pad(chip, 24)
 	hlist(chip, 8)
 	Kit.Icon(chip, "Clock", UDim2.fromOffset(28, 28)).LayoutOrder = 1
 	local status = Kit.Label(chip, "", Theme.TextSize.Body, Theme.TextPrimary, true)
 	status.AutomaticSize, status.Size, status.TextWrapped, status.LayoutOrder = X, UDim2.fromOffset(0, 32), false, 2
+	local nextPortrait = make("ImageLabel", { BackgroundTransparency = 1, Size = UDim2.fromOffset(40, 40), ScaleType = Enum.ScaleType.Fit, Visible = false, LayoutOrder = 3, Image = "" }, chip)
 	local nextName = Kit.Label(chip, "", Theme.TextSize.Body, Theme.Gold, true)
-	nextName.AutomaticSize, nextName.Size, nextName.TextWrapped, nextName.LayoutOrder = X, UDim2.fromOffset(0, 32), false, 3
-	local traitRow = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 24), LayoutOrder = 4 }, chip)
+	nextName.AutomaticSize, nextName.Size, nextName.TextWrapped, nextName.LayoutOrder = X, UDim2.fromOffset(0, 32), false, 4
+	local traitRow = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 24), LayoutOrder = 5 }, chip)
 	hlist(traitRow, 6)
 	local shownNext: string? = nil
 
@@ -497,7 +503,7 @@ local function build()
 		request("InviteChallenger")
 	end)
 	-- Loot, Collection and Keeper panels are built by LootController (Bus "OpenPanel").
-	for i, p in { { "Loot", "Vault" }, { "Collection", "Shield" }, { "Keeper", "Upgrade" } } do
+	for i, p in { { "Loot", "Loot" }, { "Collection", "Collection" }, { "Keeper", "Keeper" } } do
 		action(p[1], p[2], p[1], 4 + i, function()
 			closeModals()
 			Bus.OpenPanel:Fire(p[1])
@@ -507,7 +513,7 @@ local function build()
 		toggle(settingsPanel)
 	end)
 	for _, key in { "Build", "Bank", "Shop", "Loot", "Collection", "Keeper" } do
-		Bus.Targets[key] = { Instance = buttons[key].Instance, Stroke = buttons[key].Stroke }
+		Bus.Targets[key] = { Instance = buttons[key].Instance, Stroke = buttons[key].Stroke, Button = buttons[key] }
 	end
 	Bus.ShopRequested:Connect(function()
 		shop.Open()
@@ -518,24 +524,26 @@ local function build()
 
 	-- Encounter panel.
 	local enc = Kit.Panel(gui, { Visible = false, AutomaticSize = Enum.AutomaticSize.Y })
-	pad(enc, 12, 8)
+	pad(enc, 20, 14)
 	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, enc)
-	local nameRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 1 }, enc)
+	local nameRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 60), LayoutOrder = 1 }, enc)
 	hlist(nameRow, 8)
-	Kit.Icon(nameRow, "Visitor", UDim2.fromOffset(30, 30)).LayoutOrder = 1
+	local portrait = make("ImageLabel", { BackgroundTransparency = 1, Image = IconIds.Visitor, Size = UDim2.fromOffset(56, 56), ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1 }, nameRow)
 	local encName = Kit.Label(nameRow, "", Theme.TextSize.Heading, Theme.TextPrimary, true)
-	encName.Size, encName.LayoutOrder, encName.TextXAlignment, encName.TextWrapped = UDim2.new(1, -40, 1, 0), 2, Enum.TextXAlignment.Left, false
-	local hp = Kit.Bar(enc, UDim2.new(1, 0, 0, 22))
+	encName.Size, encName.LayoutOrder, encName.TextXAlignment, encName.TextWrapped = UDim2.new(1, -66, 1, 0), 2, Enum.TextXAlignment.Left, false
+	local hp = Kit.Bar(enc, UDim2.new(1, 0, 0, 26), Theme.Success)
 	hp.Instance.LayoutOrder = 2
 	local chipRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 3 }, enc)
 	hlist(chipRow, 6)
 	local slowChip = Kit.Pill(chipRow, "Slowed", Theme.Success, Theme.DangerText, 22)
 	slowChip.LayoutOrder = 1
-	local sporeChip = Kit.Pill(chipRow, "Spored", Theme.Warning, Theme.DangerText, 22)
-	sporeChip.LayoutOrder = 2
+	local sporeChip = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 22), LayoutOrder = 2 }, chipRow)
+	hlist(sporeChip, 4)
+	Kit.Icon(sporeChip, "Spores", UDim2.fromOffset(22, 22)).LayoutOrder = 1
+	Kit.Pill(sporeChip, "Spored", Theme.Warning, Theme.DangerText, 22).LayoutOrder = 2
 	local rewardRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 4 }, enc)
 	hlist(rewardRow, 6)
-	Kit.Icon(rewardRow, "Coin", UDim2.fromOffset(24, 24)).LayoutOrder = 1
+	Kit.Icon(rewardRow, "CoinStack", UDim2.fromOffset(26, 26)).LayoutOrder = 1
 	local encReward = Kit.Label(rewardRow, "", Theme.TextSize.Body, Theme.Gold, true)
 	encReward.Size, encReward.LayoutOrder, encReward.TextXAlignment, encReward.TextWrapped = UDim2.new(1, -32, 1, 0), 2, Enum.TextXAlignment.Left, false
 	local encRisk = Kit.Label(enc, "", Theme.TextSize.Body, Theme.Danger, true)
@@ -552,26 +560,27 @@ local function build()
 	local function layout()
 		local phone = Scale.Phone
 		local cs = if phone then 22 else Theme.TextSize.Number
+		levelIcon.Visible = not phone
 		banked.Number.TextSize, vault.Number.TextSize = cs, cs
 		if phone then
-			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0, 0), UDim2.new(0, 8, 0, 0), UDim2.fromOffset(0, 48)
-			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.new(0, 8, 0, 52), UDim2.fromOffset(300, 40)
-			bonusChip.AnchorPoint, bonusChip.Position = Vector2.new(0, 0), UDim2.new(0, 8, 0, 96)
+			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0, 0), UDim2.new(0, 8, 0, 0), UDim2.fromOffset(0, 58)
+			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.new(0, 8, 0, 62), UDim2.fromOffset(300, 46)
+			bonusChip.AnchorPoint, bonusChip.Position = Vector2.new(0, 0), UDim2.new(0, 8, 0, 112)
 			chip.AnchorPoint, chip.Position, chip.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 0), UDim2.fromOffset(0, 40)
 			bar.AnchorPoint, bar.Position, bar.Size = Vector2.new(1, 0.5), UDim2.new(1, -8, 0.5, 0), UDim2.fromOffset(2 * 78 + 8, 4 * 64 + 3 * 8)
 			grid.CellSize, grid.FillDirection, grid.FillDirectionMaxCells, grid.StartCorner = UDim2.fromOffset(78, 64), Enum.FillDirection.Vertical, 4, Enum.StartCorner.TopRight
 			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -176, 0, 48), UDim2.fromOffset(260, 0)
 		else
-			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 8), UDim2.fromOffset(0, 64)
-			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.new(0, 16, 0, 8), UDim2.fromOffset(320, 52)
-			bonusChip.AnchorPoint, bonusChip.Position = Vector2.new(0, 0), UDim2.new(0, 16, 0, 68)
-			chip.AnchorPoint, chip.Position, chip.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 80), UDim2.fromOffset(0, 44)
+			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 8), UDim2.fromOffset(0, 72)
+			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.new(0, 16, 0, 8), UDim2.fromOffset(340, 58)
+			bonusChip.AnchorPoint, bonusChip.Position = Vector2.new(0, 0), UDim2.new(0, 16, 0, 74)
+			chip.AnchorPoint, chip.Position, chip.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 88), UDim2.fromOffset(0, 48)
 			bar.AnchorPoint, bar.Position, bar.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -16), UDim2.fromOffset(8 * 140 + 7 * 8, 72)
 			grid.CellSize, grid.FillDirection, grid.FillDirectionMaxCells, grid.StartCorner = UDim2.fromOffset(140, 72), Enum.FillDirection.Horizontal, 8, Enum.StartCorner.TopLeft
 			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -16, 0, 96), UDim2.fromOffset(340, 0)
 		end
 		for _, b in buttons do
-			b.Instance.TextSize = if phone then 14 else 18
+			b.SetTextSize(if phone then 14 else 18)
 		end
 		encName.TextSize = if phone then 20 else Theme.TextSize.Heading
 		shop.Layout()
@@ -598,25 +607,27 @@ local function build()
 		if not show then
 			return
 		end
-		local def = Visitors.Get(visitorId)
+		local def = Catalog.Visitor(visitorId)
 		encName.Text = def and def.DisplayName or visitorId
+		local pid = SpriteIds.Portraits[visitorId]
+		portrait.Image = if Sprites.Ok(pid) then pid else IconIds.Visitor
 		local health = plot:GetAttribute("VisitorHealth") or 0
 		local max = math.max(plot:GetAttribute("VisitorMaxHealth") or 1, 1)
 		hp.Set(health / max, ("HP %d/%d"):format(health, max), health / max < 0.3)
 		local slowed, spored = plot:GetAttribute("VisitorSlowed") == true, plot:GetAttribute("VisitorSpored") == true
 		slowChip.Visible, sporeChip.Visible, chipRow.Visible = slowed, spored, slowed or spored
-		local vaultGold = s and s.Vault or 0
+		-- Payout and theft are computed by the server (plot attributes set at spawn).
 		local hasTreasure = State.HasPlaced("TreasureRoom")
 		local coinBonus = s and s.Bonuses and s.Bonuses.Coins or 0
-		local extraCap = math.max(0, (s and s.VaultBonusCap or Balance.Economy.VaultBonusCap) - Balance.Economy.VaultBonusCap)
-		local amount, dest = Economy.WinPayout(visitorId, vaultGold, hasTreasure, coinBonus, extraCap)
+		local amount = plot:GetAttribute("VisitorReward") or 0
+		local dest = plot:GetAttribute("VisitorRewardDestination")
 		local suffix = if coinBonus > 0 then (" (+%d%%)"):format(pct(coinBonus)) else ""
 		encReward.Text = (if dest == "Vault" then "Reward: +%d to vault" else "Reward: +%d coins"):format(amount) .. suffix
-		local theft = if hasTreasure then Economy.Theft(visitorId, vaultGold) else 0
+		local theft = plot:GetAttribute("VisitorTheft") or 0
 		encRisk.Visible = hasTreasure
 		encRisk.Text = ("! Vault risk: %d gold"):format(theft)
 	end
-	for _, attr in { "VisitorId", "VisitorHealth", "VisitorMaxHealth", "VisitorSlowed", "VisitorSpored" } do
+	for _, attr in { "VisitorId", "VisitorHealth", "VisitorMaxHealth", "VisitorSlowed", "VisitorSpored", "VisitorReward", "VisitorRewardDestination", "VisitorTheft" } do
 		plot:GetAttributeChangedSignal(attr):Connect(refreshEncounter)
 	end
 	for _, m in modals do
@@ -636,10 +647,10 @@ local function build()
 		glowId += 1
 		local mine = glowId
 		if Settings.Reduced() then
-			levelStroke.Color = Theme.Gold
+			levelMark(true)
 			task.delay(1.5, function()
 				if glowId == mine then
-					levelStroke.Color = Theme.Stroke
+					levelMark(false)
 				end
 			end)
 			return
@@ -670,10 +681,10 @@ local function build()
 
 		local level = s.Level or 1
 		levelPill.Text = "Lv " .. level
-		if level >= Balance.Progression.MaxLevel then
+		if level >= Catalog.Current.MaxKeeperLevel then
 			xpBar.Set(1, "Max level")
 		else
-			local need = math.max(s.XpToNext or Progression.XpToNext(level), 1)
+			local need = math.max(s.XpToNext or 1, 1)
 			xpBar.Set((s.Xp or 0) / need, ("XP %d/%d"):format(s.Xp or 0, need))
 		end
 		if lastLevel and level > lastLevel then
@@ -688,7 +699,7 @@ local function build()
 				table.insert(parts, ("+%d%% %s"):format(pct(b[p[1]]), p[2]))
 			end
 		end
-		bonusChip.Text = "Bonus: " .. table.concat(parts, "  ")
+		Kit.SetText(bonusChip, "Bonus: " .. table.concat(parts, "  "))
 		bonusChip.Visible = #parts > 0 and not (s.Building and Scale.Phone)
 
 		local boxes = s.Boxes or {}
@@ -719,17 +730,22 @@ local function build()
 		end
 		shownNext = id
 		for _, c in traitRow:GetChildren() do
-			if c:IsA("TextLabel") then
+			if c:IsA("TextLabel") or c:IsA("Frame") then
 				c:Destroy()
 			end
 		end
-		local def = id and Visitors.Get(id)
+		local def = id and Catalog.Visitor(id)
 		nextName.Text = def and def.DisplayName or ""
-		for i, t in def and def.Traits or {} do
-			local info = Visitors.TraitText[t]
-			if info then
-				Kit.Pill(traitRow, info.Name, Theme.BgRaised, Theme.TextPrimary, 24).LayoutOrder = i
+		local pid = id and SpriteIds.Portraits[id]
+		nextPortrait.Visible = Sprites.Ok(pid)
+		nextPortrait.Image = if nextPortrait.Visible then pid else ""
+		for i, info in def and def.Traits or {} do
+			local box = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 26), LayoutOrder = i }, traitRow)
+			hlist(box, 3)
+			if info.Id == "Mender" then
+				Kit.Icon(box, "Heal", UDim2.fromOffset(22, 22)).LayoutOrder = 1
 			end
+			Kit.Pill(box, info.Name, Theme.BgRaised, Theme.TextPrimary, 26).LayoutOrder = 2
 		end
 	end
 
@@ -760,7 +776,10 @@ function Hud.Init()
 end
 
 function Hud.Start()
-	task.spawn(build)
+	task.spawn(function()
+		Catalog.Wait() -- open to every player, so the load-failure screen still appears
+		build()
+	end)
 end
 
 return Hud

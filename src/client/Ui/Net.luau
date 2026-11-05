@@ -13,9 +13,9 @@ local function remotes(): Instance
 	return folder :: Instance
 end
 
--- Returns (ok, reasonOrData). A transport failure reads as "Busy".
-function Net.Invoke(name: string, ...: any): (boolean, any)
-	local ok, a, b = pcall(function(...)
+-- Returns (ok, reasonOrData, extra). A transport failure reads as "Busy".
+function Net.Invoke(name: string, ...: any): (boolean, any, any)
+	local ok, a, b, c = pcall(function(...)
 		local remote = remotes():WaitForChild(name, 10)
 		if not remote then
 			error("missing remote " .. name)
@@ -25,7 +25,7 @@ function Net.Invoke(name: string, ...: any): (boolean, any)
 	if not ok then
 		return false, "Busy"
 	end
-	return a == true, b
+	return a == true, b, c
 end
 
 -- Connects once the remote exists (waits in its own thread).

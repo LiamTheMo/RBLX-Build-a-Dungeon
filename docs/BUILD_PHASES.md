@@ -113,7 +113,7 @@
 
 **Goal:** Make actions satisfying and outcomes clear.
 
-**Status (2026-11-05):** UI, icons and sounds are implemented in code: `src/client/Ui/*`, `src/shared/UI/IconIds.luau` and `SoundIds.luau`, with reduced-motion and sound settings. Four sound slots are unfilled (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md)). Not yet verified: the exit check, on real devices.
+**Status (2026-11-05):** UI, icons and sounds are implemented in code: `src/client/Ui/*`, `src/client/Ui/IconIds.luau` and `SoundIds.luau`, with reduced-motion and sound settings. Four sound slots are unfilled (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md)). Not yet verified: the exit check, on real devices.
 
 **Build:** Add placement confirmation, damage/slow indicators, trap warnings, monster recovery, theft and banking feedback. Create restrained discovery VFX; pool and cap particles. Add ambience and distinct sounds with music/effects controls. Polish HUD, build inventory, room details, collection, shop, onboarding and results in one visual system. Support safe-area layouts, readable text, icons plus color, reduced motion/effects and sound settings. UI animation must not delay actions.
 

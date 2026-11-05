@@ -5,21 +5,23 @@ The interfaces every module agrees on. Change this document first when an interf
 ## Principles
 
 - The server decides everything that matters. The client sends requests and renders replicated state.
+- **Code split.** `src/shared` (`ReplicatedStorage.Shared`) holds only `Net/Remotes` (this contract) and the generic `Core/Loader` and `Core/Signal`. Definitions, balance and every rule are server-only (`src/server/Definitions`, `src/server/Rules`). The client runs no game rules: it gets display data from `GetCatalog`, per-player numbers from the `State` snapshot, encounter values and cell tiles from the plot, and layout checks from `PreviewLayout`. Client-only presentation data (`IconIds`, `SoundIds`, `RarityColors`, `ReasonText`) lives in `src/client/Ui`.
 - Mutations run **without yielding** between reading and writing a profile, so each request is atomic per player (Luau is single-threaded). DataStore calls happen only in ProfileService, on copies.
 - Pure rules (no Instances) live in `Rules` modules and have specs in `tests/luau/`.
-- Refusals are `return false, "ReasonCode"`. Every code has player text in `src/shared/UI/ReasonText.luau`.
+- Refusals are `return false, "ReasonCode"`. Every code has player text in `src/client/Ui/ReasonText.luau` (the server only sends codes).
 - Art is optional at runtime: when `ReplicatedStorage.Art.<...>` is missing, code-built graybox models are used, so the game always runs.
 - Assets (images, mockups, model exports, audio files) live in `C:\Users\asus\Projects\Assets\BuildADungeon\`, never in this repo.
 
-## Plot geometry (`src/shared/Rules/PlotGeometry.luau`)
+## Plot geometry (`src/server/Rules/PlotGeometry.luau`, server only)
 
 - Each plot has an anchor CFrame at the grid centre, on the floor's top surface. Local −Z is the back of the plot; +Z is the front, where visitors arrive and players stand.
 - `PlotGeometry.CellLocal(column, row) -> Vector3`: `((column - 3) * CellSize, 0, (2.5 - row) * CellSize)` for the 5 × 4 grid (generalised from `Grid`).
 - `PlotGeometry.LocalToCell(localPos) -> (column, row)?`: nil outside the grid.
 - `PlotGeometry.SpawnLocal() -> Vector3`: one cell in front of the entrance cell (visitors appear here and walk in).
 - Plot anchors: `Workspace.Map.PlotAnchors.Plot1..PlotN` (Studio-owned parts). Without them, PlotService uses `CFrame.new((i - 1) * 60 - 150, 0.5, 0)`.
+- Clients never use these functions: they read the plot's cell tiles (`Base.Cells`, see "Replicated plot state").
 
-## Shared rules
+## Server rules (`src/server/Rules`, pure, with specs)
 
 - `Rules/Route.luau`:
   - `Route.Key(column, row) -> "c,r"`, `Route.Parse(key) -> (column?, row?)`.
@@ -28,6 +30,7 @@ The interfaces every module agrees on. Change this document first when an interf
   - `VaultBonus(vault, extraCap?) -> fraction` (`extraCap` from `Progression.VaultCapBonus`).
   - `WinPayout(visitorId, vault, hasTreasure, coinBonus?, extraCap?) -> (amount, "Bank" | "Vault")`: `floor(reward * (1 + coinBonus) * (1 + vaultBonus))`, the vault bonus only with a treasure room.
   - `Theft(visitorId, vault) -> stolen`.
+  - **Rarity tiers** live in one ordered list, `Balance.Rarities` (`{Id, Weight, RareWeight, StatMultiplier, MaxLevel, PerkCount, PerkSize}`; index is rank; `Balance.RarityById[id]` looks one up). Loot odds/pity, perks, `Economy`, `EncounterSim`, `ProfileSchema` and the client all iterate it. **To add a tier:** insert one entry in the list (keep both weight columns at 100 and the order low to high), add an upgrade cost if its MaxLevel exceeds 10, and add its colour in the client's `src/client/Ui/RarityColors.luau`. A tier without a colour renders as Common. Ids are saved in profiles, so never rename one. `Loot.RarityRank/RollRarity/NextPity/Odds/RollPerks/PerkAmount` take an optional tier list for tests.
   - `MaxLevel(rarity?) -> number`; `UpgradeCost(currentLevel, rarity?) -> cost?` (nil at the rarity's max; default Common).
   - `VisitorInterval(hasTreasure, reduction?) -> seconds` (Lure; never below 1 s).
 - `Rules/Loot.luau` (pure; every roll takes an injected `rng` with `NextNumber()`; the server uses `Random.new()`):
@@ -35,8 +38,28 @@ The interfaces every module agrees on. Change this document first when an interf
   - `RollRarity(boxType, pity, rng)`, `NextPity(pity, rarity)`, `RollRoom(rng)`, `RollBlueprint(rng)`, `RollPerks(rarity, rng) -> {{Kind, Amount}}`, `PerkAmount(rarity, kind)`, `RarityRank(rarity)`, `Craftable(roomId)`, `DropChances(visitorId, lootBonus) -> {Box, Blueprint, BoxType}`, `RollDrops(visitorId, lootBonus, rng) -> {{Kind = "Box", Type} | {Kind = "Blueprint", RoomId}}`.
 - `Rules/Progression.luau` (pure): `XpToNext(level)`, `XpFor(visitorId, xpBonus)`, `AddXp(level, xp, amount) -> (level, xp, levelsGained)`, `LevelReward(level) -> "Dungeon"|"Rare"`, `ShopLevel(roomId)`, `PermanentCost(id, level) -> cost?`, `PermanentEffect(profile, effect)`, `Bonuses(profile) -> {Coins, Loot, Xp}` (placed-room perks + permanents, then capped), `DefenderHealthBonus(profile)`, `IntervalReduction(profile)`, `VaultCapBonus(profile)` (placed Treasure Room level + Deep Vault).
 - Server `Rules/Rewards.luau` (pure profile mutations returning `(ok, dataOrReason)`): `Defeat(profile, visitorId, rng, bonuses) -> {Drops, Xp, LevelUp}`, `GrantXp`, `OpenBox`, `Craft`, `Scrap`, `BuyPermanent`.
-- `UI/ReasonText.luau`: `ReasonText.Get(code) -> string` (falls back to a generic line).
-- `Net/Remotes.luau`: `Remotes.Kinds[name] = "Function" | "Event"` for the remotes below; the server creates `ReplicatedStorage.Remotes`.
+- `Rules/Catalog.luau`: `Catalog.Build() -> catalog` (deeply frozen; see "Catalog").
+- `Rules/StateView.luau`: `StateView.Derived(profile) -> {VaultBonus, VaultBonusCap, XpToNext, Bonuses, Rooms, BoxOdds, PermanentNextCost, DropChances}`, the server-computed part of the `State` snapshot. Never mutates the profile (rooms are copies).
+- Client `Ui/ReasonText.luau`: `ReasonText.Get(code) -> string` (falls back to a generic line).
+- Shared `Net/Remotes.luau`: `Remotes.Kinds[name] = "Function" | "Event"` for the remotes below; the server creates `ReplicatedStorage.Remotes`.
+
+## Catalog (`GetCatalog`)
+
+Static display data, the same for every player, built once by `CatalogService` from the server definitions. The client fetches it on start (`Ui/Catalog`: retry with backoff, then cached) before building UI. It holds only what the UI shows; health, damage, rewards, theft fractions and drop or box weights never leave the server.
+
+```lua
+{
+  Rooms = { [roomId] = { Id, DisplayName, Kind, Description, Source, Cost?, ShopLevel, Upgradable, MaxPlaced?,
+                         EndsRoute, Placeable, Craftable, TrapCycle?, TrapTelegraph? } },  -- TrapCycle/Telegraph: spike warning flash timing
+  RoomOrder = { roomId... },                     -- display order (Rooms.Order)
+  Visitors = { [visitorId] = { Id, DisplayName, Description, Arrival, Traits = { { Id, Name, Text } } } },
+  Rarities = { { Id, StatMultiplier, MaxLevel, PerkCount, PerkSize } },  -- ordered, index = rank
+  Permanent = { { Id, Name, MaxLevel, PerLevelText, EffectText = { [level + 1] = text } } },  -- shop order
+  Grid = { Columns, Rows, CellSize, EntranceCell = { Column, Row }, EntranceKey },
+  Loot = { BoxTypes, CraftCost, ScrapReturn },
+  MaxKeeperLevel = 100,
+}
+```
 
 ## Profile (schema v3, `src/server/Rules/ProfileSchema.luau`)
 
@@ -60,15 +83,17 @@ The interfaces every module agrees on. Change this document first when an interf
 }
 ```
 
-- `ProfileSchema.Default() -> profile`, `ProfileSchema.Migrate(stored) -> (profile?, problem?)`. Repair rules: drop unknown room ids; drop layout entries pointing at missing or duplicate instances; clamp money to whole numbers ≥ 0; reset an invalid layout (failed `Route.Build`) to empty, keeping the rooms; reject a newer schema version without touching it. **v1 -> v2** adds `Discovered`: filled from owned rooms, plus `Practice` if `Stats.Encounters >= 1` and `Novice` if `>= 2`; stored ids are kept only if they are real room/visitor ids. `RoomInventory.Add` and the visitor spawn record new entries. **v2 -> v3** keeps every field; rooms become Common with no perks; Xp is seeded from `Stats.Wins * 10` converted into levels (no retroactive boxes). Validation: unknown rarity becomes Common; level clamped to the rarity's max; perks kept only for known, distinct kinds up to the rarity's count, with `Amount` re-derived from `Balance` (never trusted); Level 1..100 and Xp below the next level; box and blueprint counts whole 0..999, blueprints only for craftable rooms; permanent levels 0..max for known ids; `BoxPity` 0..9. A newer version is still rejected.
+- `ProfileSchema.Default() -> profile`, `ProfileSchema.Migrate(stored) -> (profile?, problem?)`. Repair rules: drop unknown room ids; drop layout entries pointing at missing or duplicate instances; clamp money to whole numbers ≥ 0; reset an invalid layout (failed `Route.Build`) to empty, keeping the rooms; reject a newer schema version without touching it. **v1 -> v2** adds `Discovered`: filled from owned rooms, plus `Practice` if `Stats.Encounters >= 1` and `Novice` if `>= 2`; stored ids are kept only if they are real room/visitor ids. `RoomInventory.Add` and the visitor spawn record new entries. **v2 -> v3** keeps every field; rooms become Common with no perks (the rarity list grew to 7 tiers without a version bump: ids are validated against `Balance.Rarities`, and saved levels are only ever clamped to the cap, which only rose); Xp is seeded from `Stats.Wins * 10` converted into levels (no retroactive boxes). Validation: unknown rarity becomes Common; level clamped to the rarity's max; perks kept only for known, distinct kinds up to the rarity's count, with `Amount` re-derived from `Balance` (never trusted); Level 1..100 and Xp below the next level; box and blueprint counts whole 0..999, blueprints only for craftable rooms; permanent levels 0..max for known ids; `BoxPity` 0..9. A newer version is still rejected.
 - Persistence (`ProfileService`): session lease on the DataStore key, retries with backoff, autosave every 60 s, save on leave and `BindToClose`. A failed load **never** creates or saves a default profile; the player gets `LoadState = "Failed"` and every request is refused with `ProfileNotLoaded`.
 
 ## Remotes (`ReplicatedStorage.Remotes`)
 
-RemoteFunctions return `(ok: boolean, reasonOrData)`. Every handler checks argument types, the rate limit (`Net` guard: about 8 requests/s per player and remote) and a loaded profile, then calls the owning service.
+RemoteFunctions return `(ok: boolean, reasonOrData, extra?)`. Every handler checks argument types, the rate limit (`Net` guard: about 8 requests/s per player and remote) and a loaded profile (except `GetCatalog`, registered with `Net.HandleOpen`), then calls the owning service.
 
 | Remote | Args | Service |
 | --- | --- | --- |
+| `GetCatalog` | — | CatalogService: returns the frozen catalog (above). No loaded profile needed, so the load-failure screen still works |
+| `PreviewLayout` | `layout: {[cellKey]: instanceId}` (≤ 19 entries, same check as `CommitLayout`) | BuildService: `LayoutRules.Validate` without applying anything (no build-mode or cooldown check). Returns `(true, routeCells)` or `(false, reason, cellKey?)`. The client calls it about 0.15 s after each draft change and shows "Checking route..." meanwhile; `CommitLayout` re-validates |
 | `SetBuilding` | `on: boolean` | BuildService. Refused with `EncounterActive` while a visitor is inside |
 | `CommitLayout` | `layout: {[cellKey]: instanceId}` (≤ 19 entries) | BuildService: ownership, each instance once, `Route.Build`, no encounter running |
 | `Bank` | — | EconomyService: vault → coins |
@@ -83,7 +108,7 @@ RemoteFunctions return `(ok: boolean, reasonOrData)`. Every handler checks argum
 | `SaveSettings` | `{ReducedMotion: boolean, MusicVolume: number, SfxVolume: number}` | ProfileService |
 
 RemoteEvents:
-- `State` (server → owner): the full private snapshot whenever it changes: `{LoadState, Coins, Vault, VaultBonus, VaultBonusCap, Rooms (each with Rarity, Perks), Layout, Tutorial, Settings, ChallengerUnlocked, ChallengerQueued, Building, Stats, Discovered, Xp, Level, XpToNext, Boxes, Blueprints, Permanent, BoxPity, Bonuses = {Coins, Loot, Xp}}` (Bonuses are effective, capped).
+- `State` (server → owner): the full private snapshot whenever it changes: `{LoadState, Coins, Vault, VaultBonus, VaultBonusCap, Rooms (copies, each with Rarity, Perks and NextUpgradeCost: nil at the rarity's max or when not upgradable), Layout, Tutorial, Settings, ChallengerUnlocked, ChallengerQueued, Building, Stats, Discovered, Xp, Level, XpToNext, Boxes, Blueprints, Permanent, BoxPity, Bonuses = {Coins, Loot, Xp}, BoxOdds = {Dungeon = odds, Rare = odds}, PermanentNextCost = {[upgradeId] = cost (absent at max)}, DropChances = {[visitorId] = {Box, Blueprint, BoxType}}}` (Bonuses are effective, capped; `BoxOdds[box]` is exactly `Loot.Odds(box, BoxPity, Level)`; `DropChances` include the loot bonus). Computed by `Rules/StateView`. Shop level gates: the client compares `Catalog.Rooms[id].ShopLevel` with `Level` (the server enforces `LevelLocked`).
 - `EncounterFx` (server → all clients): `{Plot = n, Kind = ..., ...}` for visuals only. Kinds: `Spawn`, `Attack {By = "Visitor"|"Defender", Index, Damage}`, `Trap {Index, Hit}`, `Slow {Index}` (never sent for a Sure-footed visitor), `DefenderDown {Index}`, `DenBoost {Index = boosted defender, Den = den index}` (right after `Spawn`, once per boosted defender), `Spored {Index = cavern}`, `Rise {Index}` (Restless Crypt stands up again), `Trap` also carries `Spored` (hit while spored), `End {Result = "Defeated"|"Escaped"|"Robbed", Amount, Destination, Drops = {{Kind = "Box"|"Blueprint", Type?, RoomId?, Source = "Visitor"|"LevelUp"}}, Xp, LevelUp = newLevel?}` (drops, XP and level-up boxes are applied in the same non-yielding step as the payout, once per encounter).
 - `Notice` (server → owner): `{Text, Kind = "Info"|"Good"|"Bad"}` toasts.
 
@@ -93,11 +118,12 @@ Model attributes:
 - `OwnerUserId` (number, 0 when free) and `Index`.
 - `Route` (string, cell keys in order joined by `|`).
 - `State` (`"Idle" | "Building" | "Encounter"`), `NextVisitorAt` (`workspace:GetServerTimeNow()` time).
-- `VisitorId`, `VisitorHealth`, `VisitorMaxHealth`, `VisitorProgress` (studs along the route from the entrance centre, updated 10×/s), `VisitorFighting` (route index or 0), `VisitorSlowed` (bool), `VisitorSpored` (bool), `NextVisitorId` (id of the visitor that will arrive next; set when the timer starts, updated if an Armored Challenger is invited; look up traits in `Visitors`).
+- `VisitorId`, `VisitorHealth`, `VisitorMaxHealth`, `VisitorProgress` (studs along the route from the entrance centre, updated 10×/s), `VisitorFighting` (route index or 0), `VisitorSlowed` (bool), `VisitorSpored` (bool), `NextVisitorId` (id of the visitor that will arrive next; set when the timer starts, updated if an Armored Challenger is invited; names and traits in `Catalog.Visitors`).
+- `VisitorReward` (win payout if defeated now, coin and vault bonuses applied), `VisitorRewardDestination` (`"Bank"` | `"Vault"`) and `VisitorTheft` (what it would steal on reaching the treasure now; 0 without a Treasure Room). Set at spawn, before `VisitorId`, and refreshed every step (so vault or bonus changes show); display only, `finish()` computes the real payout.
 
 Children:
-- `Base` (floor, grid lines, entrance arch).
-- `Rooms` with one Model per placed room, named by cell key. Attributes: `RoomId`, `InstanceId`, `Level`, `Rarity` (`"Common"|"Uncommon"|"Rare"|"Mythic"`), `RouteIndex`, `DefenderHealth`, `DefenderMaxHealth` (rarity and Stout Defenders included, Monster Den boost not). The server builds these models; clients animate them.
+- `Base` (floor, grid lines, entrance arch) and `Base.Cells` (Model, `ModelStreamingMode = Persistent`): one tile per grid cell named by its cell key (`Art.Rooms.EmptyCellTile` when present, its visible parts lifted 0.04 studs and hidden under placed rooms and the entrance; otherwise an invisible thin part). Each tile's pivot is the cell centre on the floor top; attributes `CellKey`, `Column`, `Row`, `Placeable` (false on the entrance). Also `Base.Cells.VisitorSpawn` (invisible, `CanQuery` false): where visitors appear. The client raycasts the tiles (include list) to pick cells and uses their pivots for ghosts, the route overlay and the visitor path; in build mode it hides tile art under draft rooms locally.
+- `Rooms` with one Model per placed room, named by cell key. Attributes: `RoomId`, `InstanceId`, `Level`, `Rarity` (any `Balance.Rarities` Id), `RouteIndex`, `DefenderHealth`, `DefenderMaxHealth` (rarity and Stout Defenders included, Monster Den boost not). The server builds these models; clients animate them.
 
 ## Encounter simulation (`src/server/Rules/EncounterSim.luau`)
 
@@ -114,17 +140,22 @@ Children:
 
 | Side | Module | Owns |
 | --- | --- | --- |
-| server | `Infrastructure/Net` | Creates remotes; type, rate-limit and profile-loaded guard |
+| shared | `Net/Remotes`, `Core/Loader`, `Core/Signal` | Remote contract; module lifecycle; in-process signals |
+| server | `Definitions/*` (`Balance`, `Grid`, `Rooms`, `Visitors`) | Identities and every tunable number |
+| server | `Rules/*` | Pure rules (Route, Economy, Loot, Progression, PlotGeometry, VisitorRotation, LayoutRules, EncounterSim, Rewards, ProfileSchema, Catalog, StateView, ...) |
+| server | `Infrastructure/Net` | Creates remotes; type, rate-limit and profile-loaded guard (`Handle`, `HandleOpen`) |
 | server | `Infrastructure/DataStoreGateway`, `ProfileStore` | Leased load and save with retries |
 | server | `Services/ProfileService` | Lifecycle, `Get(player)`, `Changed(player)` (pushes `State`) |
-| server | `Services/PlotService` | Plot assignment, base, room models, attributes |
-| server | `Services/BuildService` | Build mode, layout commit |
-| server | `Services/EncounterService` | Visitor timer, sim loop, payouts, theft, FX events |
+| server | `Services/CatalogService` | `GetCatalog` |
+| server | `Services/PlotService` | Plot assignment, base, cell tiles, room models, attributes |
+| server | `Services/BuildService` | Build mode, layout preview and commit |
+| server | `Services/EncounterService` | Visitor timer, sim loop, payouts, theft, reward/theft preview attributes, FX events |
 | server | `Services/EconomyService` | Bank, buy, upgrade, permanent upgrades |
 | server | `Services/LootService` | Open boxes, craft blueprints, scrap rooms; server RNG for loot |
 | server | `Services/TutorialService` | Tutorial steps and grants |
 | client | `Controllers/PlotViewController` | Visitors, defender and trap animation, FX, health bars |
-| client | `Controllers/BuildController` | Build camera, inventory, ghost preview, route overlay, commit/cancel |
+| client | `Controllers/BuildController` | Build camera, inventory, ghost preview, route overlay from `PreviewLayout`, commit/cancel |
 | client | `Controllers/HudController` | HUD, encounter panel, shop, settings, toasts |
 | client | `Controllers/TutorialController` | Prompts and highlights |
-| client | `Ui/*` | Small UI kit and theme tokens from the UI spec |
+| client | `Ui/Catalog`, `Ui/Cells`, `Ui/State` | Cached catalog; cell tiles (pick, positions); latest State snapshot |
+| client | `Ui/*` | Small UI kit, theme tokens, icons, sounds, rarity colours, refusal text |
