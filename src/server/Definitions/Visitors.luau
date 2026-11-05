@@ -12,13 +12,13 @@ export type VisitorDef = {
 	DisplayName: string,
 	Arrival: Arrival,
 	Description: string,
-	-- Shown before the visitor enters. Empty for the MVP visitors.
+	-- Shown before the visitor enters (see Visitors.TraitText). Empty for the MVP visitors.
 	Traits: { string },
 }
 
 local Visitors = {}
 
-Visitors.Version = 1
+Visitors.Version = 2
 
 local definitions: { [string]: VisitorDef } = {
 	Practice = {
@@ -42,7 +42,27 @@ local definitions: { [string]: VisitorDef } = {
 		Description = "Tough and well paid. Steals more if it reaches your Treasure Room.",
 		Traits = {},
 	},
+	Scout = {
+		Id = "Scout",
+		DisplayName = "Scout",
+		Arrival = "Automatic",
+		Description = "Quick on its feet and hard to pin down.",
+		Traits = { "SureFooted" },
+	},
+	Cleric = {
+		Id = "Cleric",
+		DisplayName = "Cleric",
+		Arrival = "Automatic",
+		Description = "Patches itself up between fights. Hit it hard while it duels.",
+		Traits = { "Mender" },
+	},
 }
+
+-- Player-facing trait text, keyed by the names in VisitorDef.Traits.
+Visitors.TraitText = table.freeze({
+	SureFooted = table.freeze({ Name = "Sure-footed", Text = "Immune to slows." }),
+	Mender = table.freeze({ Name = "Mender", Text = "Heals while walking, but not while fighting." }),
+})
 
 for _, def in definitions do
 	table.freeze(def.Traits)

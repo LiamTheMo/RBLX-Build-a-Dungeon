@@ -1,11 +1,11 @@
 -- Consistency checks for the shared definitions: every id resolves, every room
 -- or visitor that needs numbers has them, and values sit in sane ranges.
 
-local Shared = game:GetService("ReplicatedStorage").Shared
-local Grid = require(Shared.Definitions.Grid)
-local Rooms = require(Shared.Definitions.Rooms)
-local Visitors = require(Shared.Definitions.Visitors)
-local Balance = require(Shared.Definitions.Balance)
+local Server = game:GetService("ServerScriptService").Server
+local Grid = require(Server.Definitions.Grid)
+local Rooms = require(Server.Definitions.Rooms)
+local Visitors = require(Server.Definitions.Visitors)
+local Balance = require(Server.Definitions.Balance)
 
 local function isPositive(n)
 	return type(n) == "number" and n > 0
@@ -56,7 +56,10 @@ test("defenders and traps have balance entries", function()
 			end
 		elseif def.Kind == "Trap" then
 			expect(stats ~= nil, id .. " has no balance")
-			if stats then
+			if stats and stats.SporeDuration then
+				expect(isPositive(stats.SporeDuration), id .. " SporeDuration")
+				expect(isPositive(stats.TrapDamageBonus), id .. " TrapDamageBonus")
+			elseif stats then
 				expect(isPositive(stats.Damage), id .. " Damage")
 				expect(isPositive(stats.Cycle), id .. " Cycle")
 				expect(stats.Telegraph > 0 and stats.Telegraph < stats.Cycle, id .. " telegraph fits in the cycle")

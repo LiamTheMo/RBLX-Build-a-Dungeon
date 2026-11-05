@@ -5,7 +5,8 @@ Adapted from RBLX-Flintborn's tests/luau/run.py (same owner). Game modules are
 written for Roblox: they `require(script.Parent.X)` and use Roblox datatypes.
 Each spec runs as one generated bundle: prelude.luau (datatype stubs, a fake
 instance tree and a require that resolves it), then every module under
-src/shared and src/server as a loader function, then the spec itself.
+src/shared, src/server and src/client as a loader function (only required
+modules run), then the spec itself.
 
 Only pure-logic modules are testable this way; anything touching Instances,
 services or the network still needs a Studio playtest.
@@ -30,6 +31,8 @@ HERE = Path(__file__).resolve().parent
 MOUNTS = {
     ("ReplicatedStorage", "Shared"): ROOT / "src" / "shared",
     ("ServerScriptService", "Server"): ROOT / "src" / "server",
+    # Client presentation data some specs cross-check (e.g. a colour per rarity).
+    ("StarterPlayer", "StarterPlayerScripts", "Client"): ROOT / "src" / "client",
     ("ServerStorage", "TestSupport"): HERE / "support",
 }
 
@@ -69,6 +72,17 @@ def build_bundle(spec: Path) -> str:
 
 def main() -> int:
     specs = sorted(HERE.glob("*.spec.luau"))
+    if len(sys.argv) == 2 and sys.argv[1] == "--studio":
+        # Writes every bundle plus index.txt to build/specs/ for tests/luau/studio_runner.luau.
+        out = ROOT / "build" / "specs"
+        out.mkdir(parents=True, exist_ok=True)
+        for old in out.glob("*.luau"):
+            old.unlink()
+        for spec in specs:
+            (out / (spec.stem + ".bundle.luau")).write_text(build_bundle(spec), encoding="utf-8")
+        (out / "index.txt").write_text("\n".join(s.stem + ".bundle.luau" for s in specs), encoding="utf-8")
+        print(f"Wrote {len(specs)} bundles to {out}")
+        return 0
     if len(sys.argv) == 3 and sys.argv[1] == "--bundle":
         matches = [s for s in specs if s.name.startswith(sys.argv[2])]
         if len(matches) != 1:

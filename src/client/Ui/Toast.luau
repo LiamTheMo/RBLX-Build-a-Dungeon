@@ -1,0 +1,125 @@
+-- Toast stack: 0.2 s in, 2.5 s hold, 0.3 s out (instant-ish when reduced).
+local Players = game:GetService("Players")
+
+local Theme = require(script.Parent.Theme)
+local Scale = require(script.Parent.Scale)
+local Settings = require(script.Parent.Settings)
+
+local Toast = {}
+
+local KIND_COLOR = { Info = Theme.Accent, Good = Theme.Success, Bad = Theme.Danger }
+local KIND_ICON = { Info = "i", Good = "+", Bad = "!" }
+local MAX = 4
+
+local stack: Frame? = nil
+
+local function ensure(): Frame
+	if stack and stack.Parent then
+		return stack
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "Toasts"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 50
+	gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+	Scale.Attach(gui)
+	local f = Instance.new("Frame")
+	f.BackgroundTransparency = 1
+	f.Parent = gui
+	local function place()
+		-- Phones: left of the encounter panel and right of the level panel.
+		local phone = Scale.Phone
+		f.AnchorPoint = if phone then Vector2.new(0, 0) else Vector2.new(0.5, 0)
+		f.Position = if phone then UDim2.fromOffset(316, 96) else UDim2.new(0.5, 0, 0, 148)
+		f.Size = UDim2.fromOffset(if phone then 320 else 460, 10)
+	end
+	place()
+	Scale.Changed:Connect(place)
+	local l = Instance.new("UIListLayout")
+	l.Padding = UDim.new(0, 8)
+	l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	l.Parent = f
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	stack = f
+	return f
+end
+
+function Toast.Show(text: string, kind: string?)
+	kind = if KIND_COLOR[kind or "Info"] then kind else "Info"
+	local parent = ensure()
+	-- While the Loot/Collection/Keeper panel is open, drop the stack below its header and tab row.
+	local panels = Players.LocalPlayer.PlayerGui:FindFirstChild("Panels")
+	local dim = panels and panels:IsA("ScreenGui") and panels.Enabled and panels:FindFirstChildWhichIsA("TextButton")
+	local panelFrame = dim and dim:FindFirstChildWhichIsA("GuiObject")
+	local toastGui = parent.Parent :: ScreenGui
+	if panelFrame then
+		local y = (panelFrame.AbsolutePosition.Y - toastGui.AbsolutePosition.Y) / Scale.Value + 132
+		parent.AnchorPoint = Vector2.new(0.5, 0)
+		parent.Position = UDim2.new(0.5, 0, 0, y)
+	else
+		parent.AnchorPoint = if Scale.Phone then Vector2.new(0, 0) else Vector2.new(0.5, 0)
+		parent.Position = if Scale.Phone then UDim2.fromOffset(316, 96) else UDim2.new(0.5, 0, 0, 148)
+	end
+	local live = {}
+	for _, c in parent:GetChildren() do
+		if c:IsA("CanvasGroup") then
+			table.insert(live, c)
+		end
+	end
+	if #live >= MAX then
+		table.sort(live, function(a, b)
+			return a.LayoutOrder < b.LayoutOrder
+		end)
+		live[1]:Destroy()
+	end
+
+	local g = Instance.new("CanvasGroup")
+	g.LayoutOrder = os.clock() * 1000
+	g.Size = UDim2.new(1, 0, 0, 0)
+	g.AutomaticSize = Enum.AutomaticSize.Y
+	Instance.new("UISizeConstraint", g).MinSize = Vector2.new(0, 48)
+	g.BackgroundColor3 = Theme.BgDeep
+	g.GroupTransparency = 1
+	Instance.new("UICorner", g).CornerRadius = Theme.CornerButton
+	local st = Instance.new("UIStroke")
+	st.Thickness = 3
+	st.Color = KIND_COLOR[kind]
+	st.Parent = g
+	local icon = Instance.new("TextLabel")
+	icon.BackgroundTransparency = 1
+	icon.Size = UDim2.fromOffset(40, 48)
+	icon.Text = KIND_ICON[kind]
+	icon.TextColor3 = KIND_COLOR[kind]
+	icon.TextSize = 26
+	icon.FontFace = Theme.HeadingFont
+	icon.Parent = g
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.fromOffset(40, 0)
+	label.Size = UDim2.new(1, -48, 0, 0)
+	label.AutomaticSize = Enum.AutomaticSize.Y
+	local lp = Instance.new("UIPadding", label)
+	lp.PaddingTop, lp.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8)
+	label.Text = text
+	label.TextWrapped = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextColor3 = Theme.TextPrimary
+	label.TextSize = Theme.TextSize.Body
+	label.FontFace = Theme.BodyFont
+	label.Parent = g
+	g.Parent = parent
+
+	local fast = Settings.Reduced()
+	Settings.Tween(g, TweenInfo.new(fast and 0.08 or 0.2), { GroupTransparency = 0 })
+	task.delay(2.5, function()
+		if g.Parent then
+			local t = Settings.Tween(g, TweenInfo.new(fast and 0.08 or 0.3), { GroupTransparency = 1 })
+			if t then
+				t.Completed:Wait()
+			end
+			g:Destroy()
+		end
+	end)
+end
+
+return Toast

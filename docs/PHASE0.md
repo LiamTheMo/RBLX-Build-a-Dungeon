@@ -13,7 +13,7 @@ These are recorded in the GDD change log. They also resolve a conflict in the ea
 
 ## Grid and route
 
-Values live in `src/shared/Definitions/Grid.luau`.
+Values live in `src/server/Definitions/Grid.luau`.
 
 - 5 columns × 4 rows. Each cell is 6 × 6 studs and walls are 5 studs high, so a room is roughly avatar height. A plot's dungeon is about 30 × 24 studs.
 - Cells are addressed (column, row). Row 1 is the front edge, where visitors arrive.
@@ -66,12 +66,14 @@ These are the rules the placeholder numbers assume. Phase 2 implements and tunes
   - **Defeated:** the advertised reward is paid once. Without a treasure room it goes straight to banked coins; with one it goes to the vault, plus the vault bonus.
   - **Reaches the end, no treasure room:** the visitor leaves. No reward, no loss.
   - **Reaches the treasure room:** it steals its theft fraction of the current unbanked vault, rounded down. Banked coins and rooms are never affected. An empty vault loses nothing.
+- **Assumption (owner review):** Bank is refused (`EncounterActive`) while an encounter is running on that plot, so a theft cannot be dodged by banking at the last second. Build mode is already refused during an encounter.
+- **Assumption (owner review):** the tutorial's Skip is locked until the player has finished one encounter (`Stats.Encounters >= 1`; later sessions satisfy this), so the first session always sees the practice fight.
 - **Assumption:** removing the treasure room while the vault holds gold banks that gold automatically. Banking is already allowed at any time, so this gives no extra advantage and nothing is ever lost on removal.
 - **Assumption:** rewards and theft round down to whole coins; the vault bonus is `min(cap, floor(vault / 100) × 1%)`.
 
 ## Placeholder values
 
-Values live in `src/shared/Definitions/Balance.luau`. All are hypotheses for playtesting.
+Values live in `src/server/Definitions/Balance.luau`. All are hypotheses for playtesting.
 
 | Visitor | Health | Attack | Walk speed | Reward | Theft |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -81,22 +83,81 @@ Values live in `src/shared/Definitions/Balance.luau`. All are hypotheses for pla
 
 | Room | Values | Cost |
 | --- | --- | ---: |
-| Slime Nest | Defender 40 health, 6 damage every 1.0 s, each hit slows 50% for 3 s | Starter |
+| Slime Nest | Defender 40 health, 6 damage every 1.0 s, each hit slows 75% for 6 s | Starter |
 | Spike Hall | 15 damage per strike, 1.2 s cycle with a 0.4 s warning | Tutorial grant |
 | Guard Room | Defender 80 health, 12 damage every 1.2 s | 100 coins |
-| Treasure Room | Vault bonus +1% per 100 unbanked gold, capped at +20% | Starter (optional) |
+| Monster Den (Phase 7) | Adjacent defenders +20% damage and health, once each (strongest adjacent Den); +5% per level | 250 coins, keeper level 5 |
+| Mushroom Cavern (Phase 7) | Spored 5 s, +50% trap damage; +10% per level | 200 coins, keeper level 3 |
+| Restless Crypt (Phase 7) | Defender 60 health, 8 damage every 1.0 s, rises once at 50% | 300 coins, keeper level 8 |
+| Scout / Cleric (Phase 7) | Scout 50 health, 8 dmg, speed 6, reward 25; Cleric 70 health, 8 dmg, speed 4, heals 4/s walking, reward 30; theft 10% | Automatic after tutorial + 8 wins |
+| Treasure Room | Vault bonus +1% per 100 unbanked gold, capped at +20% (+5% cap per level while placed) | Starter (optional) |
 
 | Economy and timing | Value |
 | --- | ---: |
 | Starting coins | 0 |
 | Visitor interval, no treasure room | 30 s after the previous encounter |
 | Visitor interval, treasure room placed | 20 s after the previous encounter |
-| First upgrade | 60 coins (its effect is decided in Phase 3) |
+| Room upgrade to level 2 / 3 / 4 / 5 / 6 | 60 / 150 / 350 / 800 / 1800 coins; each level above 1 gives +25% defender damage and health and trap damage |
+
+### Loot, rarity and progression (owner-approved 2026-11-04)
+
+All gameplay-earned; never sold. Values in `Balance.Rarities`, `Balance.Perks`, `Balance.Loot`, `Balance.Progression` and `Balance.Permanent`.
+
+| Rarity | Dungeon Box weight | Rare Box weight | Stat multiplier | Max level | Perks |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Common | 60 | 0 | x1.00 | 3 | none |
+| Uncommon | 25 | 45 | x1.10 | 4 | 1 small |
+| Rare | 10 | 32 | x1.25 | 5 | 1 medium |
+| Epic | 3.5 | 14 | x1.40 | 6 | 2 medium |
+| Legendary | 1.2 | 6 | x1.60 | 7 | 2 large |
+| Mythic | 0.28 | 2.5 | x1.85 | 8 | 3 large |
+| Secret | 0.02 | 0.5 | x2.20 | 10 | 3 huge |
+
+Both weight columns sum to 100. Perks on one room are different kinds (Coins, Loot, Xp), so three perks is one of each. Upgrade costs to reach levels 2 to 10: 60, 150, 350, 800, 1800, 3500, 6000, 10000, 16000 (`Balance.Upgrades.Costs`). Rooms saved as Mythic keep it; their cap rises from 6 to 8 and no level is reduced.
+
+The stat multiplier scales defender health and damage, trap damage, the Monster Den boost and the Mushroom spore bonus. Shop, starter, tutorial and crafted rooms are Common with no perks.
+
+| Perk | Small | Medium | Large | Huge | Cap (all sources) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Coins (win rewards) | +5% | +10% | +20% | +30% | +100% |
+| Loot (drop chances) | +10% | +20% | +40% | +60% | +100% |
+| Xp | +10% | +20% | +40% | +60% | +100% |
+
+**Bonus order:** perks of every *placed* room are summed, the matching permanent upgrade is added, then the total is capped. The coin bonus multiplies the visitor's reward before the vault bonus: `floor(reward * (1 + coins) * (1 + vaultBonus))`.
+
+| Visitor | Box chance | Blueprint chance | XP |
+| --- | ---: | ---: | ---: |
+| Practice | 0 | 0 | 5 |
+| Novice | 6% | 12% | 10 |
+| Scout | 9% | 15% | 12 |
+| Cleric | 9% | 15% | 14 |
+| Armored Challenger | 25% (Rare Box) | 35% | 30 |
+
+Chances are rolled independently on Defeated only and multiplied by (1 + loot bonus), capped at 100%. XP is multiplied by (1 + XP bonus), rounded down.
+
+- **Box room** (both box types): Slime Nest 25, Spike Hall 25, Guard Room 20, Mushroom Cavern 12, Monster Den 10, Restless Crypt 8. Never a Treasure Room.
+- **Pity:** after 9 boxes in a row below Rare, the next box is Rare or better (weights renormalised; rank comes from the list order). `BoxPity` counts the streak.
+- **Blueprint type:** Guard Room 40, Mushroom Cavern 25, Monster Den 20, Restless Crypt 15. 5 blueprints craft a Common room of that type; scrapping an unplaced room (any rarity, not the Treasure Room) returns 2. The 30-room cap applies to opening and crafting (the box or blueprints are kept).
+- **Keeper level:** XP to the next level = 50 + 25 * (level - 1); max level 100. Each level-up gives a Dungeon Box, every 5th level a Rare Box instead. Shop gates: Mushroom Cavern level 3, Monster Den level 5, Restless Crypt level 8.
+- **Assumption (owner review):** v2 profiles are migrated with Xp = 10 * `Stats.Wins` (the Novice rate) converted into levels, so existing testers are not locked out of shop rooms; no retroactive level-up boxes.
+- **Assumption:** stacks of boxes and of blueprints per room are capped at 999.
+- **Assumption:** the tutorial Spike Hall grant now happens once ever (`Discovered.SpikeHall`), so scrapping it cannot farm new grants.
+
+| Permanent upgrade | Effect per level | Max level | Base cost |
+| --- | --- | ---: | ---: |
+| Golden Touch | +5% coins | 10 | 200 |
+| Lucky Charm | +5% loot | 10 | 200 |
+| Scholar | +10% XP | 5 | 250 |
+| Stout Defenders | +5% defender health | 10 | 200 |
+| Lure | -1 s visitor interval (never below 1 s) | 5 | 400 |
+| Deep Vault | +2% vault-bonus cap | 5 | 300 |
+
+Cost from level L to L + 1 = round(base * 1.6^L), paid from banked coins. Levels never reset.
 
 Why these numbers (rough arithmetic, to be confirmed in Phase 2):
 
 - **Practice vs slime:** the slime deals about 24 damage over four attacks and wins easily. The first encounter is a guaranteed, readable win.
-- **Novice vs slime, then spikes:** the slime takes about 4 s to knock out and deals about 24 damage (36 health left). The slowed novice then needs about 3 s to cross the 6-stud spike hall, taking two or three strikes (30–45). It is usually defeated.
+- **Novice vs slime, then spikes:** the slime takes about 4 s to knock out and deals about 24 damage (36 health left). A visitor ends its walk at the centre of the last room, so the slowed novice (1 stud/s) spends about 3 s on the spike hall's inner half, taking three strikes (45) against 36 health. It is defeated (checked in `encounter_sim.spec`). The first tuning, 50% for 3 s, left it with only one strike and an escape, so the slow was strengthened.
 - **Novice vs spikes, then slime:** at full speed the novice crosses in about 1.5 s and takes one or two strikes (15–30), then about 24 from the slime. It usually escapes. This is the "order matters" lesson.
 - **Guard Room at 100 coins:** with 10 + 20 from the tutorial, about four more novice wins. At roughly 45 s per visit, that is about 4–5 minutes without a treasure room, and less with one.
 
@@ -135,7 +196,7 @@ The tutorial must recover from unexpected actions: removing the slime, skipping 
 | GDD reviewed; grid and treasure-room conflict resolved with the owner | Done |
 | Placeholder values selected | Done, in `Balance.luau` |
 | Grid, first route and first five minutes sketched | Done, above |
-| Initial room and visitor definitions | Done, in `src/shared/Definitions/` and checked by `tests/luau/definitions.spec.luau` |
+| Initial room and visitor definitions | Done, in `src/server/Definitions/` and checked by `tests/luau/definitions.spec.luau` |
 | Rojo project repaired (missing `Loader` module) | Done |
 | Naming conventions, asset ownership, source control, issue tracking | Done, in [DEVELOPMENT.md](DEVELOPMENT.md) |
 | Repeatable playtest checklist | Done, in [PLAYTEST_CHECKLIST.md](PLAYTEST_CHECKLIST.md) |

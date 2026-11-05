@@ -3,7 +3,7 @@
 -- numbers (costs, damage, timings) live in Balance.luau, keyed by the same Id.
 -- Ids are persisted in profiles: never rename or reuse one.
 
-export type Kind = "Entrance" | "Defender" | "Trap" | "Treasure"
+export type Kind = "Entrance" | "Defender" | "Trap" | "Treasure" | "Support"
 -- Permanent: part of every plot. Starter: owned from the first join.
 -- Tutorial: granted by onboarding. Shop: bought with banked coins.
 export type Source = "Permanent" | "Starter" | "Tutorial" | "Shop"
@@ -18,13 +18,15 @@ export type RoomDef = {
 	Placeable: boolean,
 	-- Most copies on one plot at a time; nil means no limit beyond grid space.
 	MaxPlaced: number?,
+	-- Whether the player can pay to level it up (up to its rarity's MaxLevel).
+	Upgradable: boolean,
 	-- Must be the last room on the route when placed.
 	EndsRoute: boolean,
 }
 
 local Rooms = {}
 
-Rooms.Version = 1
+Rooms.Version = 3
 
 local definitions: { [string]: RoomDef } = {
 	Entrance = {
@@ -35,6 +37,7 @@ local definitions: { [string]: RoomDef } = {
 		Description = "Where adventurers arrive. Fixed in place.",
 		Placeable = false,
 		MaxPlaced = 1,
+		Upgradable = false,
 		EndsRoute = false,
 	},
 	SlimeNest = {
@@ -45,6 +48,7 @@ local definitions: { [string]: RoomDef } = {
 		Description = "A slime fights each adventurer and slows them for a few seconds.",
 		Placeable = true,
 		MaxPlaced = nil,
+		Upgradable = true,
 		EndsRoute = false,
 	},
 	SpikeHall = {
@@ -55,6 +59,7 @@ local definitions: { [string]: RoomDef } = {
 		Description = "Spikes flash, then strike anyone standing on them. Slowed adventurers get hit more.",
 		Placeable = true,
 		MaxPlaced = nil,
+		Upgradable = true,
 		EndsRoute = false,
 	},
 	GuardRoom = {
@@ -65,6 +70,40 @@ local definitions: { [string]: RoomDef } = {
 		Description = "A sturdy guard with steady, heavy hits.",
 		Placeable = true,
 		MaxPlaced = nil,
+		Upgradable = true,
+		EndsRoute = false,
+	},
+	MonsterDen = {
+		Id = "MonsterDen",
+		DisplayName = "Monster Den",
+		Kind = "Support",
+		Source = "Shop",
+		Description = "No monster of its own. Defender rooms next to it on the route hit harder and are tougher.",
+		Placeable = true,
+		MaxPlaced = nil,
+		Upgradable = true,
+		EndsRoute = false,
+	},
+	MushroomCavern = {
+		Id = "MushroomCavern",
+		DisplayName = "Mushroom Cavern",
+		Kind = "Trap",
+		Source = "Shop",
+		Description = "Spores cloud adventurers passing through. Spored adventurers take extra trap damage.",
+		Placeable = true,
+		MaxPlaced = nil,
+		Upgradable = true,
+		EndsRoute = false,
+	},
+	RestlessCrypt = {
+		Id = "RestlessCrypt",
+		DisplayName = "Restless Crypt",
+		Kind = "Defender",
+		Source = "Shop",
+		Description = "A skeleton that rises once, at half health, the first time it is knocked out.",
+		Placeable = true,
+		MaxPlaced = nil,
+		Upgradable = true,
 		EndsRoute = false,
 	},
 	TreasureRoom = {
@@ -76,6 +115,7 @@ local definitions: { [string]: RoomDef } = {
 			.. "but an adventurer who reaches it steals part of the unbanked vault.",
 		Placeable = true,
 		MaxPlaced = 1,
+		Upgradable = true,
 		EndsRoute = true,
 	},
 }
@@ -87,7 +127,7 @@ end
 Rooms.All = table.freeze(definitions)
 
 -- Display order for inventories and the shop.
-Rooms.Order = table.freeze({ "Entrance", "SlimeNest", "SpikeHall", "GuardRoom", "TreasureRoom" })
+Rooms.Order = table.freeze({ "Entrance", "SlimeNest", "SpikeHall", "GuardRoom", "MonsterDen", "MushroomCavern", "RestlessCrypt", "TreasureRoom" })
 
 function Rooms.Get(id: string): RoomDef?
 	return definitions[id]
