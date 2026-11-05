@@ -1,0 +1,16 @@
+# Project place file
+/RBLX-Flintborn.rbxlx
+
+# Roblox Studio lock files
+/*.rbxlx.lock
+/*.rbxl.lock
+
+sourcemap.json
+.vscode
+
+# Local verification tools and build artifacts
+.tools/
+build/
+__pycache__/
+*.pyc
+
