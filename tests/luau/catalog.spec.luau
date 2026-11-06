@@ -56,14 +56,16 @@ local function deepEqual(a, b)
 end
 
 local ROOM_FIELDS = set({
+	"ArtSource",
 	"Id", "DisplayName", "Kind", "Description", "Source", "Cost", "ShopLevel", "Upgradable",
 	"MaxPlaced", "EndsRoute", "Placeable", "Craftable", "TrapCycle", "TrapTelegraph",
 	"Rarity", "Tier", "MaxLevel", "Perks", "Ability", "Exchange", "CraftCost", "ScrapReturn",
+	"BaseHealth", "BaseDamage", "DamagePerSecond", "UnitCount", "SupportDamage", "SupportHealth",
 })
 local VISITOR_FIELDS = set({ "Id", "DisplayName", "Description", "Arrival", "Traits", "Reward", "Xp", "Theft", "Drops" })
 local TRAIT_FIELDS = set({ "Id", "Name", "Text" })
 local RARITY_FIELDS = set({ "Id", "MaxLevel", "CraftCost", "ScrapReturn", "Rooms" })
-local PERMANENT_FIELDS = set({ "Id", "Name", "MaxLevel", "PerLevelText", "EffectText" })
+local PERMANENT_FIELDS = set({ "Id", "Name", "MaxLevel", "PerLevelText", "EffectText", "Effect", "PerLevelValue" })
 local TOP_FIELDS = set({
 	"Rooms", "RoomOrder", "Visitors", "Rarities", "Permanent", "Grid", "Loot", "MaxKeeperLevel",
 	"Variants", "Threat", "Events", "Modifiers", "Vault",
@@ -75,7 +77,7 @@ test("the catalog is deeply frozen and deterministic", function()
 	expect(deepEqual(c, Catalog.Build()), "same result every build")
 end)
 
-test("only display fields: no defender stats", function()
+test("only approved display fields", function()
 	local c = Catalog.Build()
 	onlyKeys(c, TOP_FIELDS, "catalog")
 	for id, r in c.Rooms do
@@ -138,6 +140,11 @@ test("rooms mirror the definitions, prices and gates", function()
 	expectEq(c.Rooms.DragonHoard.Ability, "Vault exchange x2, +25% rare variants", "hoard ability from Balance")
 	expectEq(c.Rooms.VoidVault.Ability, "Vault exchange x3.5, thieves take 50%", "void vault ability")
 	expectEq(c.Rooms.Strongbox.Exchange, 1.15, "exchange shown")
+	expectEq(c.Rooms.GuardRoom.BaseHealth, Balance.Rooms.GuardRoom.DefenderHealth, "base health")
+	expectEq(c.Rooms.GuardRoom.BaseDamage, Balance.Rooms.GuardRoom.AttackDamage, "base damage")
+	expectEq(c.Rooms.GoblinBarracks.UnitCount, 2, "multi-unit count")
+	expectEq(c.Rooms.FrostChamber.DamagePerSecond, true, "zone damage label")
+	expectEq(c.Rooms.MonsterDen.SupportDamage, Balance.Rooms.MonsterDen.DamageBonus, "support bonus")
 	expectEq(c.Rooms.MonsterDen.Cost, nil, "Rare rooms are not sold")
 end)
 

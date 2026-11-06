@@ -18,8 +18,8 @@ local ProfileService = require(script.Parent.ProfileService)
 local PlotService = {}
 
 -- Sign boards (SpriteIds4.World.SignBoardOwned / SignBoardFree: ids, 9-slice centres).
-local SIGN_OWNED = { Id = "rbxassetid://125171418630241", Center = Rect.new(55, 55, 351, 211) }
-local SIGN_FREE = { Id = "rbxassetid://105037912850813", Center = Rect.new(49, 49, 347, 217) }
+local SIGN_OWNED = { Id = "rbxassetid://87192296313060", Center = Rect.new(41, 41, 713, 75) }
+local SIGN_FREE = { Id = "rbxassetid://87192296313060", Center = Rect.new(41, 41, 713, 75) }
 local function setSign(plot, text: string, owned: boolean)
 	local spec = if owned then SIGN_OWNED else SIGN_FREE
 	plot.Sign.Text = text
@@ -249,12 +249,12 @@ local function buildBase(plot)
 	anchor.Transparency = 1
 	anchor.CanQuery = false
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(8, 3.2) -- studs, so the sign does not grow with the camera or overlap from above
+	gui.Size = UDim2.fromScale(5, 1.2) -- world-sized plaque, compact at normal camera distance
 	gui.MaxDistance = 60
 	gui.LightInfluence = 0
 	gui.Adornee = anchor
 	gui.Parent = anchor
-	-- The board is a AI design assistant sprite (SignBoardFree / SignBoardOwned, 9-sliced) with the text on top.
+	-- Existing purple row sprite, with the owner name on top.
 	local board = Instance.new("ImageLabel")
 	board.Name = "Board"
 	board.Size = UDim2.fromScale(1, 1)
@@ -263,8 +263,8 @@ local function buildBase(plot)
 	board.SliceScale = 0.35
 	board.Parent = gui
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -56, 1, -50)
-	label.Position = UDim2.fromOffset(28, 25)
+	label.Size = UDim2.new(1, -24, 1, -10)
+	label.Position = UDim2.fromOffset(12, 5)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.new(1, 1, 1)
 	label.TextStrokeColor3 = Color3.fromRGB(40, 20, 10)
@@ -401,7 +401,8 @@ function PlotService.Render(player: Player)
 			local instanceId = profile.Layout[key]
 			local instance = profile.Rooms[instanceId]
 			local cf = plot.Anchor * CFrame.new(PlotGeometry.CellLocal(column, row))
-			local template = art("Rooms", roomId)
+			local def = Rooms.Get(roomId)
+			local template = art("Rooms", (def and def.ArtSource) or roomId)
 			local model
 			if template and template:IsA("Model") then
 				model = template:Clone()
@@ -432,7 +433,7 @@ local function assign(player: Player)
 			byPlayer[player] = plot
 			plot.Model:SetAttribute("OwnerUserId", player.UserId)
 			plot.Model:SetAttribute("State", "Idle")
-			setSign(plot, player.DisplayName .. "'s Dungeon", true)
+			setSign(plot, player.DisplayName, true)
 			PlotService.Render(player)
 			teleport(player)
 			return

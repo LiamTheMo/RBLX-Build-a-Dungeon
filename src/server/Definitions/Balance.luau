@@ -322,6 +322,12 @@ Balance.Rooms = table.freeze({
 		SendsBack = true,
 	}),
 	VoidVault = table.freeze({ Exchange = 3.5, TheftScale = 0.5 }),
+	EmeraldGuardroom = table.freeze({ DefenderHealth = 65, AttackDamage = 10, AttackInterval = 1.0, SlowFraction = 0.3, SlowDuration = 2 }),
+	ArcaneBarricade = table.freeze({ Damage = 17, Cycle = 1.1, Telegraph = 0.35 }),
+	StormGallery = table.freeze({ Damage = 15, Cycle = 0.9, Telegraph = 0.3 }),
+	CrystalSentinel = table.freeze({ DefenderHealth = 240, AttackDamage = 20, AttackInterval = 1.6 }),
+	SunfireSanctum = table.freeze({ DefenderHealth = 170, AttackDamage = 18, AttackInterval = 1.2, Burn = true, Revives = 1 }),
+	EclipseBastion = table.freeze({ DefenderHealth = 340, AttackDamage = 32, AttackInterval = 1.6, ReviveFraction = 0.4 }),
 })
 
 Balance.Upgrades = table.freeze({
@@ -402,6 +408,11 @@ Balance.RoomPerks = table.freeze({
 	CelestialCoffer = perks("Coins", 0.20, "Loot", 0.10, "Xp", 0.10),
 	VoidGate = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
 	VoidVault = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
+	ArcaneBarricade = perks("Xp", 0.05),
+	StormGallery = perks("Loot", 0.10),
+	CrystalSentinel = perks("Coins", 0.10, "Xp", 0.10),
+	SunfireSanctum = perks("Coins", 0.10, "Loot", 0.10, "Xp", 0.10),
+	EclipseBastion = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
 })
 
 -- Gameplay-earned loot only; never sold. Chances are per defeated visitor and
@@ -420,11 +431,8 @@ Balance.Loot = table.freeze({
 	-- treasure rooms weigh less: only one treasure can be placed.
 	-- Royal and Dungeon chests have disjoint room pools; unlisted rooms belong to Dungeon.
 	RoyalRooms = table.freeze({
-		ArrowGallery = true, Strongbox = true,
-		RestlessCrypt = true, Treasury = true,
-		MimicRoom = true, RoyalVault = true,
-		LichSanctum = true, DragonHoard = true,
-		PhoenixNest = true, CelestialCoffer = true, VoidVault = true,
+		EmeraldGuardroom = true, ArcaneBarricade = true, StormGallery = true,
+		CrystalSentinel = true, SunfireSanctum = true, EclipseBastion = true,
 	}),
 	RoomWeights = table.freeze({
 		TreasureRoom = 0,

@@ -4,7 +4,7 @@
 -- what the UI shows (names, descriptions, prices, gates, labels, base coin
 -- ranges, XP, theft shares and base drop tables, threat tiers, variants,
 -- events, each room's fixed rarity, perks and short ability line); simulation
--- numbers (health, damage) stay server-side.
+-- rules stay server-side; base combat numbers are sent only for display.
 -- Everything per player (odds, upgrade costs, effective drop tables) is in the
 -- State snapshot.
 
@@ -91,6 +91,7 @@ local function room(def: any): any
 	return {
 		Id = def.Id,
 		DisplayName = def.DisplayName,
+		ArtSource = def.ArtSource,
 		Kind = def.Kind,
 		Description = def.Description,
 		Source = def.Source, -- "Shop" = sold for coins; "Loot" = boxes and blueprints only
@@ -100,6 +101,12 @@ local function room(def: any): any
 		Perks = perks, -- {{Kind = "Coins"|"Loot"|"Xp", Amount}}
 		Ability = if def.Kind == "Treasure" and stats then treasureAbility(stats) else def.Ability,
 		Exchange = stats and stats.Exchange, -- treasure rooms: vault exchange multiplier
+		BaseHealth = stats and (stats.DefenderHealth or (stats.Units and stats.Units[1].Health)),
+		BaseDamage = stats and (stats.AttackDamage or stats.Damage or stats.ZoneDamage or (stats.Units and stats.Units[1].Damage)),
+		DamagePerSecond = stats and stats.ZoneDamage ~= nil,
+		UnitCount = stats and stats.Units and #stats.Units,
+		SupportDamage = stats and (stats.DamageBonus or stats.TrapDamageBonus),
+		SupportHealth = stats and stats.HealthBonus,
 		CraftCost = Loot.CraftCost(def.Id), -- blueprints to craft one (nil if not craftable)
 		ScrapReturn = Loot.ScrapReturn(def.Id), -- blueprints back for scrapping one
 		Cost = if type(cost) == "number" then cost else nil, -- shop price (Buy)
@@ -151,6 +158,8 @@ local function permanent(id: string): any
 		Name = spaced(id),
 		MaxLevel = def.MaxLevel,
 		PerLevelText = fmt(def.PerLevel),
+		Effect = def.Effect,
+		PerLevelValue = if def.Effect == "VisitorInterval" then tostring(def.PerLevel) .. "s" else "+" .. pct(def.PerLevel),
 		EffectText = effects, -- index level + 1: the total effect at that level
 	}
 end

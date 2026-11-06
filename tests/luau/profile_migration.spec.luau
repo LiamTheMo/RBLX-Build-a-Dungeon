@@ -163,7 +163,7 @@ test("a v5 profile round-trips unchanged and newer versions are rejected", funct
 	expectEq(p.Boxes.Rare, 2, "boxes")
 	expectEq(p.Blueprints.GuardRoom, 3, "blueprints")
 	expectEq(p.Permanent.Lure, 2, "permanent")
-	expectEq(select(2, ProfileSchema.Migrate({ Version = 6, Coins = 1 })), "NewerVersion", "v6 rejected")
+	expectEq(select(2, ProfileSchema.Migrate({ Version = ProfileSchema.VERSION + 1, Coins = 1 })), "NewerVersion", "v6 rejected")
 end)
 
 test("v4 profile migrates to v5: instance rarity and perks dropped, levels clamped to the definition's tier", function()
@@ -185,7 +185,7 @@ test("v4 profile migrates to v5: instance rarity and perks dropped, levels clamp
 	v4.Stats.Wins = 40
 	local p, problem = ProfileSchema.Migrate(v4)
 	expect(p ~= nil, "migrates " .. tostring(problem))
-	expectEq(p.Version, 5, "version")
+	expectEq(p.Version, ProfileSchema.VERSION, "version")
 	for id, room in p.Rooms do
 		expectEq(room.Rarity, nil, id .. " rarity dropped")
 		expectEq(room.Perks, nil, id .. " perks dropped")
@@ -247,4 +247,19 @@ test("v3 profile migrates to v4: vault banked into Coins, every other field kept
 	expectEq(again.Coins, 10, "v4 ignores Vault")
 	expectEq(again.VaultPercent, 30, "percent kept")
 	expectEq(again.Threat, 1, "threat clamped to the level-1 unlock")
+end)
+
+
+test("version 5 profiles migrate and new royal rooms survive a round trip", function()
+	local old = ProfileSchema.Default()
+	old.Version = 5
+	old.Coins = 4321
+	local migrated = ProfileSchema.Migrate(old)
+	expectEq(migrated.Coins, 4321, "coins retained")
+	expectEq(migrated.Version, ProfileSchema.VERSION, "upgraded version")
+	migrated.Rooms.r99 = { Id = "EclipseBastion", Level = 1 }
+	migrated.Blueprints.EmeraldGuardroom = 3
+	local roundtrip = ProfileSchema.Migrate(migrated)
+	expectEq(roundtrip.Rooms.r99.Id, "EclipseBastion", "new room retained")
+	expectEq(roundtrip.Blueprints.EmeraldGuardroom, 3, "new blueprints retained")
 end)

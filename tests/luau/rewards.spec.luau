@@ -201,11 +201,11 @@ test("box and blueprint drops respect the shop level gates (Common/Uncommon only
 	local p = ProfileSchema.Default() -- level 1
 	-- Box roll 0.001, blueprint roll 0.001, blueprint tier 0.7 (Uncommon), room 0.999999.
 	local r = Rewards.Defeat(p, "Novice", scripted({ 0.001, 0.001, 0.7, 0.999999 }), NO_BONUS)
-	expectEq(r.Drops[2].RoomId, "MushroomCavern", "level 1 Uncommon blueprint falls back to the lowest gate")
+	expectEq(r.Drops[2].RoomId, "EmeraldGuardroom", "level 1 Uncommon blueprint follows the unlocked pool")
 	p.Boxes.Dungeon = 2
 	local ok, data = Rewards.OpenBox(p, "Dungeon", scripted({ 0.7, 0.999999, 0.5 }))
 	expect(ok and data.RoomId == "MushroomCavern", "Uncommon box room gated at level 1")
 	-- 0.9 lands in Rare (85..95% of the Dungeon weights); Rare rooms are never gated.
 	local ok2, rare = Rewards.OpenBox(p, "Dungeon", scripted({ 0.9, 0.999999, 0.5 }))
-	expect(ok2 and rare.Rarity == "Rare" and rare.RoomId == "FlameVent", "Rare room at level 1")
+	expect(ok2 and rare.Rarity == "Rare" and rare.RoomId == "Treasury", "Rare room at level 1")
 end)

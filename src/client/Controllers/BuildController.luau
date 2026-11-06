@@ -212,7 +212,8 @@ end
 local function artRoom(roomId: string): Instance?
 	local art = ReplicatedStorage:FindFirstChild("Art")
 	local rooms = art and art:FindFirstChild("Rooms")
-	return rooms and rooms:FindFirstChild(roomId)
+	local def = Catalog.Room(roomId)
+	return rooms and rooms:FindFirstChild((def and def.ArtSource) or roomId)
 end
 
 -- Tile art is hidden locally under draft rooms (the server hides it under placed ones).
@@ -788,6 +789,7 @@ local function exit()
 	setTilesHidden(function()
 		return false
 	end)
+	if hintHand then hintHand.Parent = nil end
 	if worldFolder then
 		worldFolder:Destroy()
 	end

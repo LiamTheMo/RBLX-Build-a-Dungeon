@@ -1,5 +1,11 @@
 return table.freeze({
 	Rooms = {
+		EmeraldGuardroom = "rbxassetid://132830942133369",
+		ArcaneBarricade = "rbxassetid://88514288886666",
+		StormGallery = "rbxassetid://125949860955864",
+		CrystalSentinel = "rbxassetid://87598734696368",
+		SunfireSanctum = "rbxassetid://110508067801168",
+		EclipseBastion = "rbxassetid://96874428681350",
 		Strongbox = "rbxassetid://94195573729364",
 		Treasury = "rbxassetid://74766255206851",
 		RoyalVault = "rbxassetid://99989619647586",

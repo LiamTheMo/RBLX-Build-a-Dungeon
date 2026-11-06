@@ -23,7 +23,7 @@ local ProfileSchema = {}
 -- v5 (item model of 2026-11-05) moves rarity and perks to the room definitions:
 -- a room instance is {Id, Level, Modifier?}. v4 -> v5: instance Rarity/Perks are
 -- dropped and Level is clamped to the definition's tier cap; every other field kept.
-ProfileSchema.VERSION = 5
+ProfileSchema.VERSION = 6
 ProfileSchema.MAX_MONEY = 1e12
 
 local function deepCopy(value)

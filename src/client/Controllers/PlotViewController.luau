@@ -4,17 +4,21 @@
 -- Positions come from the plot's server-built cell tiles (Ui/Cells), names and
 -- trap timing from the Catalog.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Ui = script.Parent.Parent.Ui
 local Badges = require(Ui.Badges)
+local Bus = require(Ui.Bus)
 local Catalog = require(Ui.Catalog)
 local Kit = require(Ui.Kit)
 local Cells = require(Ui.Cells)
 local Doors = require(Ui.Doors)
 local Net = require(Ui.Net)
+local P = require(Ui.PanelsKit)
 local RarityColors = require(Ui.RarityColors)
+local RewardMotion = require(Ui.RewardMotion)
 local Settings = require(Ui.Settings)
 local Sound = require(Ui.Sound)
 local Theme = require(Ui.Theme)
@@ -34,6 +38,10 @@ local DEFENDER_ART = {
 	LichSanctum = { Actors = { "Skeleton", "Lich" }, Spots = { "SummonSpot", "DefenderSpot" }, Summoned = 1 },
 	DragonLair = { Actors = { "Dragon" }, Wings = { Rate = 3.2, Amp = 0.3 } },
 	PhoenixNest = { Actors = { "Phoenix" }, Flyer = { Rate = 6, Amp = 0.55, Lift = 0.9 } },
+	EmeraldGuardroom = { Actors = { "Guard" }, Tint = Color3.fromRGB(70, 220, 130) },
+	CrystalSentinel = { Actors = { "Golem" }, Tint = Color3.fromRGB(120, 220, 255) },
+	SunfireSanctum = { Actors = { "Phoenix" }, Flyer = { Rate = 6, Amp = 0.55, Lift = 0.9 }, Tint = Color3.fromRGB(255, 210, 65) },
+	EclipseBastion = { Actors = { "Dragon" }, Wings = { Rate = 3.2, Amp = 0.3 }, Tint = Color3.fromRGB(135, 80, 210) },
 }
 local FIRE = Color3.fromRGB(255, 140, 40)
 local FROST = Color3.fromRGB(150, 215, 255)
@@ -180,6 +188,7 @@ local function newActor(name: string, opts: any?)
 			d.CanQuery = false
 			d.CanTouch = false
 			d.Massless = true
+			if opts and opts.Tint and d.Name ~= "Root" then d.Color = d.Color:Lerp(opts.Tint, 0.4) end
 		end
 	end
 	model.PrimaryPart.Anchored = true
@@ -304,11 +313,8 @@ local function floatText(pos: Vector3, text: string, color: Color3, icon: string
 		Size = Vector3.new(0.2, 0.2, 0.2),
 		Position = pos,
 	}, fxFolder)
-	local gui = make("BillboardGui", { Size = UDim2.fromOffset(170, 40), AlwaysOnTop = true, MaxDistance = 150 }, anchorPart)
-	local plate, iconImg
-	if burst then -- HitBurst plate behind damage numbers
-		plate = Kit.Sprite(gui, "World.HitBurst", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(96, 96), ImageTransparency = 0.1, ZIndex = 1 })
-	end
+	local gui = make("BillboardGui", { Size = UDim2.fromOffset(100, 28), AlwaysOnTop = true, MaxDistance = 150 }, anchorPart)
+	local iconImg
 	if icon then -- CoinFloat / XpFloat next to the amount
 		iconImg = Kit.Icon(gui, icon, UDim2.fromOffset(32, 32))
 		iconImg.AnchorPoint, iconImg.Position, iconImg.ZIndex = Vector2.new(1, 0.5), UDim2.new(0.5, -(#text * 6.5), 0.5, 0), 2
@@ -321,7 +327,7 @@ local function floatText(pos: Vector3, text: string, color: Color3, icon: string
 		TextColor3 = color,
 		TextStrokeColor3 = Theme.Stroke,
 		TextStrokeTransparency = 0.2,
-		TextSize = 26,
+		TextSize = 20,
 		FontFace = Theme.HeadingFont,
 	}, gui)
 	local reduced = Settings.Reduced()
@@ -331,9 +337,6 @@ local function floatText(pos: Vector3, text: string, color: Color3, icon: string
 	end
 	local fade = TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 0, false, info.Time - 0.5)
 	TweenService:Create(label, fade, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-	if plate then
-		TweenService:Create(plate, fade, { ImageTransparency = 1 }):Play()
-	end
 	if iconImg then
 		TweenService:Create(iconImg, fade, { ImageTransparency = 1 }):Play()
 	end
@@ -354,7 +357,26 @@ local function coinModel(): Model?
 	return coinTemplate or nil
 end
 
-local function coinBurst(pos: Vector3)
+-- Target the current character position throughout the flight, including when
+-- the owner moves or respawns. All of this remains visual and capped locally.
+local function flyHome(start: Vector3, ownerId: number, duration: number, update, done)
+	local started = os.clock()
+	local conn
+	conn = RunService.Heartbeat:Connect(function()
+		local owner = Players:GetPlayerByUserId(ownerId)
+		local root = owner and owner.Character and owner.Character:FindFirstChild("HumanoidRootPart")
+		local t = math.clamp((os.clock() - started) / duration, 0, 1)
+		if not root or not root:IsA("BasePart") then
+			conn:Disconnect()
+			done()
+			return
+		end
+		update(RewardMotion.Position(start, root.Position, t), t)
+		if t >= 1 then conn:Disconnect(); done() end
+	end)
+end
+
+local function coinBurst(pos: Vector3, ownerId: number)
 	if Settings.Reduced() then
 		return
 	end
@@ -389,6 +411,10 @@ local function coinBurst(pos: Vector3)
 			Kit.Icon(bb, "CoinFloat", UDim2.fromScale(1, 1))
 			coin, mover, fade = p, p, true
 		end
+		local trailPart = if coin:IsA("Model") then coin.PrimaryPart else coin
+		local a0 = make("Attachment", { Position = Vector3.new(0, 0.16, 0) }, trailPart)
+		local a1 = make("Attachment", { Position = Vector3.new(0, -0.16, 0) }, trailPart)
+		make("Trail", { Attachment0 = a0, Attachment1 = a1, Color = ColorSequence.new(Color3.new(1, 1, 1)), Lifetime = 0.22, LightEmission = 0.6, FaceCamera = true, MinLength = 0.02, WidthScale = NumberSequence.new(1, 0), Transparency = NumberSequence.new(0.15, 1) }, trailPart)
 		local function at(v: Vector3): any
 			return if template then { Value = CFrame.new(v) } else { Position = v }
 		end
@@ -400,8 +426,10 @@ local function coinBurst(pos: Vector3)
 			down:Play()
 		end)
 		down.Completed:Once(function()
-			coin:Destroy()
-			fxCoins -= 1
+			local origin = pos + Vector3.new(0, 0.3, 0) + spread
+			flyHome(origin, ownerId, 0.55, function(position)
+				if mover:IsA("CFrameValue") then mover.Value = CFrame.new(position) elseif mover:IsA("BasePart") then mover.Position = position end
+			end, function() coin:Destroy(); fxCoins -= 1 end)
 		end)
 		up:Play()
 	end
@@ -484,47 +512,38 @@ local function pulseRoom(model: Model, partName: string, color: Color3, diameter
 	t:Play()
 end
 
--- Floating drop pill ("Dungeon Box", "Blueprint: Guard Room") that rises and fades.
-local function dropPill(pos: Vector3, text: string, color: Color3, delay: number)
-	if fxDrops >= 6 then
-		return
-	end
+-- Cosmetic drop orb: the server has already granted the reward.
+local function dropOrb(pos: Vector3, color: Color3, icon: string, roomId: string?, ownerId: number, delay: number, blueprint: boolean?)
+	if fxDrops >= 6 then return end
 	fxDrops += 1
-	local reduced = Settings.Reduced()
-	local anchor = tempPart(pos, delay + 2.2)
-	local gui = make("BillboardGui", { Size = UDim2.fromOffset(200, 40), AlwaysOnTop = true, MaxDistance = 150, Enabled = false }, anchor)
-	local pill = Kit.Sprite(gui, "Controls.DropPill", { Size = UDim2.fromScale(1, 1), ImageColor3 = color:Lerp(Color3.new(1, 1, 1), 0.35) })
-	local pillText = make("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -36, 1, 0),
-		Position = UDim2.fromOffset(18, 0),
-		Text = text,
-		TextColor3 = Theme.TextPrimary,
-		TextStrokeColor3 = Theme.Stroke,
-		TextStrokeTransparency = 0.3,
-		TextSize = 16,
-		TextScaled = true,
-		ZIndex = 2,
-		FontFace = Theme.HeadingFont,
-	}, pill)
-	make("UITextSizeConstraint", { MinTextSize = 9, MaxTextSize = 16 }, pillText)
 	task.delay(delay, function()
-		if not anchor.Parent then
-			fxDrops -= 1
-			return
+		local orb = make("Part", { Name = "DropOrb", Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Shape = Enum.PartType.Ball, Material = Enum.Material.Neon, Color = color, Transparency = 0.25, Size = Vector3.one * 0.85, Position = pos }, fxFolder)
+		local a = make("Attachment", { Position = Vector3.new(0, 0.25, 0) }, orb)
+		local b = make("Attachment", { Position = Vector3.new(0, -0.25, 0) }, orb)
+		make("Trail", { Attachment0 = a, Attachment1 = b, Color = ColorSequence.new(color), Lifetime = 0.3, LightEmission = 0.8, FaceCamera = true, MinLength = 0.02, WidthScale = NumberSequence.new(1, 0), Transparency = NumberSequence.new(0.15, 1) }, orb)
+		local gui = make("BillboardGui", { Size = UDim2.fromOffset(34, 34), AlwaysOnTop = true, MaxDistance = 150 }, orb)
+		if roomId then
+			local portrait = P.RoomImage(gui, roomId, 34)
+			portrait.Size = UDim2.fromScale(1, 1)
+			if blueprint then
+				local kind = Kit.Icon(gui, "Blueprint", UDim2.fromOffset(16, 16))
+				kind.AnchorPoint, kind.Position, kind.ZIndex = Vector2.new(1, 1), UDim2.fromScale(1, 1), 2
+			end
+		else
+			Kit.Icon(gui, icon, UDim2.fromScale(1, 1))
 		end
-		gui.Enabled = true
-		if not reduced then
-			TweenService:Create(anchor, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = pos + Vector3.new(0, 2.5, 0) }):Play()
-		end
-		task.delay(1.6, function()
-			TweenService:Create(pill, TweenInfo.new(0.4), { ImageTransparency = 1 }):Play()
-			TweenService:Create(pillText, TweenInfo.new(0.4), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
-			task.delay(0.45, function()
-				fxDrops -= 1
-				anchor:Destroy()
+		local function finish() orb:Destroy(); fxDrops -= 1 end
+		if Settings.Reduced() then
+			task.delay(0.5, finish)
+		else
+			local rise = TweenService:Create(orb, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = pos + Vector3.new(0, 1.5, 0) })
+			rise.Completed:Once(function()
+				flyHome(orb.Position, ownerId, 0.8, function(position, t)
+					orb.Position, orb.Transparency = position, 0.25 + t * 0.6
+				end, finish)
 			end)
-		end)
+			rise:Play()
+		end
 	end)
 end
 
@@ -640,22 +659,33 @@ local function destroyTrap(trap)
 	end
 end
 
+-- Use the same bar and model-relative anchor for every character.
+local function addHealthBar(actor)
+	local root = actor.Model.PrimaryPart
+	local cf, size = actor.Model:GetBoundingBox()
+	local halfHeight = (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z) / 2
+	local anchorWorld = Vector3.new(cf.Position.X, cf.Position.Y + halfHeight + 0.35, cf.Position.Z)
+	local anchor = make("Attachment", { Name = "HealthAnchor", Position = root.CFrame:PointToObjectSpace(anchorWorld) }, root)
+	local gui = make("BillboardGui", { Name = "HealthBar", Adornee = anchor, Size = UDim2.fromOffset(80, 14), MaxDistance = 150 }, actor.Model)
+	local bg = Kit.Sprite(gui, "Bars.Track", { Size = UDim2.fromScale(1, 1) })
+	local clip = make("Frame", { Name = "Clip", BackgroundTransparency = 1, Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6), ClipsDescendants = true }, bg)
+	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ImageColor3 = Theme.Success, Image = "" }, clip)
+	Kit.SkinByHeight(fill, Kit.Spec("Bars.Fill"))
+	actor.HealthBar, actor.HealthFill = gui, fill
+	return anchor
+end
+
 local function newVisitor(view, id: string)
 	local actor = newActor(id)
 	local variant = view.Plot:GetAttribute("VisitorVariant")
 	variant = if type(variant) == "string" and Badges.VariantTint[variant] then variant else ""
-	local gui = make("BillboardGui", {
-		Adornee = actor.Model.PrimaryPart,
-		Size = UDim2.fromOffset(120, if variant ~= "" then 56 else 10),
-		StudsOffset = Vector3.new(0, if variant ~= "" then 3.6 else 3, 0),
-		MaxDistance = 150,
-	}, actor.Model)
-	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 2) }, gui)
+	local anchor = addHealthBar(actor)
 	if variant ~= "" then
 		-- Rare variant: nameplate above the health bar and a tint (sparkles for Shiny and Gilded).
-		local plate = Badges.Variant(gui, variant, 42)
+		local badge = make("BillboardGui", { Name = "VariantBadge", Adornee = anchor, Size = UDim2.fromOffset(110, 30), StudsOffsetWorldSpace = Vector3.new(0, 0.7, 0), MaxDistance = 150 }, actor.Model)
+		local plate = Badges.Variant(badge, variant, 30)
 		if plate then
-			plate.LayoutOrder = 1
+			plate.AnchorPoint, plate.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
 		end
 		actor.Variant = variant
 		if variant ~= "Elite" and actor.Model.PrimaryPart then
@@ -672,13 +702,6 @@ local function newVisitor(view, id: string)
 			}, actor.Model.PrimaryPart)
 		end
 	end
-	-- Overhead health: Bars.Track with the Bars.Fill sprite clipped inside (Fill tinted by remaining health).
-	gui.Size = UDim2.fromOffset(120, if variant ~= "" then 62 else 16)
-	local bg = Kit.Sprite(gui, "Bars.Track", { Size = UDim2.fromOffset(80, 14), LayoutOrder = 2 })
-	local clipF = make("Frame", { Name = "Clip", BackgroundTransparency = 1, Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6), ClipsDescendants = true }, bg)
-	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ImageColor3 = Theme.Success, Image = "" }, clipF)
-	Kit.SkinByHeight(fill, Kit.Spec("Bars.Fill"))
-	actor.HealthFill = fill
 	view.Visitor, view.VisitorId = actor, id
 	view.Chase = nil
 end
@@ -719,59 +742,7 @@ local function applyRarity(view, m: Model)
 	if not RARITY_COLOR[rarity] or rarity == "Common" then
 		return
 	end
-	local folder = make("Folder", { Name = "Rarity" }, fxFolder)
-	local cf, half = m:GetPivot(), 2.9
-	-- Floor mark: one flat invisible part carrying a VfxRing sprite in the tier colour (shimmer tiers cycle its hue).
-	local front = make("Part", {
-		Name = "RarityMark",
-		Anchored = true,
-		CanCollide = false,
-		CanQuery = false,
-		CanTouch = false,
-		CastShadow = false,
-		Transparency = 1,
-		Size = Vector3.new(half * 2, 0.05, half * 2),
-		CFrame = cf * CFrame.new(0, 0.15, 0),
-	}, folder)
-	local sg = make("SurfaceGui", { Face = Enum.NormalId.Top, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 30, LightInfluence = 0, Adornee = front }, front)
-	local markImg = Kit.Sprite(sg, "World.VfxRing", { Size = UDim2.fromScale(1, 1), ImageColor3 = color, ImageTransparency = 0.25, ScaleType = Enum.ScaleType.Stretch })
-	if RarityColors.Shimmer[rarity] then
-		table.insert(shimmerBars, markImg)
-	end
-	-- Overhead badge: the tier's RarityBadge sprite with its name. Hidden beyond 45 studs.
-	local badge = make("BillboardGui", { Adornee = front, Size = UDim2.fromOffset(104, 30), StudsOffset = Vector3.new(0, 1.6, half), MaxDistance = 45, LightInfluence = 0, AlwaysOnTop = false }, folder)
-	local badgeSpec = Kit.Spec("Controls.RarityBadge." .. tostring(rarity)) and ("Controls.RarityBadge." .. tostring(rarity))
-	local pill = Kit.Sprite(badge, badgeSpec or "Controls.RarityBadge.Common", { Size = UDim2.fromScale(1, 1) })
-	make("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = string.upper(rarity),
-		TextColor3 = Theme.TextPrimary,
-		TextStrokeColor3 = Theme.Stroke,
-		TextStrokeTransparency = 0.3,
-		TextSize = 14,
-		TextScaled = true,
-		FontFace = Theme.HeadingFont,
-		ZIndex = 2,
-	}, pill)
-	make("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }, pill:FindFirstChildOfClass("TextLabel"))
-	make("UITextSizeConstraint", { MinTextSize = 8, MaxTextSize = 14 }, pill:FindFirstChildOfClass("TextLabel"))
-	local sparkles = RarityColors.Sparkle[rarity]
-	local sparkle = make("ParticleEmitter", {
-		Enabled = sparkles and not Settings.Reduced(),
-		Texture = (Kit.Spec("World.VfxSparkle") or {}).Id or "",
-		Color = ColorSequence.new(color),
-		Rate = 4,
-		Lifetime = NumberRange.new(1, 1.6),
-		Speed = NumberRange.new(0.5, 1.5),
-		SpreadAngle = Vector2.new(180, 180),
-		LightEmission = 0.6,
-		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) }),
-	}, front)
-	if trim and trim:IsA("BasePart") and RarityColors.Shimmer[rarity] then
-		table.insert(shimmerBars, trim)
-	end
-	view.Deco[m] = { Folder = folder, Rarity = rarity, Sparkles = sparkles, Sparkle = sparkle, Trim = trim }
+	-- Keep the existing coloured trim, but no floor circle or overhead tier label.
 end
 
 -- Room modifier badge and off-route dimming (rooms may sit in any cell; off-route ones never see visitors).
@@ -779,7 +750,7 @@ local function applyMarks(view, m: Model)
 	local mod = m:GetAttribute("Modifier")
 	mod = if type(mod) == "string" and Badges.ModifierColor[mod] then mod else ""
 	local off = m:GetAttribute("OnRoute") == false
-	local sig = mod .. (if off then "!" else "")
+	local sig = "" -- no persistent badges; keep off-route dimming below
 	local rec = view.Marks[m]
 	if not rec or rec.Sig ~= sig or not rec.Gui.Parent then
 		if rec then
@@ -826,7 +797,7 @@ end
 
 -- Animated room art (client only). Spinners rotate about their thin axis; Stars twinkle; Arrows fly across on Trap
 -- events; Flames burst on strikes. Parts are found by name in the art, so a room without them simply does nothing.
-local ROOM_ANIM = { ArrowGallery = true, FlameVent = true, FrostChamber = true, VoidGate = true, VoidVault = true, CelestialCoffer = true }
+local ROOM_ANIM = { StormGallery = true, ArrowGallery = true, FlameVent = true, FrostChamber = true, VoidGate = true, VoidVault = true, CelestialCoffer = true }
 local SPINNERS = {
 	VoidGate = { PortalRing = 1.3, PortalRune = -0.8 },
 	VoidVault = { Swirl = 2.2, SwirlArms = -1.4 },
@@ -843,7 +814,7 @@ local function buildAnim(m: Model, roomId: string)
 				table.insert(an.Spin, { Part = d, Rest = d.CFrame, Axis = partAxis(d, true), Speed = speed })
 			elseif roomId == "CelestialCoffer" and d.Name == "Star" then
 				table.insert(an.Stars, { Part = d, Size = d.Size, Phase = #an.Stars * 1.7 })
-			elseif roomId == "ArrowGallery" and d.Name == "Arrow" then
+			elseif (roomId == "ArrowGallery" or roomId == "StormGallery") and d.Name == "Arrow" then
 				local rest = d.CFrame
 				local dir = Vector3.new(center.X - rest.Position.X, 0, center.Z - rest.Position.Z)
 				if dir.Magnitude < 0.5 then
@@ -926,14 +897,17 @@ local function refreshRooms(view)
 			if dcfg and not view.Defenders[m] then
 				local actors = {}
 				for i, name in dcfg.Actors do
-					actors[i] = newActor(name, dcfg)
+					local actor = newActor(name, dcfg)
+					addHealthBar(actor)
+					actor.HealthBar.Enabled = false
+					actors[i] = actor
 				end
 				view.Defenders[m] = { Actors = actors, Actor = actors[1], Model = m, Cfg = dcfg }
 			end
 			if ROOM_ANIM[roomId] and not view.Anims[m] then
 				view.Anims[m] = buildAnim(m, roomId)
 			end
-			if roomId == "SpikeHall" and not view.Traps[m] then
+			if (roomId == "SpikeHall" or roomId == "ArcaneBarricade") and not view.Traps[m] then
 				local parts = {}
 				for _, d in m:GetDescendants() do
 					if d.Name == "Spike" and d:IsA("BasePart") then
@@ -1141,6 +1115,7 @@ local function stepView(view, dt: number)
 		v.HealFx.Enabled = healing
 		local frac = math.clamp((plot:GetAttribute("VisitorHealth") or max) / max, 0, 1)
 		v.HealthFill.Size = UDim2.fromScale(frac, 1)
+		v.HealthFill.Visible = frac > 0
 		v.HealthFill.ImageColor3 = if frac < 0.3 then Theme.Danger else Theme.Success
 	end
 
@@ -1164,6 +1139,12 @@ local function stepView(view, dt: number)
 			def.Boosted = false
 		end
 		for i, a in def.Actors do
+			local maxHp = m:GetAttribute("DefenderMaxHealth")
+			local fraction = if type(hp) == "number" and type(maxHp) == "number" and maxHp > 0 then math.clamp(hp / maxHp, 0, 1) else 1
+			a.HealthBar.Enabled = inEncounter and i == unit and not roomDown and fraction < 1
+			a.HealthFill.Size = UDim2.fromScale(fraction, 1)
+			a.HealthFill.Visible = fraction > 0
+			a.HealthFill.ImageColor3 = if fraction < 0.3 then Theme.Danger else Theme.Success
 			local hidden = cfg.Summoned == i and not (def.SummonAt and inEncounter)
 			if a.Hidden ~= hidden then
 				a.Hidden = hidden
@@ -1204,12 +1185,10 @@ local function stepView(view, dt: number)
 	end
 
 	-- Traps: telegraph from the fixed cycle, strike from Trap events.
-	local cfg = Catalog.Room("SpikeHall")
-	local telegraph = false
-	if view.EncStart and cfg and cfg.TrapCycle and cfg.TrapTelegraph then
-		telegraph = (os.clock() - view.EncStart) % cfg.TrapCycle < cfg.TrapTelegraph
-	end
-	for _, trap in view.Traps do
+	for model, trap in view.Traps do
+		local cfg = Catalog.Room(model:GetAttribute("RoomId") or "SpikeHall")
+		local telegraph = view.EncStart and cfg and cfg.TrapCycle and cfg.TrapTelegraph
+			and (os.clock() - view.EncStart) % cfg.TrapCycle < cfg.TrapTelegraph
 		local raise = 0
 		local struck = false
 		if trap.Strike then
@@ -1432,7 +1411,7 @@ local function onFx(e: any)
 		end
 		local room = roomAt(view, index)
 		local an = room and view.Anims[room]
-		if an and an.Id == "ArrowGallery" then
+		if an and (an.Id == "ArrowGallery" or an.Id == "StormGallery") then
 			an.Fire = os.clock()
 		elseif an and an.Id == "FlameVent" then
 			an.Burst = os.clock()
@@ -1533,7 +1512,7 @@ local function onFx(e: any)
 		local amount = if type(e.Amount) == "number" then e.Amount else 0
 		if e.Result == "Defeated" then
 			floatText(pos + Vector3.new(0, 3, 0), "+" .. amount, Theme.Gold, "CoinFloat")
-			coinBurst(pos)
+			coinBurst(pos, view.Plot:GetAttribute("OwnerUserId") or 0)
 			play("VisitorDefeated")
 			play("CoinGain")
 		elseif e.Result == "Robbed" then
@@ -1557,21 +1536,13 @@ local function onFx(e: any)
 			if i > 4 or type(d) ~= "table" then
 				break
 			end
-			local text, color
-			if d.Kind == "Blueprint" then
-				local def = Catalog.Room(tostring(d.RoomId))
-				text, color = "Blueprint: " .. (def and def.DisplayName or "?"), Theme.Accent
-			else
-				text, color = tostring(d.Type or "Dungeon") .. " Box", BOX_COLOR[d.Type] or Theme.Gold
+			if not d.Overflow then
+				local def = d.RoomId and Catalog.Room(d.RoomId)
+				local rarity = if def then def.Rarity else (if d.Type == "Rare" then "Rare" else "Common")
+				local color = RARITY_COLOR[rarity] or Theme.Gold
+				local icon = if d.Kind == "Blueprint" then "Blueprint" elseif d.Type == "Rare" then "RareBox" else "Box"
+				dropOrb(pos + Vector3.new(0, 0.8 + i * 0.5, 0), color, icon, if d.Kind == "Blueprint" then d.RoomId else nil, view.Plot:GetAttribute("OwnerUserId") or 0, (i - 1) * 0.2, d.Kind == "Blueprint")
 			end
-			if d.Source == "LevelUp" then
-				text = "Level reward: " .. text
-			elseif d.Guaranteed then
-				text = "Guaranteed " .. text
-				color = Badges.VariantTint[e.Variant or ""] or Theme.Gold
-				puff(pos + Vector3.new(0, 1.5 + i * 0.9, 0), color, 16, 6, 1)
-			end
-			dropPill(pos + Vector3.new(0, 0.5 + i * 0.9, 0), text, color, (i - 1) * 0.25)
 		end
 		if type(e.Xp) == "number" and e.Xp > 0 then
 			floatText(pos + Vector3.new(0, 4.6, 0), "+" .. e.Xp .. " XP", Color3.fromRGB(170, 160, 255), "XpFloat")
@@ -1587,6 +1558,15 @@ function View.Init() end
 
 function View.Start()
 	fxFolder = make("Folder", { Name = "ClientFx" }, workspace)
+	Bus.RoomAwarded:Connect(function(result)
+		local root = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") and type(result) == "table" and type(result.RoomId) == "string" then
+			local def = Catalog.Room(result.RoomId)
+			if def then
+				dropOrb(root.Position + root.CFrame.LookVector * 4, RARITY_COLOR[def.Rarity] or Theme.Gold, "Box", result.RoomId, Players.LocalPlayer.UserId, 0, false)
+			end
+		end
+	end)
 
 	Net.OnEvent("EncounterFx", function(e)
 		if Catalog.Current then -- before the catalog arrives there is nothing to animate

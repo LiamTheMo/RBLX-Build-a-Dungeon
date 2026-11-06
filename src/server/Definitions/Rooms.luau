@@ -38,6 +38,7 @@ export type RoomDef = {
 	EndsRoute: boolean,
 	-- Built-in perks (from Balance.RoomPerks); empty for most rooms.
 	Perks: { Perk },
+	ArtSource: string?,
 }
 
 local Rooms = {}
@@ -54,7 +55,8 @@ local function room(
 	source: Source,
 	rarity: string,
 	ability: string,
-	description: string
+	description: string,
+	artSource: string?
 ): any
 	local treasure = kind == "Treasure"
 	return {
@@ -69,6 +71,7 @@ local function room(
 		MaxPlaced = if treasure then 1 else nil,
 		Upgradable = true,
 		EndsRoute = treasure,
+		ArtSource = artSource,
 	}
 end
 
@@ -146,6 +149,19 @@ local list = {
 	room("VoidVault", "Void Vault", "Treasure", "Loot", "Secret", "Best exchange; thieves take half.",
 		"A vault in the void: the best exchange, and thieves who reach it take only half as much. "
 			.. "Only one treasure can be placed."),
+	-- New Royal Chest rooms reuse existing models until distinct 3D art is authored.
+	room("EmeraldGuardroom", "Emerald Guardroom", "Defender", "Loot", "Uncommon", "A nimble guard slows its target.",
+		"An emerald guard slows visitors with every strike.", "GuardRoom"),
+	room("ArcaneBarricade", "Arcane Barricade", "Trap", "Loot", "Rare", "Quick arcane spikes.",
+		"An arcane spike trap strikes in quick cycles.", "SpikeHall"),
+	room("StormGallery", "Storm Gallery", "Trap", "Loot", "Epic", "Rapid storm volleys.",
+		"Storm bolts strike visitors throughout the gallery.", "ArrowGallery"),
+	room("CrystalSentinel", "Crystal Sentinel", "Defender", "Loot", "Legendary", "A durable crystal guardian.",
+		"A crystal guardian holds the line with heavy, steady blows.", "GolemForge"),
+	room("SunfireSanctum", "Sunfire Sanctum", "Defender", "Loot", "Mythic", "Burns and revives a defender once.",
+		"A sunfire guardian burns visitors and revives the first fallen defender once.", "PhoenixNest"),
+	room("EclipseBastion", "Eclipse Bastion", "Defender", "Loot", "Secret", "A guardian rises once after defeat.",
+		"An eclipse guardian fights hard and rises once with partial health.", "DragonLair"),
 }
 
 local definitions: { [string]: RoomDef } = {}

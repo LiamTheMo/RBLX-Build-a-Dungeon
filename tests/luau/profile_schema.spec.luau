@@ -14,7 +14,7 @@ end
 
 test("default profile matches the contract", function()
 	local p = ProfileSchema.Default()
-	expectEq(p.Version, 5, "version")
+	expectEq(p.Version, ProfileSchema.VERSION, "version")
 	expectEq(p.VaultPercent, 0, "vault percent")
 	expectEq(p.Threat, 1, "threat")
 	expectEq(p.Vault, nil, "no vault balance")

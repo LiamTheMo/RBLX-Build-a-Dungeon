@@ -235,5 +235,5 @@ test("standard duel: each tier's best room outperforms the tier below (known exc
 		end
 	end
 	expect(best.Rare > best.Common, "Rare beats Common too")
-	expectEq(bestId.Mythic, "DragonLair", "dragon is the Mythic duel champion")
+	expectEq(bestId.Mythic, "SunfireSanctum", "royal Mythic leads the duel tier")
 end)
