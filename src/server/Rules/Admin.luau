@@ -93,6 +93,20 @@ function Admin.Parse(text: any): (any, string?)
 	return nil, "Unknown command."
 end
 
+-- Panel events use the same parser and bounds as chat commands.
+function Admin.PanelEvent(action: any, id: any, minutes: any, scope: any): any
+	if scope ~= "Server" and scope ~= "Global" then return nil end
+	if action == "EventStop" and id == "Server" and minutes == 0 then
+		return { Action = "EventStop", Scope = scope }
+	end
+	if action ~= "EventStart" or type(id) ~= "string" or type(minutes) ~= "number" or minutes ~= minutes or minutes % 1 ~= 0 then
+		return nil
+	end
+	local command = Admin.Parse("/event start " .. id .. " " .. tostring(minutes))
+	if command and command.Action == "EventStart" then command.Scope = scope; return command end
+	return nil
+end
+
 -- Event ids for /event list.
 function Admin.EventIds(): { string }
 	local out = {}

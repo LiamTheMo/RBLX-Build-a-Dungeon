@@ -1,6 +1,12 @@
 --!strict
 -- UI icons uploaded to group 33284082 via Open Cloud (AI design assistant-generated, rights to be confirmed by owner before release).
 return table.freeze({
+	AdminShield = "rbxassetid://75788666679589",
+	AdminPlayerData = "rbxassetid://104988350904788",
+	AdminResetData = "rbxassetid://89234364001621",
+	AdminEvents = "rbxassetid://99957750091567",
+	AdminStartEvent = "rbxassetid://93312772119906",
+	AdminStopEvent = "rbxassetid://81682827423718",
 	Coin = "rbxassetid://100829017297779",
 	Vault = "rbxassetid://91122178323189",
 	Build = "rbxassetid://105376168355592",

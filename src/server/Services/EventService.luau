@@ -8,6 +8,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local MemoryStoreService = game:GetService("MemoryStoreService")
 
 local Balance = require(script.Parent.Parent.Definitions.Balance)
 local Events = require(script.Parent.Parent.Rules.Events)
@@ -20,6 +21,8 @@ local rng = Random.new()
 local active = nil -- { Id, EndsAt } or nil
 local nextAutoAt = nil -- server time of the next automatic event; nil while one runs or when off
 local scheduled = not RunService:IsStudio() or Balance.Events.RunInStudio
+local globalEvents = MemoryStoreService:GetSortedMap("AdminGlobalEventsV1")
+local globalRevision = 0
 
 function EventService.ActiveId(): string?
 	return active and active.Id
@@ -79,11 +82,46 @@ function EventService.End(): boolean
 	return true
 end
 
+-- A shared, expiring command lets active and newly started servers converge even
+-- if one server temporarily cannot reach the memory store.
+local function applyGlobal(command)
+	if type(command) ~= "table" or type(command.Revision) ~= "number" or command.Revision <= globalRevision then return end
+	globalRevision = command.Revision
+	if command.Id == "" then
+		EventService.End()
+	elseif type(command.Id) == "string" and type(command.EndsAt) == "number" and Events.Get(command.Id) then
+		local remaining = command.EndsAt - os.time()
+		if remaining > 0 then EventService.Begin(command.Id, remaining) end
+	end
+end
+
+function EventService.Global(id: string?, seconds: number?)
+	if id and (not Events.Get(id) or type(seconds) ~= "number" or seconds <= 0 or seconds > Balance.Events.MaxAdminMinutes * 60) then
+		return false, "Invalid event or duration"
+	end
+	local ok, command = pcall(function()
+		return globalEvents:UpdateAsync("current", function(previous)
+			return { Revision = math.max(os.time() * 1000, (if type(previous) == "table" and type(previous.Revision) == "number" then previous.Revision else 0) + 1),
+				Id = id or "", EndsAt = os.time() + (seconds or 0) }
+		end, Balance.Events.MaxAdminMinutes * 60 + 300)
+	end)
+	if not ok then return false, "Global event service unavailable; try again" end
+	applyGlobal(command)
+	return true, if id then "Global event started; other servers will update shortly." else "Global event stopped; other servers will update shortly."
+end
+
 function EventService.Init()
 	replicate()
 end
 
 function EventService.Start()
+	task.spawn(function()
+		while true do
+			local ok, command = pcall(function() return globalEvents:GetAsync("current") end)
+			if ok then applyGlobal(command) else warn("[EventService] Global event sync failed: " .. tostring(command)) end
+			task.wait(15)
+		end
+	end)
 	if scheduled then
 		nextAutoAt = workspace:GetServerTimeNow() + Events.NextGap(rng)
 	end

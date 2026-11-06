@@ -10,6 +10,9 @@
 local Remotes = {}
 
 Remotes.Kinds = table.freeze({
+	AdminAccess = "Function", -- server-authorized admin panel access
+	AdminResetToken = "Function", -- one-use, target-bound reset confirmation
+	AdminAction = "Function", -- bounded, logged online-player actions
 	GetCatalog = "Function", -- () -> (true, catalog); no loaded profile needed
 	PreviewLayout = "Function", -- (layout) -> (true, routeCells, offRouteCells) | (false, reason, cellKey?); nothing is applied
 	SetBuilding = "Function",
