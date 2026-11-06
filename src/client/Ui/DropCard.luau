@@ -25,6 +25,10 @@ local function roomName(id: string): string
 	return def and def.DisplayName or P.Spaced(id)
 end
 
+local function boxName(boxType: any): string
+	return if boxType == "Rare" then "Royal Chest" else "Dungeon Chest"
+end
+
 local function boxIcon(boxType: any): string
 	return if boxType == "Rare" then "RareBox" else "Box"
 end
@@ -106,7 +110,7 @@ function DropCard.Fill(parent: Instance, visitorId: string, state: any, full: bo
 			n += 1
 			P.Chip(flow, n, function(p)
 				return Kit.Icon(p, boxIcon(d.Type), UDim2.fromOffset(24, 24))
-			end, P.Pct(d.Chance or 0), Theme.TextPrimary, tostring(d.Type) .. " box")
+			end, P.Pct(d.Chance or 0), Theme.TextPrimary, boxName(d.Type))
 		end
 		if #blueprints > 0 then
 			n += 1
@@ -140,7 +144,7 @@ function DropCard.Fill(parent: Instance, visitorId: string, state: any, full: bo
 		order2 += 1
 		band(parent, order2, BAND[d.Type] or BAND.Dungeon, function(p)
 			return Kit.Icon(p, boxIcon(d.Type), UDim2.fromOffset(34, 34))
-		end, d.Chance or 0, tostring(d.Type) .. " box")
+		end, d.Chance or 0, boxName(d.Type))
 	end
 	if #blueprints > 0 then
 		order2 += 1
@@ -152,29 +156,33 @@ function DropCard.Fill(parent: Instance, visitorId: string, state: any, full: bo
 		for i, d in blueprints do
 			P.Chip(rooms, i, function(p)
 				return P.RoomImage(p, d.RoomId, 26)
-			end, P.Pct(d.Chance or 0), Theme.TextMuted, roomName(d.RoomId))
+			end, P.Pct(d.Chance or 0), Theme.TextMuted, roomName(d.RoomId), Theme.Rarity[d.Rarity or Catalog.RoomRarity(d.RoomId)], d.Rarity or Catalog.RoomRarity(d.RoomId))
 		end
 	end
 	for _, v in t.Variants or {} do
 		order2 += 1
 		local row = Kit.Panel(parent, { Sprite = "Row", Size = UDim2.new(1, 0, 0, 56), LayoutOrder = order2, Active = true })
-		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, row)
-		make("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) }, row)
-		local badge = Badges.Variant(row, v.Id, 40)
-		if badge then
-			badge.LayoutOrder = 1
+		local cells = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, row)
+		local function at(obj, x)
+			obj.AnchorPoint, obj.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(x, 0.5)
 		end
-		Kit.Icon(row, "DropChance", UDim2.fromOffset(26, 26)).LayoutOrder = 2
-		local c = Kit.Label(row, P.Pct(v.Chance or 0), Theme.TextSize.Body + 2, Theme.TextPrimary, true)
-		c.AutomaticSize, c.Size, c.TextWrapped, c.LayoutOrder = X, UDim2.fromOffset(0, 36), false, 3
-		Kit.Icon(row, "CoinRange", UDim2.fromOffset(26, 26)).LayoutOrder = 4
-		local r = Kit.Label(row, Badges.Range(v.Coins), Theme.TextSize.Body, Theme.Gold, true)
-		r.AutomaticSize, r.Size, r.TextWrapped, r.LayoutOrder = X, UDim2.fromOffset(0, 36), false, 5
+		local badge = Badges.Variant(cells, v.Id, 36)
+		if badge then at(badge, 0.10) end
+		at(Kit.Icon(cells, "DropChance", UDim2.fromOffset(26, 26)), 0.25)
+		local chance = Kit.Label(cells, P.Pct(v.Chance or 0), Theme.TextSize.Body, Theme.TextPrimary, true)
+		chance.Size, chance.TextWrapped = UDim2.new(0.15, 0, 0, 36), false
+		at(chance, 0.35)
+		at(Kit.Icon(cells, "CoinRange", UDim2.fromOffset(26, 26)), 0.48)
+		local coins = Kit.Label(cells, Badges.Range(v.Coins), Theme.TextSize.Body, Theme.Gold, true)
+		coins.Size, coins.TextWrapped = UDim2.new(0.22, 0, 0, 36), false
+		coins.TextScaled = true
+		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = Theme.TextSize.Body }, coins)
+		at(coins, 0.64)
 		if v.GuaranteedBox then
-			Kit.Icon(row, boxIcon(v.GuaranteedBox), UDim2.fromOffset(30, 30)).LayoutOrder = 6
-			Kit.Icon(row, "Check", UDim2.fromOffset(16, 16), Theme.Success).LayoutOrder = 7
+			at(Kit.Icon(cells, boxIcon(v.GuaranteedBox), UDim2.fromOffset(30, 30)), 0.82)
+			at(Kit.Icon(cells, "Check", UDim2.fromOffset(16, 16), Theme.Success), 0.92)
 		end
-		Kit.Tip(row, tostring(v.Id) .. (if v.GuaranteedBox then " - guaranteed " .. tostring(v.GuaranteedBox) .. " box" else ""))
+		Kit.Tip(row, tostring(v.Id) .. (if v.GuaranteedBox then " - guaranteed " .. boxName(v.GuaranteedBox) else ""))
 	end
 end
 

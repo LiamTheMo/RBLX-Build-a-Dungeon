@@ -57,12 +57,10 @@ function Threat.Build(body: Frame)
 			end,
 		})
 		local card = { Button = btn }
-		-- Selection ring over the card and a check at its top-right corner.
-		card.Ring = Kit.Icon(btn.Instance, "SelectRing", UDim2.fromScale(1, 1))
-		card.Ring.ZIndex, card.Ring.Visible = 4, false
-		card.Check = Kit.Icon(btn.Instance, "ThreatCheck", UDim2.fromScale(0.34, 0.34))
+		-- One check marks the selected tier; keep it inside the card bounds.
+		card.Check = Kit.Icon(btn.Instance, "ThreatCheck", UDim2.fromScale(0.26, 0.26))
 		make("UIAspectRatioConstraint", { AspectRatio = 1 }, card.Check)
-		card.Check.AnchorPoint, card.Check.Position, card.Check.ZIndex, card.Check.Visible = Vector2.new(1, 0), UDim2.new(1, 2, 0, -2), 5, false
+		card.Check.AnchorPoint, card.Check.Position, card.Check.ZIndex, card.Check.Visible = Vector2.new(1, 0), UDim2.new(1, -4, 0, 4), 5, false
 		-- Locked: padlock over the badge and the level it needs.
 		card.Lock = Kit.Icon(btn.Instance, "ThreatLock", UDim2.fromScale(0.36, 0.36))
 		make("UIAspectRatioConstraint", { AspectRatio = 1 }, card.Lock)
@@ -134,9 +132,7 @@ function Threat.Build(body: Frame)
 				icon.ImageColor3 = if locked then LOCKED_TINT else Color3.new(1, 1, 1)
 			end
 			c.Lock.Visible, c.Level.Visible = locked, locked
-			c.Ring.Visible = tier == selected
 			c.Check.Visible = tier == selected
-			c.Button.SetSelected(tier == shown)
 		end
 		local info = Catalog.Current.Threat[shown]
 		if info then

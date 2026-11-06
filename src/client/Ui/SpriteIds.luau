@@ -23,9 +23,10 @@ local base = {
 		Close = { Id = "rbxassetid://104990635685582", Size = Vector2.new(143, 142) },
 	},
 	Icons = {
-		Box = "rbxassetid://138677865210625",
-		RareBox = "rbxassetid://138986161981163",
+		Box = "rbxassetid://86254209003880",
+		RareBox = "rbxassetid://112756641645371",
 		Blueprint = "rbxassetid://91244877353966",
+		BlueprintCard = "rbxassetid://99515155889413",
 		Collection = "rbxassetid://109550714975325",
 		Keeper = "rbxassetid://78289813503783",
 		Xp = "rbxassetid://94184215801867",

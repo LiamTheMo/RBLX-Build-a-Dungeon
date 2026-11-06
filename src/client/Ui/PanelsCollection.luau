@@ -27,6 +27,9 @@ local function entry(parent: Instance, order: number, known: boolean, image: { [
 		local img
 		if image.Room then
 			img = P.RoomImage(badge, image.Room, 44, image.Kind)
+			local def = Catalog.Room(image.Room)
+			badge.Active = true
+			Kit.Tip(badge, def and def.DisplayName or image.Room, Theme.Rarity[rarity])
 		else
 			local id = SpriteIds.Portraits[image.Portrait]
 			if id and Sprites.Ok(id) then
@@ -123,17 +126,12 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 			P.Text(col, def.DisplayName, Theme.TextSize.Heading, Theme.TextPrimary, true, 1)
 			local kindLine = P.IconLine(col, P.KindIcon[def.Kind] or "Defender", roomHint(def), 2, Theme.Gold)
 			kindLine.Size = UDim2.new(1, 0, 0, 26)
-			P.Text(col, def.Description, Theme.TextSize.Body, Theme.TextMuted, false, 3)
-			if type(def.Ability) == "string" and def.Ability ~= "" then
-				P.Text(col, def.Ability, Theme.TextSize.Body, Theme.Accent, false, 4)
-			end
+			-- Keep special mechanics discoverable on the room art without crowding every card.
+			kindLine.Active = true
+			Kit.Tip(kindLine, (def.Description or "") .. (if def.Ability and def.Ability ~= "" then "\n" .. def.Ability else ""))
 			local o = owned[id]
 			local flow = P.ChipFlow(col, 5)
-			if type(def.Exchange) == "number" then
-				P.Chip(flow, 0, function(p)
-					return Kit.Icon(p, "Exchange", UDim2.fromOffset(22, 22))
-				end, string.format("x%.2g", def.Exchange), Theme.Gold, "Vault exchange: each 1% vaulted gains this much more")
-			end
+			P.RoomStats(flow, def)
 			for mod in if o then o.Mods else {} do
 				local order = 20
 				P.Chip(flow, order, function(p)
@@ -212,19 +210,25 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 
 	P.Section(scroll, "Permanent upgrades", nxt())
 	local coins = state.Coins or 0
-	for _, def in catalog.Permanent do
+	local cols = P.Columns(scroll)
+	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 150), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
+	for order, def in catalog.Permanent do
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0
-		local cost = (state.PermanentNextCost or {})[id] -- nil at max
-		local text = string.format("%s\n%s  |  %d/%d", def.Name, def.PerLevelText, lv, def.MaxLevel)
-		local row = P.Card(scroll, nxt())
-		local _, label, buy = P.Row(row, text, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "CoinStack" else nil, IconLayout = "Row", Style = "Primary", Width = 140, OnClick = function()
+		local cost = (state.PermanentNextCost or {})[id]
+		local icon = ({ Coins = "Coin", Loot = "DropChance", Xp = "Xp", DefenderHealth = "Heal", VisitorInterval = "Speed", VaultRate = "Exchange" })[def.Effect] or "Upgrade"
+		local card = Kit.Panel(grid, { LayoutOrder = order, Pad = Vector2.new(4, 2) })
+		make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
+		Kit.Icon(card, icon, UDim2.fromOffset(34, 34)).LayoutOrder = 1
+		local label = Kit.Label(card, string.format("%s  •  %d/%d", def.PerLevelText, lv, def.MaxLevel), 16, Theme.TextPrimary, true)
+		label.Size, label.LayoutOrder, label.TextScaled, label.Active = UDim2.new(1, 0, 0, 36), 2, true, true
+		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 16 }, label)
+		Kit.Tip(label, def.Name .. ": " .. def.PerLevelText)
+		local buy = Kit.Button(card, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "CoinStack" else nil, IconLayout = "Row", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 3, OnClick = function()
 			local ok, res = Net.Invoke("BuyPermanent", id)
-			if not ok then
-				Toast.Show(ReasonText.Get(res), "Bad")
-			end
+			if not ok then Toast.Show(ReasonText.Get(res), "Bad") end
 		end })
-		label.Size = UDim2.new(1, -150, 0, 44)
 		buy.SetEnabled(cost ~= nil and coins >= cost)
 	end
 	task.defer(function()

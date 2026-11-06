@@ -406,7 +406,18 @@ local function build()
 	local bonus = Kit.Pill(vault.Root, "", Theme.Gold, Theme.TextOnGold, 26)
 	Kit.PillLabel(bonus).TextSize, bonus.LayoutOrder = 16, 3
 	bonus.Size = UDim2.fromOffset(0, 26)
-	local vaultRing = Kit.Ring(vault.Root, 6) -- tutorial highlight (HighlightRing sprite)
+	-- Keep the tutorial ring out of the auto-sized currency row.
+	local vaultRing = Kit.Ring(gui, 6)
+	local function positionVaultRing()
+		local scale = math.max(Scale.Value, 0.01)
+		local pos = (vault.Root.AbsolutePosition - gui.AbsolutePosition) / scale
+		local size = vault.Root.AbsoluteSize / scale
+		vaultRing.Position = UDim2.fromOffset(pos.X - 6, pos.Y - 6)
+		vaultRing.Size = UDim2.fromOffset(size.X + 12, size.Y + 12)
+	end
+	vault.Root:GetPropertyChangedSignal("AbsolutePosition"):Connect(positionVaultRing)
+	vault.Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(positionVaultRing)
+	Scale.Changed:Connect(positionVaultRing)
 
 	-- Keeper level and XP.
 	local levelPanel = Kit.Panel(gui, { Sprite = "Pill" })
@@ -533,6 +544,12 @@ local function build()
 	local vaultModal = modal(gui, "Vault", "Vault", Vector2.new(700, 340), Vector2.new(640, 300))
 	local vaultPanel = PanelsVault.Build(vaultModal.Body)
 	vaultModal.OnOpen = vaultPanel.Refresh
+	Bus.VaultRequested:Connect(function()
+		if State.HasPlacedKind("Treasure") then
+			Bus.OpenPanel:Fire("Close")
+			vaultModal.Open()
+		end
+	end)
 	local dropModal = modal(gui, "Drops", "DropChance", Vector2.new(640, 520), Vector2.new(620, 330))
 	local dropScroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
@@ -590,6 +607,7 @@ local function build()
 		Button = {
 			SetHighlight = function(t: number?)
 				vaultRing.Visible = t ~= nil
+				if t ~= nil then positionVaultRing() end
 			end,
 		},
 	}
@@ -734,7 +752,7 @@ local function build()
 		slowChip.Visible, sporeChip.Visible, chipRow.Visible = slowed, spored, slowed or spored
 		-- The coin range and theft are computed by the server (plot attributes, refreshed each step); the
 		-- actual payout only appears in the End effect.
-		local hasTreasure = State.HasPlaced("TreasureRoom")
+		local hasTreasure = State.HasPlacedKind("Treasure")
 		encReward.Text = Badges.Range({ Min = plot:GetAttribute("VisitorRewardMin") or 0, Max = plot:GetAttribute("VisitorRewardMax") or 0 })
 		local theft = plot:GetAttribute("VisitorTheft") or 0
 		riskRow.Visible = hasTreasure and theft > 0
@@ -821,7 +839,7 @@ local function build()
 		end
 		lastCoins = coins
 		vault.Set(s.Vaulted or 0)
-		local hasTreasure = State.HasPlaced("TreasureRoom")
+		local hasTreasure = State.HasPlacedKind("Treasure")
 		vault.Root.Visible = hasTreasure
 		local share = s.VaultPercent or 0
 		bonus.Visible = hasTreasure

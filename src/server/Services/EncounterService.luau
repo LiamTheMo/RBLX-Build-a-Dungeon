@@ -171,27 +171,19 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	end
 
 	local name = displayName(visitorId, run.Variant)
-	if result == "Defeated" then
-		notice(player, `The {name} was defeated! +{amount} coins.`, "Good")
-	elseif result == "Robbed" then
+	if result == "Robbed" then
 		notice(player, `The {name} reached your treasure and stole {amount} coins!`, "Bad")
-	else
+	elseif result ~= "Defeated" then
 		notice(player, `The {name} got through your dungeon without a fight.`, "Info")
 	end
 	for _, drop in reward.Drops do
-		if drop.Source == "Visitor" then
-			local def = drop.RoomId and Rooms.Get(drop.RoomId)
-			local what = if drop.Kind == "Box" then `a {drop.Type} Box` else `a {def and def.DisplayName} blueprint`
-			notice(player, `The {name} dropped {what}!`, "Good")
-		end
-	end
-	for _, drop in reward.Drops do
 		if drop.Overflow then
-			notice(player, `Box storage full: your {drop.Type} Box became {Balance.Loot.BoxOverflowCoins[drop.Type]} coins.`, "Info")
+			local chest = if drop.Type == "Rare" then "Royal Chest" else "Dungeon Chest"
+			notice(player, `Storage full: {chest} converted to {Balance.Loot.BoxOverflowCoins[drop.Type]} coins.`, "Info")
 		end
 	end
 	if reward.LevelUp then
-		notice(player, `Keeper level {reward.LevelUp}! You earned a box.`, "Good")
+		notice(player, `Keeper level {reward.LevelUp}! You earned a chest.`, "Good")
 	end
 
 	Net.FireAll("EncounterFx", {

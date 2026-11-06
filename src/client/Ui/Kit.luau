@@ -300,6 +300,7 @@ function Kit.Panel(parent: Instance, props: { [string]: any }?): any
 		f.ClipsDescendants = true
 		setInset(14, 14, 14, 14) -- until the first measure
 	end
+	if rarity == "Secret" then Kit.Prismatic(f) end
 	return f
 end
 
@@ -308,6 +309,7 @@ function Kit.Gem(parent: Instance, rarity: string?, size: UDim2?): any
 	local r = if rarity and SpriteIds.Rarity[rarity] then rarity else "Common"
 	local gem = make("ImageLabel", { Name = "Gem", BackgroundTransparency = 1, Size = size or UDim2.fromOffset(24, 24), ScaleType = Enum.ScaleType.Fit }, parent)
 	skin(gem, { Id = SpriteIds.Rarity[r].Gem }, nil, nil, nil)
+	if r == "Secret" then Kit.Prismatic(gem) end
 	return gem
 end
 
@@ -382,7 +384,13 @@ local function pillWith(parent: Instance, text: string, spec: any, fg: Color3, h
 end
 
 function Kit.Pill(parent: Instance, text: string, bg: Color3, fg: Color3, height: number?): any
-	return pillWith(parent, text, chipSpec(bg), fg, height)
+	local pill = pillWith(parent, text, chipSpec(bg), fg, height)
+	if bg == Theme.Gold then
+		pill.ScaleType = Enum.ScaleType.Stretch
+		make("UICorner", { CornerRadius = UDim.new(1, 0) }, pill)
+		make("UIStroke", { Color = Color3.fromRGB(103, 42, 158), Thickness = 1.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, pill)
+	end
+	return pill
 end
 
 -- The text label of a Kit.Pill.
@@ -458,10 +466,16 @@ local PRISM = ColorSequence.new({
 	ColorSequenceKeypoint.new(1, Color3.fromHex("#FF9AD5")),
 })
 function Kit.Prismatic(stroke: Instance): UIGradient
-	local g = make("UIGradient", { Color = PRISM }, stroke)
-	if not Settings.Reduced() then
-		TweenService:Create(g, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Rotation = 360 }):Play()
+	local existing = stroke:FindFirstChild("Prismatic")
+	if existing and existing:IsA("UIGradient") then return existing end
+	local g = make("UIGradient", { Name = "Prismatic", Color = PRISM }, stroke)
+	local tween = TweenService:Create(g, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Rotation = 360 })
+	local function update()
+		if Settings.Reduced() then tween:Cancel(); g.Rotation = 0 else tween:Play() end
 	end
+	local connection = Settings.Changed:Connect(update)
+	g.Destroying:Connect(function() connection:Disconnect(); tween:Cancel() end)
+	update()
 	return g
 end
 
@@ -469,6 +483,7 @@ end
 function Kit.Rarity(parent: Instance, rarity: string?): any
 	local r = if rarity and RarityColors.Fill[rarity] and C4.RarityBadge[rarity] then rarity else "Common"
 	local pill = pillWith(parent, r, C4.RarityBadge[r], Theme.TextPrimary, 22)
+	if r == "Secret" then Kit.Prismatic(pill) end
 	local l = Kit.PillLabel(pill)
 	l.TextStrokeColor3, l.TextStrokeTransparency = Theme.Stroke, 0.3
 	return pill
@@ -545,10 +560,11 @@ local function ensureTip()
 	tipGui, tipFrame, tipText = gui, f, t
 end
 
-local function showTip(obj: GuiObject, text: string)
+local function showTip(obj: GuiObject, text: string, color: Color3?)
 	ensureTip()
 	local f, t, gui = tipFrame :: GuiObject, tipText :: TextLabel, tipGui :: ScreenGui
 	t.Text = text
+	t.TextColor3 = color or Theme.TextPrimary
 	f.Visible = true
 	task.defer(function()
 		local sc = math.max(Scale.Value, 0.01)
@@ -556,14 +572,14 @@ local function showTip(obj: GuiObject, text: string)
 		local half = f.AbsoluteSize.X / sc / 2
 		local c = (obj.AbsolutePosition + obj.AbsoluteSize / 2 - gui.AbsolutePosition) / sc
 		local above = c.Y - obj.AbsoluteSize.Y / sc / 2 - 8
-		local below = above >= 40
-		f.AnchorPoint = Vector2.new(0.5, if below then 1 else 0)
-		local y = if below then above else c.Y + obj.AbsoluteSize.Y / sc / 2 + 8
-		f.Position = UDim2.fromOffset(math.clamp(c.X, half + 6, math.max(half + 6, view.X - half - 6)), y)
+		local height = f.AbsoluteSize.Y / sc
+		local y = if above >= height + 6 then above - height else c.Y + obj.AbsoluteSize.Y / sc / 2 + 8
+		f.AnchorPoint = Vector2.new(0.5, 0)
+		f.Position = UDim2.fromOffset(math.clamp(c.X, half + 6, math.max(half + 6, view.X - half - 6)), math.clamp(y, 6, math.max(6, view.Y - height - 6)))
 	end)
 end
 
-function Kit.Tip(obj: GuiObject, text: string | () -> string)
+function Kit.Tip(obj: GuiObject, text: string | () -> string, color: Color3?)
 	local function hide(id: number)
 		if tipFrame and id == tipId then
 			tipFrame.Visible = false
@@ -577,7 +593,7 @@ function Kit.Tip(obj: GuiObject, text: string | () -> string)
 		local id = tipId
 		task.delay(0.35, function()
 			if id == tipId and obj.Parent then
-				showTip(obj, if type(text) == "function" then text() else text)
+				showTip(obj, if type(text) == "function" then text() else text, color)
 			end
 		end)
 	end)
@@ -592,16 +608,23 @@ function Kit.Tip(obj: GuiObject, text: string | () -> string)
 		tipId += 1
 		local id = tipId
 		local held = true
+		local beganAt = os.clock()
+		local start = Vector2.new(input.Position.X, input.Position.Y)
 		local ended
 		ended = input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
+			if input.UserInputState == Enum.UserInputState.End or input.UserInputState == Enum.UserInputState.Cancel then
 				held = false
 				ended:Disconnect()
+				local moved = (Vector2.new(input.Position.X, input.Position.Y) - start).Magnitude
+				if input.UserInputState == Enum.UserInputState.End and moved < 12 and os.clock() - beganAt < 0.45 and id == tipId and obj.Parent then
+					showTip(obj, if type(text) == "function" then text() else text, color)
+					task.delay(2.5, function() hide(id) end)
+				end
 			end
 		end)
 		task.delay(0.45, function()
 			if id == tipId and held and obj.Parent then
-				showTip(obj, if type(text) == "function" then text() else text)
+				showTip(obj, if type(text) == "function" then text() else text, color)
 				task.delay(1.6, function()
 					hide(id)
 				end)
@@ -653,7 +676,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		end
 	end
 	if opts.Tip then
-		Kit.Tip(b, opts.Tip)
+		Kit.Tip(b, opts.Tip, opts.Rarity and Theme.Rarity[opts.Rarity])
 	end
 
 	local self: any = { Instance = b, Stroke = make("UIStroke", { Enabled = false, Thickness = 0 }, b) }

@@ -42,12 +42,9 @@ function LootService.Init()
 	Net.Handle("OpenBox", function(...)
 		return oneString(...) and BOX_TYPES[(...)] == true
 	end, function(player, boxType)
-		local ok, result = apply(player, Rewards.OpenBox, boxType, LootService.Rng, EventService.ActiveId())
-		if ok then
-			local mod = if result.Modifier then `{result.Modifier} ` else ""
-			Net.Fire("Notice", player, { Text = `You found a {mod}{result.Rarity} {name(result.RoomId)}!`, Kind = "Good" })
-		end
-		return ok, result
+		-- The client reveals the returned server result after the reel; an immediate
+		-- notice would spoil it before the animation finishes.
+		return apply(player, Rewards.OpenBox, boxType, LootService.Rng, EventService.ActiveId())
 	end)
 	Net.Handle("CraftBlueprint", oneString, function(player, roomId)
 		local ok, result = apply(player, Rewards.Craft, roomId)

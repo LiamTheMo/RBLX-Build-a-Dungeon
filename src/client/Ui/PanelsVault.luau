@@ -147,7 +147,7 @@ function Vault.Build(body: Frame)
 	end
 	local riskLabel = chip(1, "Thief", Theme.Danger, "Most a thief could steal")
 	local intervalLabel = chip(2, "Clock", Theme.TextPrimary, "Time between adventurers")
-	local rateLabel = chip(3, "Exchange", Theme.TextMuted, "Visits gained per 1% in the vault")
+	local rateLabel = chip(3, "Exchange", Theme.TextMuted, "Vault exchange multiplier")
 
 	local function locked(): boolean
 		local ok, plot = pcall(Plots.WaitOwn)
@@ -172,20 +172,12 @@ function Vault.Build(body: Frame)
 			return
 		end
 		local confirmed = percent == (s.VaultPercent or 0)
-		local rate = s.VaultRate or 0
-		local vaulted = if confirmed then (s.Vaulted or 0) else math.floor((s.Coins or 0) * percent / 100)
-		local bonus = if confirmed then (s.VaultBonus or 0) else percent * rate
-		local interval = s.VisitorInterval or 0
-		if not confirmed and interval > 0 then
-			local est = interval * (1 + (s.VaultBonus or 0) / 100) / (1 + bonus / 100)
-			local minInterval = Catalog.Current.Vault and Catalog.Current.Vault.MinInterval or 0
-			interval = math.max(minInterval, est)
-		end
-		vaultedLabel.Text = Badges.Comma(vaulted)
-		bonusLabel.Text = "+" .. math.floor(bonus * 10 + 0.5) / 10 .. "%"
-		riskLabel.Text = "-" .. Badges.Comma(math.floor(vaulted * maxTheft(s)))
-		intervalLabel.Text = string.format("%.1fs", interval)
-		rateLabel.Text = string.format("%d%% = +%s%%", 1, tostring(math.floor(rate * 100 + 0.5) / 100))
+		-- The bonus is server-calculated; pending values are not guessed locally.
+		vaultedLabel.Text = if confirmed then Badges.Comma(s.Vaulted or 0) else "…"
+		bonusLabel.Text = if confirmed then "+" .. tostring(math.floor((s.VaultBonus or 0) * 10 + 0.5) / 10) .. "%" else "…"
+		riskLabel.Text = if confirmed then "-" .. Badges.Comma(math.floor((s.Vaulted or 0) * maxTheft(s))) else "…"
+		intervalLabel.Text = if confirmed then string.format("%.1fs", s.VisitorInterval or 0) else "…"
+		rateLabel.Text = string.format("x%.2g", s.VaultRate or 0)
 	end
 
 	function self.Layout()

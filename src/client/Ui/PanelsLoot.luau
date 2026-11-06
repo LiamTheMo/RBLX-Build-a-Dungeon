@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Badges = require(script.Parent.Badges)
+local Bus = require(script.Parent.Bus)
 local Catalog = require(script.Parent.Catalog)
 local Kit = require(script.Parent.Kit)
 local Net = require(script.Parent.Net)
@@ -11,6 +12,7 @@ local P = require(script.Parent.PanelsKit)
 local RarityColors = require(script.Parent.RarityColors)
 local ReasonText = require(script.Parent.ReasonText)
 local Settings = require(script.Parent.Settings)
+local Scale = require(script.Parent.Scale)
 local Sound = require(script.Parent.Sound)
 local Sprites = require(script.Parent.Sprites)
 local State = require(script.Parent.State)
@@ -133,11 +135,13 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		Kit.Gem(top, result.Rarity, UDim2.fromOffset(32, 32)).LayoutOrder = 1
 		local rl = Kit.Label(top, string.upper(tostring(result.Rarity)), Theme.TextSize.Heading, color, true)
 		rl.AutomaticSize, rl.Size, rl.TextWrapped, rl.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false, 2
-		local room = P.RoomImage(col, result.RoomId, 104)
+		if result.Rarity == "Secret" then Kit.Prismatic(rl) end
+		local room = P.RoomImage(col, result.RoomId, 150)
 		room.LayoutOrder, room.ZIndex = 2, 12
 		local nm = Kit.Label(col, roomName(result.RoomId), Theme.TextSize.Title, Theme.TextPrimary, true)
 		nm.Size, nm.LayoutOrder, nm.ZIndex, nm.TextWrapped, nm.TextScaled = UDim2.new(1, 0, 0, 40), 3, 12, false, true
 		make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Title }, nm)
+		if result.Rarity == "Secret" then Kit.Prismatic(nm) end
 		if result.Perks and #result.Perks > 0 then
 			local perks = Kit.Perks(col, result.Perks, false)
 			perks.LayoutOrder = 4
@@ -333,70 +337,65 @@ function L.Build(scroll: ScrollingFrame, state: any)
 		return order
 	end
 
-	P.Section(scroll, "Boxes", nxt())
-	for _, boxType in catalog.Loot.BoxTypes do
+	P.Section(scroll, "Chests", nxt())
+	local cols = P.Columns(scroll)
+	local chestGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 330), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
+	for order, boxType in catalog.Loot.BoxTypes do
 		local count = (state.Boxes or {})[boxType] or 0
-		local card = P.Card(scroll, nxt())
-		local _, _, open = P.Row(card, string.format("%s  x%d", boxType, count), { Text = "Open", Style = "Primary", Width = 120, OnClick = function()
-			-- The server rolls and saves first; State snapshots are held until the reel and reveal finish.
+		local card = Kit.Panel(chestGrid, { LayoutOrder = order, Pad = Vector2.new(4, 4) })
+		make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
+		Kit.Icon(card, if boxType == "Rare" then "RareBox" else "Box", UDim2.fromOffset(62, 62)).LayoutOrder = 1
+		local name = Kit.Label(card, string.format("%s  x%d", if boxType == "Rare" then "Royal Chest" else "Dungeon Chest", count), 17, Theme.TextPrimary, true)
+		name.Size, name.LayoutOrder, name.TextScaled = UDim2.new(1, 0, 0, 25), 2, true
+		make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 17 }, name)
+		local odds = (state.BoxOdds or {})[boxType]
+		if odds then
+			local rf = P.ChipFlow(card, 3)
+			for i, e in odds.Rarities do
+				local lines = { e.Id .. " - " .. P.Pct(e.Chance) }
+				for _, room in odds.Rooms do
+					if room.Rarity == e.Id then table.insert(lines, roomName(room.Id) .. " " .. P.Pct(room.Chance)) end
+				end
+				local color = P.RarityColor[e.Id] or Theme.TextPrimary
+				local chip = P.Chip(rf, i, function(p) return Kit.Gem(p, e.Id, UDim2.fromOffset(22, 22)) end, P.Pct(e.Chance), color, table.concat(lines, "\n"), color, e.Id)
+				chip.Size = UDim2.fromOffset(0, 44)
+				Kit.MinTouch(chip)
+			end
+		end
+		local open = Kit.Button(card, { Text = "Open", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, OnClick = function()
 			State.Hold(true)
 			run("OpenBox", boxType, function(res)
 				if type(res) == "table" then
-					reveal(boxType, res, function()
-						State.Hold(false)
-					end)
-				else
-					State.Hold(false)
-				end
-			end, function()
-				State.Hold(false)
-			end)
-		end }, { Icon = if boxType == "Rare" then "RareBox" else "Box" })
+					reveal(boxType, res, function() State.Hold(false); Bus.RoomAwarded:Fire(res) end)
+				else State.Hold(false) end
+			end, function() State.Hold(false) end)
+		end })
 		open.SetEnabled(count > 0)
-		local odds = (state.BoxOdds or {})[boxType]
-		if odds then
-			-- Real odds as icon chips: rarity gem + %, room + % (names on hover / long-press).
-			local rf = P.ChipFlow(card, 2)
-			for i, e in odds.Rarities do
-				P.Chip(rf, i, function(p)
-					return Kit.Gem(p, e.Id, UDim2.fromOffset(22, 22))
-				end, P.Pct(e.Chance), P.RarityColor[e.Id] or Theme.TextPrimary, e.Id)
-			end
-			local rmf = P.ChipFlow(card, 3)
-			for i, e in odds.Rooms do
-				if e.Chance > 0 then
-					P.Chip(rmf, i, function(p)
-						return P.RoomImage(p, e.Id, 26)
-					end, P.Pct(e.Chance), P.RarityColor[e.Rarity or Catalog.RoomRarity(e.Id)] or Theme.TextMuted, roomName(e.Id))
-				end
-			end
-			-- Pity: gem of the guaranteed tier + bar "3/10".
-			local top = odds.PityAfter + 1
-			local pity = math.clamp(state.BoxPity or 0, 0, top)
-			local prow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 4 }, card)
-			make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, prow)
-			local pg = Kit.Gem(prow, odds.PityRarity, UDim2.fromOffset(26, 26))
-			pg.LayoutOrder = 1
-			pg.Active = true
-			Kit.Tip(pg, string.format("%s+ by box %d", tostring(odds.PityRarity), top))
-			local bar = Kit.Bar(prow, UDim2.new(1, -34, 0, 24))
-			bar.Instance.LayoutOrder = 2
-			bar.Set(pity / top, string.format("%d/%d", pity, top))
-		end
 	end
 
 	P.Section(scroll, "Blueprints", nxt())
-	for _, id in catalog.RoomOrder do
+	local bpGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 235), SortOrder = Enum.SortOrder.LayoutOrder }, bpGrid)
+	for order, id in catalog.RoomOrder do
 		local def = catalog.Rooms[id]
 		local cost = def and def.CraftCost
 		if def and def.Craftable and cost then
 			local n = (state.Blueprints or {})[id] or 0
-			local card = P.Card(scroll, nxt())
-			local _, _, craft = P.Row(card, string.format("%s  %d/%d", roomName(id), math.min(n, cost), cost), { Text = "Craft", Style = "Primary", Width = 120, OnClick = function()
-				run("CraftBlueprint", id, function()
-					Toast.Show(roomName(id) .. " crafted.", "Good")
-				end)
-			end }, { Room = id, Kind = def.Kind })
+			local card = Kit.Panel(bpGrid, { LayoutOrder = order, Rarity = def.Rarity, Pad = Vector2.new(4, 3) })
+			make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
+			local art = Kit.Icon(card, "BlueprintCard", UDim2.fromOffset(90, 90))
+			art.LayoutOrder = 1
+			local room = P.RoomImage(art, id, 58, def.Kind)
+			room.AnchorPoint, room.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+			local name = Kit.Label(card, roomName(id), 16, Theme.TextPrimary, true)
+			name.Size, name.LayoutOrder, name.TextScaled = UDim2.new(1, 0, 0, 24), 2, true
+			make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 16 }, name)
+			local count = Kit.Label(card, string.format("%d/%d", n, cost), 16, Theme.TextMuted, true)
+			count.Size, count.LayoutOrder = UDim2.new(1, 0, 0, 22), 3
+			local craft = Kit.Button(card, { Text = "Craft", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, OnClick = function()
+				run("CraftBlueprint", id, function() Toast.Show(roomName(id) .. " crafted.", "Good") end)
+			end })
 			craft.SetEnabled(n >= cost)
 		end
 	end

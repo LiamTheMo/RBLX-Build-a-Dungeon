@@ -7,6 +7,7 @@ local RunService = game:GetService("RunService")
 
 local Ids = require(script.Parent.SpriteIds)
 local Ids3 = require(script.Parent.SpriteIds3)
+local IconIds = require(script.Parent.IconIds)
 local ids4Module = script.Parent:FindFirstChild("SpriteIds4") -- v4 frames and reel art (optional until it lands)
 local Ids4 = if ids4Module then require(ids4Module) else {}
 
@@ -88,6 +89,7 @@ task.spawn(function()
 	local ids = {}
 	collect(Ids, ids)
 	collect(Ids3, ids)
+	collect(IconIds, ids)
 	collect(Ids4, ids)
 	local seen, unique = {}, {}
 	for _, id in ids do

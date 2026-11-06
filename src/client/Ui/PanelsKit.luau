@@ -1,6 +1,8 @@
 -- Shared pieces of the Loot / Collection / Keeper panels: rarity colours,
 -- text helpers, list cards and the modal shell (title, tabs, scroll area).
 local Theme = require(script.Parent.Theme)
+local Percent = require(script.Parent.Percent)
+local Scale = require(script.Parent.Scale)
 local Kit = require(script.Parent.Kit)
 local Sprites = require(script.Parent.Sprites)
 local SpriteIds = require(script.Parent.SpriteIds)
@@ -15,11 +17,7 @@ function P.Hex(c: Color3): string
 	return "#" .. c:ToHex()
 end
 
-function P.Pct(f: number): string
-	local step = if f < 0.01 then 100 else 10 -- 0.02% needs two decimals
-	local v = math.floor(f * 100 * step + 0.5) / step
-	return (if v % 1 == 0 then tostring(math.floor(v)) else tostring(v)) .. "%"
-end
+P.Pct = Percent.Format
 
 function P.Rich(text: string, rarity: string): string
 	return string.format('<font color="%s">%s</font>', P.Hex(P.RarityColor[rarity] or Theme.TextPrimary), text)
@@ -132,13 +130,37 @@ function P.ChipFlow(parent: Instance, order: number): Frame
 	return f
 end
 
-function P.Chip(flow: Instance, order: number, art: (Instance) -> GuiObject, text: string, color: Color3, tip: string)
+function P.Chip(flow: Instance, order: number, art: (Instance) -> GuiObject, text: string, color: Color3, tip: string, tipColor: Color3?, rarity: string?)
 	local c = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 26), LayoutOrder = order, Active = true }, flow)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, c)
 	art(c).LayoutOrder = 1
 	local l = Kit.Label(c, text, Theme.TextSize.Caption + 1, color, true)
 	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 26), false, 2
-	Kit.Tip(c, tip)
+	Kit.Tip(c, tip, tipColor)
+	if rarity == "Secret" then Kit.Prismatic(l) end
+	return c
+end
+
+-- Base values supplied by the server, for room cards and the world inspector.
+-- Specials with more context remain available as an ability tooltip.
+function P.RoomStats(flow: Instance, def: any)
+	for i, stat in {
+		{ "Heal", def.BaseHealth, "Base defender health" },
+		{ "Sword", def.BaseDamage, if def.DamagePerSecond then "Base damage per second" else "Base damage per hit" },
+		{ "Defender", def.UnitCount, "Defender units" },
+	} do
+		if type(stat[2]) == "number" then
+			P.Chip(flow, i, function(p) return Kit.Icon(p, stat[1], UDim2.fromOffset(22, 22)) end, tostring(stat[2]) .. (if i == 2 and def.DamagePerSecond then "/s" else ""), Theme.TextPrimary, stat[3])
+		end
+	end
+	for i, stat in { { "Sword", def.SupportDamage, "Bonus damage" }, { "Heal", def.SupportHealth, "Bonus defender health" } } do
+		if type(stat[2]) == "number" then
+			P.Chip(flow, i + 3, function(p) return Kit.Icon(p, stat[1], UDim2.fromOffset(22, 22)) end, "+" .. P.Pct(stat[2]), Theme.TextPrimary, stat[3])
+		end
+	end
+	if type(def.Exchange) == "number" then
+		P.Chip(flow, 0, function(p) return Kit.Icon(p, "Exchange", UDim2.fromOffset(22, 22)) end, string.format("x%.2g", def.Exchange), Theme.Gold, "Base vault exchange")
+	end
 end
 
 -- Icon + text on one line (heading rows of the panels).
@@ -194,6 +216,13 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 		self.Scrolls[name] = scroll
 	end
 	return self
+end
+
+-- Prefer three columns, retaining usable cards on a narrow portrait phone.
+function P.Columns(scroll: ScrollingFrame): number
+	local width = scroll.AbsoluteSize.X / math.max(Scale.Value, 0.01)
+	if width < 1 then width = workspace.CurrentCamera.ViewportSize.X / math.max(Scale.Value, 0.01) * 0.85 end
+	return if width >= 450 then 3 else 2
 end
 
 -- Clears a scroll area but keeps its scroll position.

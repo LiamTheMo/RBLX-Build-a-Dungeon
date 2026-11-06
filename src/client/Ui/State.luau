@@ -76,4 +76,18 @@ function State.HasPlaced(roomId: string): boolean
 	return false
 end
 
+-- Recognize every treasure tier, not just the starter Coin Cache.
+function State.HasPlacedKind(kind: string): boolean
+	local catalog = require(script.Parent.Catalog)
+	local s = State.Current
+	for _, instanceId in (s and s.Layout) or {} do
+		local room = s.Rooms and s.Rooms[instanceId]
+		local def = room and catalog.Room(room.Id)
+		if def and def.Kind == kind then
+			return true
+		end
+	end
+	return false
+end
+
 return State

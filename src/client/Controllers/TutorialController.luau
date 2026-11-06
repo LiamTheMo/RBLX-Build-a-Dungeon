@@ -91,8 +91,11 @@ local function layout()
 	local phone = Scale.Phone
 	-- Above the bottom bar (3 buttons: 76 / 108 px tall) and its margin.
 	-- The bubble sprite's tail stretches, so the bubble stays near its native width (<= ~1.4x at the 0.5 slice scale).
-	ui.Bubble.Position = if phone then UDim2.new(0.5, 40, 1, -96) else UDim2.new(0.5, 50, 1, -144)
-	ui.Bubble.Size = if phone then UDim2.fromOffset(340, 170) else UDim2.fromOffset(350, 196)
+	local available = ui.Root.AbsoluteSize.X / math.max(Scale.Value, 0.01)
+	local width = math.max(220, math.min(if phone then 340 else 350, available - 40))
+	ui.Bubble.Position = UDim2.new(0.5, 0, 1, if phone then -92 else -144)
+	ui.Bubble.Size = UDim2.fromOffset(width, if phone then 170 else 196)
+	ui.Buttons.Size = UDim2.fromOffset(width, 48)
 	ui.TextLimit.MaxTextSize = if phone then 15 else 18
 	local m = if phone then 64 else 84
 	ui.Mascot.Size = UDim2.fromOffset(m, m)
@@ -114,7 +117,8 @@ local function refresh()
 		return
 	end
 	currentStep = step
-	ui.Bubble.Visible = true
+	-- Placement mode supplies its own cell hint and controls.
+	ui.Bubble.Visible = not s.Building
 	ui.Text.Text = cfg.Text
 	ui.Next.Instance.Visible = cfg.Next == true
 	ui.Place.Instance.Visible = cfg.Place == true
@@ -196,6 +200,7 @@ local function buildUi()
 	-- Pointer arrow (Feedback.TutorialArrow) above the highlighted button.
 	ui.Arrow = Kit.Sprite(ui.Root, "Feedback.TutorialArrow", { AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(40, 44), Visible = false, ZIndex = 5 })
 
+	ui.Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
 	Scale.Changed:Connect(layout)
 	layout()
 end

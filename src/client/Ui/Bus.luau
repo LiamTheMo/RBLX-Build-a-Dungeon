@@ -6,6 +6,8 @@ local Signal = require(ReplicatedStorage.Shared.Core.Signal)
 return {
 	BuildRequested = Signal.new(), -- HUD / tutorial asks BuildController to enter build mode
 	ShopRequested = Signal.new(),
+	VaultRequested = Signal.new(),
+	RoomAwarded = Signal.new(),
 	OpenPanel = Signal.new(), -- "Loot" | "Collection" | "Keeper" | "Close" (HUD fires, LootController listens)
 	CellHint = Signal.new(), -- fires cell key "3,3" or nil; shown by BuildController while building
 	ToastOffset = 0, -- px (reference) the toast stack moves down while the event banner shows

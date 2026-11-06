@@ -10,6 +10,7 @@ local PanelsCollection = require(Ui.PanelsCollection)
 local PanelsKit = require(Ui.PanelsKit)
 local PanelsLoot = require(Ui.PanelsLoot)
 local State = require(Ui.State)
+local Scale = require(Ui.Scale)
 
 local Controller = {}
 
@@ -63,6 +64,7 @@ function Controller.Start()
 	State.Start()
 	shell = PanelsKit.Shell(TABS, open)
 	Bus.OpenPanel:Connect(open)
+	Scale.Changed:Connect(render)
 	-- State arrives often (every hit of an encounter): rebuild at most once per frame, only while visible.
 	State.Changed:Connect(function()
 		if shell.Gui.Enabled and not dirty then
