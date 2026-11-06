@@ -170,9 +170,9 @@ function Progression.TheftScale(profile: any): number
 	return stats and stats.TheftScale or 1
 end
 
--- Spawn-rate bonus in percent (VaultPercent * rate).
+-- Spawn-rate bonus in percent from the coins actually at risk.
 function Progression.VaultBonus(profile: any): number
-	return Economy.VaultBonus(profile.VaultPercent or 0, Progression.VaultRate(profile))
+	return Economy.VaultBonus(Economy.Vaulted(profile.Coins, profile.VaultPercent or 0, Progression.Treasure(profile) ~= nil), Progression.VaultRate(profile))
 end
 
 -- Coins currently at risk (0 without a treasure room on the route).

@@ -49,9 +49,12 @@ test("vault rate and bonus follow the treasure's Exchange, level and Deep Vault"
 	expectNear(Economy.VaultRate("VoidVault", 1, 0), 3.5, 1e-9, "void vault")
 	expectNear(Economy.VaultRate("TreasureRoom", 1, 5), 1.25, 1e-9, "deep vault 5")
 	expectNear(Economy.VaultRate("Bogus", 1, 0), 1.0, 1e-9, "unknown room has exchange 1")
-	expectNear(Economy.VaultBonus(100, 1.0), 100, 1e-9, "100% at rate 1")
-	expectNear(Economy.VaultBonus(40, 2.56), 102.4, 1e-9, "40% at 2.56")
-	expectEq(Economy.VaultBonus(-1, 1), 0, "bad percent")
+	expectEq(Economy.VaultBonus(0, 1), 0, "empty vault has no bonus")
+	expectNear(Economy.VaultBonus(900, 1), 25, 1e-9, "logarithmic scale")
+	expectNear(Economy.VaultBonus(900, 2), 50, 1e-9, "room rate scales the bonus")
+	expectEq(Economy.VaultBonus(-1, 1), 0, "bad amount")
+	expectEq(Economy.VaultBonus(0/0, 1), 0, "NaN amount")
+	expect(Economy.VaultBonus(200, 1) - Economy.VaultBonus(100, 1) > Economy.VaultBonus(1100, 1) - Economy.VaultBonus(1000, 1), "diminishing gains")
 	-- Treasure exchange rises with the tier.
 	local last = 0
 	for _, id in { "TreasureRoom", "Strongbox", "Treasury", "RoyalVault", "DragonHoard", "CelestialCoffer", "VoidVault" } do
@@ -99,10 +102,14 @@ test("profile vault: only a placed treasure room puts coins at risk", function()
 	expectEq(Progression.VaultBonus(p), 0, "no bonus without it")
 	p.Layout["3,3"] = "r2" -- Treasure Room after the slime
 	expectEq(Progression.Vaulted(p), 400, "40% vaulted")
-	expectNear(Progression.VaultBonus(p), 40, 1e-9, "40% bonus at rate 1")
-	expectNear(Progression.VisitorInterval(p), 30 / 1.4, 1e-9, "faster visitors")
+	local bonus = Economy.VaultBonus(400, 1)
+	expectNear(Progression.VaultBonus(p), bonus, 1e-9, "bonus uses coins at risk")
+	expectNear(Progression.VisitorInterval(p), 30 / (1 + bonus / 100), 1e-9, "faster visitors")
 	expectEq(Economy.Theft("Novice", Progression.Vaulted(p)), 40, "a novice steals 10% of it")
-	expectNear(Progression.VisitorInterval(p, { Interval = 0.5 }), 15 / 1.4, 1e-9, "with Swarm")
+	expectNear(Progression.VisitorInterval(p, { Interval = 0.5 }), 15 / (1 + bonus / 100), 1e-9, "with Swarm")
+	p.Coins = 0
+	expectEq(Progression.VaultBonus(p), 0, "empty vault cannot speed visitors")
+	expectEq(Progression.VisitorInterval(p), Balance.Timing.VisitorInterval, "empty vault interval")
 end)
 
 test("upgrade costs end at the max level", function()

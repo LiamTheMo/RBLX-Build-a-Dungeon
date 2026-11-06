@@ -6,8 +6,8 @@
 -- Rooms.Order), never dictionary order. Gameplay-earned only: nothing here is sold.
 --
 -- Item model (2026-11-05): a room's rarity is fixed by its definition. A box
--- rolls a TIER (tier weights, pity, event boost), then a ROOM of that tier
--- (Balance.Loot.RoomWeights, default 1). Common and Uncommon rooms respect the
+-- rolls a TIER (tier weights, pity, event boost), then a ROOM from its own
+-- tier pool (Balance.Loot.RoomWeights, default 1). Common and Uncommon rooms respect the
 -- shop level gates; Rare and rarer rooms are loot-only and never gated.
 
 local Balance = require(script.Parent.Parent.Definitions.Balance)
@@ -54,11 +54,13 @@ end
 -- Ordered {Id, Weight} rooms a box of `tier` can give a keeper of `level` (nil =
 -- ungated). Common/Uncommon rooms need Progression.ShopLevel <= level; if none
 -- qualifies, the tier's lowest-gated rooms are used. Empty for a tier with no rooms.
-function Loot.TierRooms(tier: string, level: number?): { any }
+function Loot.TierRooms(tier: string, level: number?, boxType: string?): { any }
 	local all = {}
 	for _, id in Rooms.Order do
 		local def = Rooms.Get(id) :: any
-		if def.Rarity == tier and Loot.Craftable(id) then
+		local royal = Balance.Loot.RoyalRooms[id] == true
+		local included = boxType == nil or (boxType == "Rare" and royal) or (boxType == "Dungeon" and not royal)
+		if included and def.Rarity == tier and Loot.Craftable(id) then
 			table.insert(all, { Id = id, Weight = roomWeight(id) })
 		end
 	end
@@ -86,7 +88,7 @@ end
 
 -- Ordered {Id, Weight} tiers with Weight > 0, at least one room, and rank >= the
 -- pity floor, for one box type ("Dungeon" uses Weight, "Rare" uses RareWeight).
-local function rarityEntries(boxType: string, pity: number, tiers: Tiers?): { any }?
+local function rarityEntries(boxType: string, pity: number, tiers: Tiers?, blueprint: boolean?): { any }?
 	local field = tierField(boxType)
 	if field == nil then
 		return nil
@@ -96,7 +98,7 @@ local function rarityEntries(boxType: string, pity: number, tiers: Tiers?): { an
 	local out = {}
 	for i, r in list do
 		local w = r[field]
-		if type(w) == "number" and w > 0 and (minRank == nil or i >= minRank) and #Loot.TierRooms(r.Id) > 0 then
+		if type(w) == "number" and w > 0 and (minRank == nil or i >= minRank) and #Loot.TierRooms(r.Id, nil, if blueprint then nil else boxType) > 0 then
 			table.insert(out, { Id = r.Id, Weight = w })
 		end
 	end
@@ -136,11 +138,11 @@ end
 -- {Rarities = {{Id, Chance}}, TierRooms = {[tier] = {{Id, Chance}}} (chance
 -- inside the tier), Rooms = {{Id, Rarity, Chance}} (overall: tier chance * room
 -- share)} for a tier list and gate level.
-local function distribution(list: { any }, level: number?): any
+local function distribution(list: { any }, level: number?, boxType: string?): any
 	local rarities = chances(list)
 	local tierRooms, rooms = {}, {}
 	for _, t in rarities do
-		local inside = chances(Loot.TierRooms(t.Id, level))
+		local inside = chances(Loot.TierRooms(t.Id, level, boxType))
 		tierRooms[t.Id] = inside
 		for _, e in inside do
 			table.insert(rooms, { Id = e.Id, Rarity = t.Id, Chance = t.Chance * e.Chance })
@@ -158,7 +160,7 @@ function Loot.Odds(boxType: string, pity: number?, level: number?, tiers: Tiers?
 	if list == nil then
 		return nil
 	end
-	local d = distribution(list, level)
+	local d = distribution(list, level, boxType)
 	d.PityAfter = Balance.Loot.PityAfter
 	d.PityRarity = Balance.Loot.PityRarity
 	return d
@@ -183,8 +185,8 @@ function Loot.NextPity(pity: number, rarity: string, tiers: Tiers?): number
 end
 
 -- A room of `tier` for a keeper of `level` (same list as Odds' TierRooms).
-function Loot.RollRoom(tier: string, rng: any, level: number?): string?
-	return pick(Loot.TierRooms(tier, level), rng)
+function Loot.RollRoom(tier: string, rng: any, level: number?, boxType: string?): string?
+	return pick(Loot.TierRooms(tier, level, boxType), rng)
 end
 
 -- One box: (tier, roomId) or nil for an unknown box type.
@@ -193,19 +195,20 @@ function Loot.RollBox(boxType: string, pity: number, rng: any, level: number?, t
 	if tier == nil then
 		return nil, nil
 	end
-	return tier, Loot.RollRoom(tier, rng, level)
+	return tier, Loot.RollRoom(tier, rng, level, boxType)
 end
 
 -- Blueprint drop type: tier by the BlueprintTierBox weights (no pity, no event),
 -- then a room of that tier (gated like boxes). {{Id, Rarity, Chance}} overall.
 function Loot.BlueprintOdds(level: number?): { any }
-	local list = rarityEntries(Balance.Loot.BlueprintTierBox, 0, nil) :: { any }
+	local list = rarityEntries(Balance.Loot.BlueprintTierBox, 0, nil, true) :: { any }
 	return distribution(list, level).Rooms
 end
 
 function Loot.RollBlueprint(rng: any, level: number?): string?
-	local _, roomId = Loot.RollBox(Balance.Loot.BlueprintTierBox, 0, rng, level, nil)
-	return roomId
+	local list = rarityEntries(Balance.Loot.BlueprintTierBox, 0, nil, true)
+	local tier = list and pick(list, rng)
+	return if tier then Loot.RollRoom(tier, rng, level) else nil
 end
 
 -- Blueprints of `roomId` needed to craft one (its tier's CraftCost); nil if not craftable.

@@ -65,12 +65,10 @@ function Economy.VaultRate(roomId: string?, level: number?, deepVault: number?):
 	return v.RatePerPercent * exchange * (1 + v.LevelBonus * (lv - 1) + Balance.Permanent.DeepVault.PerLevel * deep)
 end
 
--- Spawn-rate bonus in percent: VaultPercent * rate.
-function Economy.VaultBonus(percent: number, rate: number): number
-	if not isCount(percent) or not isCount(rate) then
-		return 0
-	end
-	return math.min(percent, 100) * rate
+-- Logarithmic return on coins actually at risk; zero deposited coins give no bonus.
+function Economy.VaultBonus(vaulted: number, rate: number): number
+	if not isCount(vaulted) or not isCount(rate) then return 0 end
+	return Balance.Vault.LogBonus * math.log(1 + vaulted / Balance.Vault.CoinScale) / math.log(10) * rate
 end
 
 -- Visitor interval: (base - Lure) / (1 + bonus / 100) * the event's Interval

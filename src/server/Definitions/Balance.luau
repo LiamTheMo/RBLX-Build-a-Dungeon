@@ -28,13 +28,16 @@ Balance.Timing = table.freeze({
 -- VaultPercent (0..100); while a treasure-kind room is on the route,
 -- floor(Coins * pct / 100) coins count as vaulted: visitors who reach the
 -- treasure steal TheftFraction of them (times the treasure's TheftScale). In
--- exchange: vault bonus % = pct * rate, where rate = RatePerPercent * the
+-- exchange: bonus % = LogBonus * log10(1 + vaulted coins / CoinScale) * rate,
+-- where rate = RatePerPercent * the
 -- treasure room's Exchange (Balance.Rooms) * (1 + LevelBonus * (level - 1) +
 -- DeepVault PerLevel * Deep Vault level). The bonus shortens the visitor interval
 -- (interval / (1 + bonus / 100)) and multiplies rare-variant chances by
 -- (1 + VariantPerBonus * bonus / 100).
 Balance.Vault = table.freeze({
 	RatePerPercent = 1.0,
+	CoinScale = 100,
+	LogBonus = 25,
 	LevelBonus = 0.1,
 	VariantPerBonus = 0.5,
 })
@@ -415,6 +418,14 @@ Balance.Loot = table.freeze({
 	-- weights; rooms not listed weigh 1, so a tier's rooms are equally likely.
 	-- 0 = never from loot and not craftable (the starter Coin Cache). The other
 	-- treasure rooms weigh less: only one treasure can be placed.
+	-- Royal and Dungeon chests have disjoint room pools; unlisted rooms belong to Dungeon.
+	RoyalRooms = table.freeze({
+		ArrowGallery = true, Strongbox = true,
+		RestlessCrypt = true, Treasury = true,
+		MimicRoom = true, RoyalVault = true,
+		LichSanctum = true, DragonHoard = true,
+		PhoenixNest = true, CelestialCoffer = true, VoidVault = true,
+	}),
 	RoomWeights = table.freeze({
 		TreasureRoom = 0,
 		Strongbox = 0.5,

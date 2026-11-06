@@ -207,5 +207,5 @@ test("box and blueprint drops respect the shop level gates (Common/Uncommon only
 	expect(ok and data.RoomId == "MushroomCavern", "Uncommon box room gated at level 1")
 	-- 0.9 lands in Rare (85..95% of the Dungeon weights); Rare rooms are never gated.
 	local ok2, rare = Rewards.OpenBox(p, "Dungeon", scripted({ 0.9, 0.999999, 0.5 }))
-	expect(ok2 and rare.Rarity == "Rare" and rare.RoomId == "Treasury", "Rare room at level 1")
+	expect(ok2 and rare.Rarity == "Rare" and rare.RoomId == "FlameVent", "Rare room at level 1")
 end)
