@@ -11,7 +11,7 @@ local function compute()
 	local phone = math.min(v.X, v.Y) < 600
 	local s
 	if phone then
-		s = math.clamp(v.Y / 720, 0.75, 1.1)
+		s = math.clamp(v.Y / 720, 0.7, 1.1)
 	else
 		s = math.clamp(math.min(v.X / 1920, v.Y / 1080), 0.6, 1.5)
 	end

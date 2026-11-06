@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local Ui = script.Parent.Parent.Ui
 local Badges = require(Ui.Badges)
@@ -47,6 +48,7 @@ local plot: Model? = nil
 local anchor = CFrame.new()
 local draft: { [string]: string } = {}
 local selectedType: string? = nil
+local selectedKind = "All"
 local carry: string? = nil -- instance being moved
 local selectedCell: string? = nil
 local hintCell: string? = nil
@@ -360,13 +362,20 @@ local function refreshInventory()
 		end
 	end
 	local groups, keys = inventory()
+	local filtered = {}
+	for _, key in keys do
+		local def = Catalog.Room(groups[key].Id)
+		if selectedKind == "All" or (def and def.Kind == selectedKind) then table.insert(filtered, key) end
+	end
+	keys = filtered
+	for kind, tab in ui.KindTabs do tab.SetSelected(kind == selectedKind) end
 	local phone = Scale.Phone
 	if ui.Empty then
 		ui.Empty.Visible = #keys == 0
 	end
-	local cardW, cardH = if phone then 112 else 140, if phone then 128 else 168
+	local cardW, cardH = if phone then 100 else 120, if phone then 105 else 120
 	local border = cardBorder(cardW, cardH)
-	local roomSize = if phone then 36 else 48
+	local roomSize = if phone then 32 else 40
 	for i, key in keys do
 		local g = groups[key]
 		local def = Catalog.Room(g.Id)
@@ -389,8 +398,8 @@ local function refreshInventory()
 		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, inner)
 		make("UIPadding", { PaddingTop = UDim.new(0, border + 5), PaddingBottom = UDim.new(0, border + 26), PaddingLeft = UDim.new(0, border + 3), PaddingRight = UDim.new(0, border + 3) }, inner)
 		P.RoomImage(inner, g.Id, roomSize, def.Kind).LayoutOrder = 0
-		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 13 else 15, Theme.TextPrimary, true)
-		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 30 else 36), 1
+		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 15 else 16, Theme.TextPrimary, true)
+		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 22 else 26), 1
 		name.TextYAlignment = Enum.TextYAlignment.Top
 		name.TextTruncate = Enum.TextTruncate.AtEnd
 		if #g.Perks > 0 then
@@ -548,7 +557,8 @@ function Build.Refresh()
 end
 
 local function cellAtViewport(pos: Vector2): string?
-	return plot and Cells.KeyAt(plot, pos)
+	local inset = GuiService:GetGuiInset()
+	return plot and Cells.KeyAt(plot, pos - inset)
 end
 
 local function placeAt(key: string)
@@ -595,6 +605,13 @@ local function tapAt(pos: Vector2)
 	end
 	if draft[key] then
 		selectedCell = key
+		local scale = math.max(Scale.Value, 0.1)
+		local inset = GuiService:GetGuiInset()
+		local viewport = workspace.CurrentCamera.ViewportSize
+		local x = math.clamp((pos.X - inset.X) / scale + 12, 4, math.max(4, viewport.X / scale - 304))
+		local bottom = math.min((viewport.Y - inset.Y) / scale, ui.Buttons.AbsolutePosition.Y / scale)
+		local y = math.clamp((pos.Y - inset.Y) / scale - 70, 4, math.max(4, bottom - 148))
+		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.zero, UDim2.fromOffset(x, y)
 		Build.Refresh()
 	elseif selectedType or carry then
 		placeAt(key)
@@ -675,7 +692,7 @@ end
 local camConn: RBXScriptConnection? = nil
 local savedType, savedCF = Enum.CameraType.Custom, CFrame.new()
 local returning = false
-local overview = false -- false: the normal player camera (rotate, zoom, walk); true: the angled overview
+local overview = true -- default to a clear view of the plot
 local savedZoom: { Min: number, Max: number }? = nil
 
 -- Normal camera, pushed out a little so the whole plot fits: raises the minimum zoom distance.
@@ -693,7 +710,7 @@ local function freeCamera()
 		savedZoom = { Min = player.CameraMinZoomDistance, Max = player.CameraMaxZoomDistance }
 	end
 	player.CameraMaxZoomDistance = math.max(savedZoom.Max, 90)
-	player.CameraMinZoomDistance = math.max(savedZoom.Min, 28)
+	player.CameraMinZoomDistance = math.max(savedZoom.Min, 12)
 end
 
 local function restoreZoom()
@@ -706,7 +723,7 @@ local function restoreZoom()
 end
 
 local function camGoal(): CFrame
-	return anchor * CFrame.lookAt(Vector3.new(0, 36, 26), Vector3.new(0, 0, -2))
+	return anchor * CFrame.lookAt(Vector3.new(0, 25, 18), Vector3.new(0, 0, -2))
 end
 
 local function startCamera()
@@ -821,16 +838,17 @@ function Build.Layout()
 	end
 	local phone = Scale.Phone
 	local bn, bs = ui.Banner, ui.Inventory
-	local invH = if phone then 196 else 256
+	local invH = if phone then 210 else 224
 	local invBottom = if phone then 4 else 16
+	local tabHeight = math.max(48, 44 / math.max(Scale.Value, 0.1))
+	ui.Scroll.Position = UDim2.fromOffset(0, tabHeight + 4)
+	ui.Scroll.Size = UDim2.new(1, 0, 1, -(tabHeight + 4))
 	if phone then
 		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 56), UDim2.fromOffset(320, 48)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(1, -16, 0, invH)
-		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 8, 1, -(invBottom + invH + 8))
+		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(0.8, 0, 0, invH)
 	else
 		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 96), UDim2.fromOffset(440, 56)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(1, -32, 0, invH)
-		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 16, 1, -(invBottom + invH + 10))
+		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(0.72, 0, 0, invH)
 	end
 	-- Confirm / Cancel: centred right above the inventory bar, big touch targets.
 	ui.Buttons.AnchorPoint, ui.Buttons.Position = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(invBottom + invH + (if phone then 8 else 12)))
@@ -874,9 +892,22 @@ local function buildUi()
 	make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = Theme.TextSize.Body }, ui.Status)
 
 	ui.Inventory = Kit.Panel(gui, { Sprite = "Large", Pad = Vector2.new(6, 4) })
+	ui.KindTabs = {}
+	local tabs = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48) }, ui.Inventory)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, tabs)
+	for order, kind in { "All", "Defender", "Trap", "Treasure", "Support" } do
+		local tab = Kit.Button(tabs, { Text = kind, Style = "Tab", TextSize = 16, Size = UDim2.new(0.2, -3, 0, 44), LayoutOrder = order, OnClick = function()
+			selectedKind = kind
+			if not carry then selectedType = nil end
+			ui.Scroll.CanvasPosition = Vector2.zero
+			Build.Refresh()
+		end })
+		ui.KindTabs[kind] = tab
+	end
 	ui.Scroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromOffset(0, 48),
+		Size = UDim2.new(1, 0, 1, -48),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.X,
 		ScrollingDirection = Enum.ScrollingDirection.X,
@@ -962,6 +993,8 @@ local function buildUi()
 			end
 		end,
 	})
+
+	ui.View.SetSelected(overview)
 
 	-- Selected-room callout: icon + name, then Move / Remove side by side.
 	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(300, 140), Pad = Vector2.new(4, 2) })

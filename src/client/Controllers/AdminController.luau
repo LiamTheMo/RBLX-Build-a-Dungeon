@@ -15,7 +15,7 @@ function Controller.Start()
 		if not ok or type(allowed) ~= "table" or type(allowed.Events) ~= "table" then return end
 		local gui = Kit.Screen("AdminPanel", 35)
 		local button = Kit.Button(gui, { Text = "", Icon = "AdminShield", IconScale = 0.7, Style = "Secondary", Size = UDim2.fromOffset(56, 56), Tip = "Admin" })
-		if button.Icon then button.Icon.Position = UDim2.fromScale(0.5, 0.46) end
+		if button.Icon then button.Icon.Position = UDim2.fromScale(0.5, 0.5) end
 		button.Instance.AnchorPoint = Vector2.new(1, 1)
 		button.Instance.Position = UDim2.new(1, -12, 1, -12)
 		local panel = Modal.New(gui, "Admin", "AdminShield", Vector2.new(580, 500), Vector2.new(560, 430))

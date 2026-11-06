@@ -304,7 +304,7 @@ local function buildShop(gui: ScreenGui)
 					Tip = "Upgrade",
 					OnClick = function()
 						if request("Upgrade", r.Id) then
-							Sound.Play("Purchase")
+							Sound.Play("UpgradePurchase")
 						end
 					end,
 				})

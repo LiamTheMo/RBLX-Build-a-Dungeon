@@ -10,6 +10,7 @@ local P = require(script.Parent.PanelsKit)
 local ReasonText = require(script.Parent.ReasonText)
 local Sprites = require(script.Parent.Sprites)
 local SpriteIds = require(script.Parent.SpriteIds)
+local Sound = require(script.Parent.Sound)
 local Theme = require(script.Parent.Theme)
 local Toast = require(script.Parent.Toast)
 
@@ -218,7 +219,7 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 	local coins = state.Coins or 0
 	local cols = P.Columns(scroll)
 	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 150), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 170), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 	for order, def in catalog.Permanent do
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0
@@ -233,7 +234,7 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 		Kit.Tip(label, def.Name .. ": " .. def.PerLevelText)
 		local buy = Kit.Button(card, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "CoinStack" else nil, IconLayout = "Row", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 3, OnClick = function()
 			local ok, res = Net.Invoke("BuyPermanent", id)
-			if not ok then Toast.Show(ReasonText.Get(res), "Bad") end
+			if not ok then Toast.Show(ReasonText.Get(res), "Bad") else Sound.Play("UpgradePurchase") end
 		end })
 		buy.SetEnabled(cost ~= nil and coins >= cost)
 	end

@@ -17,4 +17,6 @@ return table.freeze({
 	Spores = { Id = "rbxassetid://9125640290", Volume = 0.08, Cooldown = 0.25 },
 	Heal = { Id = "rbxassetid://4612374393", Volume = 0.1, Cooldown = 0.25 },
 	Purchase = { Id = "rbxassetid://120891770644830", Volume = 0.25 },
+	UpgradePurchase = { Id = "rbxassetid://103516326607012", Volume = 0.25 },
+	LootCollect = { Id = "rbxassetid://4262181447", Volume = 0.14, Cooldown = 0.2 },
 })

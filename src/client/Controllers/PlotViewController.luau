@@ -368,11 +368,11 @@ local function flyHome(start: Vector3, ownerId: number, duration: number, update
 		local t = math.clamp((os.clock() - started) / duration, 0, 1)
 		if not root or not root:IsA("BasePart") then
 			conn:Disconnect()
-			done()
+			done(false)
 			return
 		end
 		update(RewardMotion.Position(start, root.Position, t), t)
-		if t >= 1 then conn:Disconnect(); done() end
+		if t >= 1 then conn:Disconnect(); done(true) end
 	end)
 end
 
@@ -429,7 +429,10 @@ local function coinBurst(pos: Vector3, ownerId: number)
 			local origin = pos + Vector3.new(0, 0.3, 0) + spread
 			flyHome(origin, ownerId, 0.55, function(position)
 				if mover:IsA("CFrameValue") then mover.Value = CFrame.new(position) elseif mover:IsA("BasePart") then mover.Position = position end
-			end, function() coin:Destroy(); fxCoins -= 1 end)
+			end, function(arrived)
+				if arrived and ownerId == Players.LocalPlayer.UserId then Sound.Play("CoinGain") end
+				coin:Destroy(); fxCoins -= 1
+			end)
 		end)
 		up:Play()
 	end
@@ -540,7 +543,10 @@ local function dropOrb(pos: Vector3, color: Color3, icon: string, roomId: string
 			rise.Completed:Once(function()
 				flyHome(orb.Position, ownerId, 0.8, function(position, t)
 					orb.Position, orb.Transparency = position, 0.25 + t * 0.6
-				end, finish)
+				end, function(arrived)
+					if arrived and ownerId == Players.LocalPlayer.UserId then Sound.Play("LootCollect") end
+					finish()
+				end)
 			end)
 			rise:Play()
 		end

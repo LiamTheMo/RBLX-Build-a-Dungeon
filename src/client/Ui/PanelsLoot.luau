@@ -340,7 +340,7 @@ function L.Build(scroll: ScrollingFrame, state: any)
 	P.Section(scroll, "Chests", nxt())
 	local cols = P.Columns(scroll)
 	local chestGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 360), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, if Scale.Phone then 370 else 330), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
 	for order, boxType in catalog.Loot.BoxTypes do
 		local count = (state.Boxes or {})[boxType] or 0
 		local card = Kit.Panel(chestGrid, { LayoutOrder = order, Pad = Vector2.new(4, 4) })
@@ -352,8 +352,10 @@ function L.Build(scroll: ScrollingFrame, state: any)
 		local odds = (state.BoxOdds or {})[boxType]
 		if odds then
 			local rf = P.ChipFlow(card, 3)
-			rf.AutomaticSize, rf.Size = Enum.AutomaticSize.None, UDim2.new(1, 0, 0, 190)
-			rf:FindFirstChildOfClass("UIListLayout").Padding = UDim.new(0, 2)
+			rf.AutomaticSize, rf.Size = Enum.AutomaticSize.None, UDim2.new(1, 0, 0, if Scale.Phone then 180 else 140)
+			local layout = rf:FindFirstChildOfClass("UIListLayout")
+			layout.Padding = UDim.new(0, 2)
+			layout.VerticalAlignment = Enum.VerticalAlignment.Top
 			for i, e in odds.Rarities do
 				local lines = { e.Id .. " - " .. P.Pct(e.Chance) }
 				for _, room in odds.Rooms do
