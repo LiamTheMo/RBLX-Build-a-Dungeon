@@ -95,4 +95,4 @@ The test place is published from Studio (**File → Publish to Roblox**) after s
 
 Royal room icon sources and upload records are in `Assets/BuildADungeon/ui/sprites/royal_rooms_v1/README.md`; chest and blueprint sources are in `ui/sprites/loot_v2/README.md`. The room world models reuse existing game art pending bespoke models.
 
-Crystal Chest art is in `Assets/BuildADungeon/ui/sprites/crystal_chest/crystal_chest.png`. Asset 100791228398008 was uploaded but is not accessible to the experience; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+Crystal Chest art is in `Assets/BuildADungeon/ui/sprites/crystal_chest/crystal_chest.png`. Group-owned decal 130698869939144 and its image 78896703019278 are approved; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for remaining validation.

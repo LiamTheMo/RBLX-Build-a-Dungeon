@@ -73,5 +73,5 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 
 ## Crystal chest and collection pass (2026-11-06)
 
-- Crystal Chest art was generated for this game and uploaded as asset 100791228398008, but Studio reports the experience is not authorized to use it. A group-owned upload requires approval of `C:/Users/asus/Projects/Assets/BuildADungeon/ui/sprites/crystal_chest` in Studio Assistant MCP upload settings. Confirm asset access, moderation, appearance and rights before release.
+- Crystal Chest art was generated for this game and uploaded to the game group as decal 130698869939144 (image 78896703019278); Roblox reports it approved and the image preloaded successfully. Confirm in-game appearance and rights before release.
 - Validate chest cards, centered admin icon, collection and keeper upgrade layout on desktop and mobile; check narrow widths, touch, discovery, long visitor details and chest opening. The Crystal Chest numbers are initial tuning assumptions. Profile schema v7 prevents older servers from loading newer profiles; plan rollout and server restarts.
