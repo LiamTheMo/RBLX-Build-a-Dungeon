@@ -55,6 +55,19 @@ test("a defeat grants XP and drops; level-ups grant boxes (Rare every 5th)", fun
 	expectEq(practice.Xp, 5, "practice xp")
 end)
 
+test("crystal milestone awards, saves and opens without replacing the royal chest", function()
+	local p = ProfileSchema.Default()
+	p.Level, p.Xp = 9, 0
+	local _, drops = Rewards.GrantXp(p, 10000)
+	expect(p.Boxes.Rare > 0 and p.Boxes.Crystal > 0, "both rewards")
+	local loaded = ProfileSchema.Migrate(p)
+	expectEq(loaded.Boxes.Crystal, p.Boxes.Crystal, "saved crystal count")
+	local before = loaded.Boxes.Crystal
+	local ok = Rewards.OpenBox(loaded, "Crystal", Random.new(1))
+	expect(ok, "opened")
+	expectEq(loaded.Boxes.Crystal, before - 1, "spent once")
+end)
+
 test("opening a box adds a room of the rolled tier and spends the box", function()
 	local p = ProfileSchema.Default()
 	expectEq(select(2, Rewards.OpenBox(p, "Dungeon", Random.new(1))), "NoBox", "no box")

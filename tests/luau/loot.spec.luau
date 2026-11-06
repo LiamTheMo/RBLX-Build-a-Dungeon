@@ -67,6 +67,14 @@ test("shown odds: tier chances and room chances inside each tier sum to 1", func
 	end
 end)
 
+test("crystal chest displays its own odds and combines both room pools", function()
+	local odds = Loot.Odds("Crystal")
+	expectNear(chanceOf(odds.Rarities, "Rare"), 0.55, 1e-9, "rare")
+	expectNear(chanceOf(odds.Rarities, "Secret"), 0.01, 1e-9, "secret")
+	expect(chanceOf(odds.Rooms, "MonsterDen") > 0, "dungeon pool")
+	expect(chanceOf(odds.Rooms, "ArcaneBarricade") > 0, "royal pool")
+end)
+
 test("every tier has rooms; every placeable room but the Coin Cache is in the pool", function()
 	for _, t in Balance.Rarities do
 		expect(#Loot.TierRooms(t.Id) > 0, t.Id .. " has rooms")

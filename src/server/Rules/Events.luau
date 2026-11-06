@@ -55,6 +55,7 @@ function Events.BoxTiers(effects: { [string]: number }): { any }?
 		if boosted then
 			copy.Weight *= boost
 			copy.RareWeight *= boost
+			copy.CrystalWeight *= boost
 		end
 		table.insert(out, copy)
 	end

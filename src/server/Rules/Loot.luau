@@ -18,7 +18,7 @@ export type Drop = { Kind: string, Type: string?, RoomId: string? }
 
 local Loot = {}
 
-Loot.BoxTypes = table.freeze({ "Dungeon", "Rare" })
+Loot.BoxTypes = table.freeze({ "Dungeon", "Rare", "Crystal" })
 
 -- Rarity functions take an optional ordered tier list (default Balance.Rarities)
 -- so specs and events (Events.BoxTiers) can change the weights without touching Balance.
@@ -59,7 +59,7 @@ function Loot.TierRooms(tier: string, level: number?, boxType: string?): { any }
 	for _, id in Rooms.Order do
 		local def = Rooms.Get(id) :: any
 		local royal = Balance.Loot.RoyalRooms[id] == true
-		local included = boxType == nil or (boxType == "Rare" and royal) or (boxType == "Dungeon" and not royal)
+		local included = boxType == nil or boxType == "Crystal" or (boxType == "Rare" and royal) or (boxType == "Dungeon" and not royal)
 		if included and def.Rarity == tier and Loot.Craftable(id) then
 			table.insert(all, { Id = id, Weight = roomWeight(id) })
 		end
@@ -83,7 +83,7 @@ function Loot.TierRooms(tier: string, level: number?, boxType: string?): { any }
 end
 
 local function tierField(boxType: string): string?
-	return if boxType == "Dungeon" then "Weight" elseif boxType == "Rare" then "RareWeight" else nil
+	return if boxType == "Dungeon" then "Weight" elseif boxType == "Rare" then "RareWeight" elseif boxType == "Crystal" then "CrystalWeight" else nil
 end
 
 -- Ordered {Id, Weight} tiers with Weight > 0, at least one room, and rank >= the

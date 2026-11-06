@@ -26,11 +26,11 @@ local function roomName(id: string): string
 end
 
 local function boxName(boxType: any): string
-	return if boxType == "Rare" then "Royal Chest" else "Dungeon Chest"
+	return if boxType == "Crystal" then "Crystal Chest" elseif boxType == "Rare" then "Royal Chest" else "Dungeon Chest"
 end
 
 local function boxIcon(boxType: any): string
-	return if boxType == "Rare" then "RareBox" else "Box"
+	return if boxType == "Crystal" then "CrystalBox" elseif boxType == "Rare" then "RareBox" else "Box"
 end
 
 local function hrow(parent: Instance, padding: number, props: { [string]: any }?): Frame

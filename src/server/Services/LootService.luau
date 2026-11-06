@@ -13,7 +13,7 @@ local LootService = {}
 -- One server RNG for every loot roll (EncounterService uses it for drops).
 LootService.Rng = Random.new()
 
-local BOX_TYPES = { Dungeon = true, Rare = true }
+local BOX_TYPES = { Dungeon = true, Rare = true, Crystal = true }
 
 local function oneString(...)
 	local value = ...

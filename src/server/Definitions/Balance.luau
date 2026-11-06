@@ -348,24 +348,25 @@ Balance.Upgrades = table.freeze({
 -- MaxLevel = upgrade cap of the tier's rooms. CraftCost = blueprints of one room
 -- to craft it; ScrapReturn = blueprints back for scrapping one (always below
 -- CraftCost). Keep Common first and never rename an Id.
-local function tier(id: string, weight: number, rareWeight: number, maxLevel: number, craft: number, scrap: number)
+local function tier(id: string, weight: number, rareWeight: number, crystalWeight: number, maxLevel: number, craft: number, scrap: number)
 	return table.freeze({
 		Id = id,
 		Weight = weight,
 		RareWeight = rareWeight,
+		CrystalWeight = crystalWeight,
 		MaxLevel = maxLevel,
 		CraftCost = craft,
 		ScrapReturn = scrap,
 	})
 end
 Balance.Rarities = table.freeze({
-	tier("Common", 60, 0, 3, 5, 2),
-	tier("Uncommon", 25, 45, 4, 6, 3),
-	tier("Rare", 10, 32, 5, 8, 4),
-	tier("Epic", 3.5, 14, 6, 10, 5),
-	tier("Legendary", 1.2, 6, 7, 12, 6),
-	tier("Mythic", 0.28, 2.5, 8, 15, 8),
-	tier("Secret", 0.02, 0.5, 10, 20, 10),
+	tier("Common", 60, 0, 0, 3, 5, 2),
+	tier("Uncommon", 25, 45, 0, 4, 6, 3),
+	tier("Rare", 10, 32, 55, 5, 8, 4),
+	tier("Epic", 3.5, 14, 28, 6, 10, 5),
+	tier("Legendary", 1.2, 6, 12, 7, 12, 6),
+	tier("Mythic", 0.28, 2.5, 4, 8, 15, 8),
+	tier("Secret", 0.02, 0.5, 1, 10, 20, 10),
 })
 local byId = {}
 for _, r in Balance.Rarities do
@@ -451,7 +452,7 @@ Balance.Loot = table.freeze({
 	BlueprintTierBox = "Dungeon",
 	MaxStack = 999, -- most boxes of one type or blueprints of one room held
 	-- A box earned while its stack is full converts to this many coins (banked).
-	BoxOverflowCoins = table.freeze({ Dungeon = 100, Rare = 300 }),
+	BoxOverflowCoins = table.freeze({ Dungeon = 100, Rare = 300, Crystal = 600 }),
 })
 
 -- Keeper XP and levels. XP to go from level L to L + 1 is XpBase + XpPerLevel * (L - 1).
@@ -462,6 +463,7 @@ Balance.Progression = table.freeze({
 	MaxLevel = 100,
 	-- Each level-up gives a Dungeon Box; every RareBoxEvery-th level a Rare Box instead.
 	RareBoxEvery = 5,
+	CrystalBoxEvery = 10,
 	-- Keeper level needed to buy a shop room (1 when absent). Boxes and blueprints
 	-- respect the same gates, for Common and Uncommon rooms only.
 	ShopLevel = table.freeze({ MushroomCavern = 3, BatRoost = 4, ArrowGallery = 5, Strongbox = 6 }),

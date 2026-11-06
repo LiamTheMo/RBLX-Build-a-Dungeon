@@ -23,7 +23,8 @@ local ProfileSchema = {}
 -- v5 (item model of 2026-11-05) moves rarity and perks to the room definitions:
 -- a room instance is {Id, Level, Modifier?}. v4 -> v5: instance Rarity/Perks are
 -- dropped and Level is clamped to the definition's tier cap; every other field kept.
-ProfileSchema.VERSION = 6
+-- v7 adds Crystal chests; older servers must not overwrite them.
+ProfileSchema.VERSION = 7
 ProfileSchema.MAX_MONEY = 1e12
 
 local function deepCopy(value)
@@ -57,7 +58,7 @@ function ProfileSchema.Default()
 		Discovered = { SlimeNest = true, TreasureRoom = true },
 		Xp = 0,
 		Level = 1,
-		Boxes = { Dungeon = 0, Rare = 0 },
+		Boxes = { Dungeon = 0, Rare = 0, Crystal = 0 },
 		Blueprints = {}, -- roomId -> count
 		Permanent = {}, -- upgradeId -> level (absent = 0)
 		BoxPity = 0, -- boxes opened in a row below Balance.Loot.PityRarity

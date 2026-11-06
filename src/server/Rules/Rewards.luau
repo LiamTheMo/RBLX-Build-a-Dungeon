@@ -46,6 +46,10 @@ function Rewards.GrantXp(profile, amount: number)
 		local boxType = Progression.LevelReward(reached)
 		local overflow = addBox(profile, boxType)
 		table.insert(drops, { Kind = "Box", Type = boxType, Source = "LevelUp", Overflow = overflow or nil })
+		if reached % Balance.Progression.CrystalBoxEvery == 0 then
+			local crystalOverflow = addBox(profile, "Crystal")
+			table.insert(drops, { Kind = "Box", Type = "Crystal", Source = "LevelUp", Overflow = crystalOverflow or nil })
+		end
 	end
 	return if #gained > 0 then level else nil, drops
 end

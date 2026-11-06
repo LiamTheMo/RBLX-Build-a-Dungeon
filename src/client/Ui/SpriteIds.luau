@@ -25,6 +25,7 @@ local base = {
 	Icons = {
 		Box = "rbxassetid://86254209003880",
 		RareBox = "rbxassetid://112756641645371",
+		CrystalBox = "rbxassetid://100791228398008",
 		Blueprint = "rbxassetid://91244877353966",
 		BlueprintCard = "rbxassetid://99515155889413",
 		Collection = "rbxassetid://109550714975325",

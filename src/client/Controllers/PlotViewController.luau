@@ -1540,7 +1540,7 @@ local function onFx(e: any)
 				local def = d.RoomId and Catalog.Room(d.RoomId)
 				local rarity = if def then def.Rarity else (if d.Type == "Rare" then "Rare" else "Common")
 				local color = RARITY_COLOR[rarity] or Theme.Gold
-				local icon = if d.Kind == "Blueprint" then "Blueprint" elseif d.Type == "Rare" then "RareBox" else "Box"
+				local icon = if d.Kind == "Blueprint" then "Blueprint" elseif d.Type == "Crystal" then "CrystalBox" elseif d.Type == "Rare" then "RareBox" else "Box"
 				dropOrb(pos + Vector3.new(0, 0.8 + i * 0.5, 0), color, icon, if d.Kind == "Blueprint" then d.RoomId else nil, view.Plot:GetAttribute("OwnerUserId") or 0, (i - 1) * 0.2, d.Kind == "Blueprint")
 			end
 		end

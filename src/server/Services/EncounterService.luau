@@ -178,7 +178,7 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	end
 	for _, drop in reward.Drops do
 		if drop.Overflow then
-			local chest = if drop.Type == "Rare" then "Royal Chest" else "Dungeon Chest"
+			local chest = if drop.Type == "Crystal" then "Crystal Chest" elseif drop.Type == "Rare" then "Royal Chest" else "Dungeon Chest"
 			notice(player, `Storage full: {chest} converted to {Balance.Loot.BoxOverflowCoins[drop.Type]} coins.`, "Info")
 		end
 	end
