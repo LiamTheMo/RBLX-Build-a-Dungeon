@@ -89,9 +89,14 @@ function StateView.Derived(profile: any, world: any?): any
 	end
 
 	local unlocked = Progression.ThreatUnlocked(profile, w.UnlockAll)
+	local vaulted, risk = Progression.Vaulted(profile), 0
+	for _, visitor in Threat.Roster(ctx.Threat) do
+		risk = math.max(risk, Economy.Theft(visitor.Id, vaulted, nil, Progression.TheftScale(profile)))
+	end
 	return {
 		VaultPercent = profile.VaultPercent,
-		Vaulted = Progression.Vaulted(profile),
+		Vaulted = vaulted,
+		VaultRisk = risk,
 		VaultRate = Progression.VaultRate(profile),
 		VaultBonus = Progression.VaultBonus(profile), -- percent
 		VisitorInterval = Progression.VisitorInterval(profile, ctx.Effects),

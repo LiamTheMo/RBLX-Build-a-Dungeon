@@ -154,17 +154,6 @@ function Vault.Build(body: Frame)
 		return ok and plot:GetAttribute("State") == "Encounter"
 	end
 
-	-- Largest share of the vault any visitor of the active tier can steal.
-	local function maxTheft(s: any): number
-		local tier = Catalog.Current.Threat[s.ThreatActive or 1]
-		local best = 0
-		for _, r in if tier then tier.Roster else {} do
-			local def = Catalog.Visitor(r.Id)
-			best = math.max(best, def and def.Theft or 0)
-		end
-		return best
-	end
-
 	-- Shows the numbers for `percent` (the confirmed value, or the slider while dragging).
 	function self.Preview(percent: number)
 		local s = State.Current
@@ -175,7 +164,7 @@ function Vault.Build(body: Frame)
 		-- The bonus is server-calculated; pending values are not guessed locally.
 		vaultedLabel.Text = if confirmed then Badges.Comma(s.Vaulted or 0) else "…"
 		bonusLabel.Text = if confirmed then "+" .. tostring(math.floor((s.VaultBonus or 0) * 10 + 0.5) / 10) .. "%" else "…"
-		riskLabel.Text = if confirmed then "-" .. Badges.Comma(math.floor((s.Vaulted or 0) * maxTheft(s))) else "…"
+		riskLabel.Text = if confirmed then "-" .. Badges.Comma(s.VaultRisk or 0) else "…"
 		intervalLabel.Text = if confirmed then string.format("%.1fs", s.VisitorInterval or 0) else "…"
 		rateLabel.Text = string.format("x%.2g", s.VaultRate or 0)
 	end

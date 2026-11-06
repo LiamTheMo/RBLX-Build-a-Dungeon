@@ -113,6 +113,11 @@ test("vault fields, XP and bonuses match the rules", function()
 	local view = StateView.Derived(profile)
 	expectEq(view.VaultPercent, 50, "percent")
 	expectEq(view.Vaulted, 617, "vaulted")
+	expectEq(view.VaultRisk, 61, "maximum theft from the active roster")
+	profile.Rooms.r2.Id = "VoidVault"
+	local protected = StateView.Derived(profile)
+	expectEq(protected.VaultRisk, 30, "void vault halves the maximum theft")
+	profile.Rooms.r2.Id = "TreasureRoom"
 	expectNear(view.VaultRate, 1.1, 1e-9, "rate with Deep Vault 2")
 	local expectedBonus = 25 * math.log(1 + 617 / 100) / math.log(10) * 1.1
 	expectNear(view.VaultBonus, expectedBonus, 1e-9, "bonus percent")
