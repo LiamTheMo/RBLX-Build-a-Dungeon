@@ -85,4 +85,7 @@ for _, group in { "Rooms", "Portraits" } do
 		base[group][id] = asset
 	end
 end
+for id, source in { RoyalGuard = "GuardRoom", CrystalGuard = "GuardRoom", CrystalSentry = "EmeraldGuardroom", CrystalBarricade = "ArcaneBarricade", PrismGallery = "StormGallery", PrismSentinel = "CrystalSentinel", PrismSanctum = "SunfireSanctum", PrismBastion = "EclipseBastion" } do
+	base.Rooms[id] = base.Rooms[source]
+end
 return table.freeze(base)

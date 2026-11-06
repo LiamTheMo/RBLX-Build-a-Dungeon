@@ -58,21 +58,22 @@ test("shown odds: tier chances and room chances inside each tier sum to 1", func
 	expectNear(chanceOf(d.TierRooms.Secret, "VoidGate"), 1 / 1.5, 1e-9, "dungeon secret room")
 	expectEq(chanceOf(d.Rooms, "TreasureRoom"), 0, "never the starter Coin Cache")
 	local r = Loot.Odds("Rare")
-	expectEq(chanceOf(r.Rarities, "Common"), 0, "rare box has no Common")
-	expectEq(r.TierRooms.Common, nil, "no Common room list")
-	expectNear(chanceOf(r.Rarities, "Rare"), 0.32, 1e-9, "rare 32%")
+	expectNear(chanceOf(r.Rarities, "Common"), 0.25, 1e-9, "royal common 25%")
+	expectNear(chanceOf(r.Rarities, "Rare"), 0.25, 1e-9, "royal rare 25%")
 	expectEq(Loot.Odds("Gold"), nil, "unknown box")
 	for _, e in d.Rooms do
 		expect(Rooms.All[e.Id] and Rooms.All[e.Id].Placeable, e.Id .. " placeable")
 	end
 end)
 
-test("crystal chest displays its own odds and combines both room pools", function()
-	local odds = Loot.Odds("Crystal")
-	expectNear(chanceOf(odds.Rarities, "Rare"), 0.55, 1e-9, "rare")
-	expectNear(chanceOf(odds.Rarities, "Secret"), 0.01, 1e-9, "secret")
-	expect(chanceOf(odds.Rooms, "MonsterDen") > 0, "dungeon pool")
-	expect(chanceOf(odds.Rooms, "ArcaneBarricade") > 0, "royal pool")
+test("chest pools are distinct and the guards improve at each chest", function()
+	local crystal = Loot.Odds("Crystal")
+	expectNear(chanceOf(crystal.Rarities, "Rare"), 0.35, 1e-9, "crystal rare")
+	expectNear(chanceOf(crystal.Rarities, "Secret"), 0.005, 1e-9, "crystal secret")
+	expect(chanceOf(crystal.Rooms, "CrystalBarricade") > 0, "crystal pool")
+	expectEq(chanceOf(crystal.Rooms, "ArcaneBarricade"), 0, "royal room excluded")
+	expect(Balance.Rooms.RoyalGuard.DefenderHealth > Balance.Rooms.GuardRoom.DefenderHealth, "royal stronger")
+	expect(Balance.Rooms.CrystalGuard.DefenderHealth > Balance.Rooms.RoyalGuard.DefenderHealth, "crystal stronger")
 end)
 
 test("every tier has rooms; every placeable room but the Coin Cache is in the pool", function()
@@ -85,7 +86,8 @@ test("every tier has rooms; every placeable room but the Coin Cache is in the po
 			expect(Loot.Craftable(id), id .. " in the loot pool")
 			local dungeon = chanceOf(Loot.Odds("Dungeon").Rooms, id)
 			local royal = chanceOf(Loot.Odds("Rare").Rooms, id)
-			expect((dungeon > 0) ~= (royal > 0), id .. " belongs to exactly one chest")
+			local crystal = chanceOf(Loot.Odds("Crystal").Rooms, id)
+			expect((if dungeon > 0 then 1 else 0) + (if royal > 0 then 1 else 0) + (if crystal > 0 then 1 else 0) == 1, id .. " belongs to exactly one chest")
 			expect(chanceOf(Loot.BlueprintOdds(nil), id) > 0, id .. " remains craftable via blueprints")
 		end
 	end
@@ -217,8 +219,8 @@ end)
 test("blueprint drops: tier by Dungeon weights, then a room of it", function()
 	local odds = Loot.BlueprintOdds(nil)
 	expectNear(sum(odds), 1, 1e-9, "sums to 1")
-	expectNear(chanceOf(odds, "GuardRoom"), 0.60 / 3, 1e-9, "common share")
-	expectNear(chanceOf(odds, "VoidGate"), 0.0002 * (1 / 2.5), 1e-12, "secret share")
+	expectNear(chanceOf(odds, "GuardRoom"), 0.60 / 5, 1e-9, "common share")
+	expectNear(chanceOf(odds, "VoidGate"), 0.0002 * (1 / 3.5), 1e-12, "secret share")
 	local rng, n, rare = Random.new(23), 20000, 0
 	for _ = 1, n do
 		if Rooms.Rarity(Loot.RollBlueprint(rng, 50)) == "Rare" then
@@ -258,10 +260,10 @@ test("odds honour pity and the shop gates (Common/Uncommon only), and match the 
 	local top = seq(0.999999)
 	local last = pity.Rarities[#pity.Rarities].Id
 	expectEq(Loot.RollRarity("Dungeon", 9, top), last, "roll matches odds")
-	expectEq(Loot.RollRoom("Common", top, 1), "GuardRoom", "last common room")
+	expectEq(Loot.RollRoom("Common", top, 1), "CrystalGuard", "last common room")
 	expectEq(Loot.RollRoom("Uncommon", top, 1), "EmeraldGuardroom", "uncommon gated at 1")
 	expectEq(Loot.RollRoom("Uncommon", top, 6), "EmeraldGuardroom", "uncommon at 6")
-	expectEq(Loot.RollBlueprint(seq(0, 0.999999), 1), "GuardRoom", "common blueprint")
-	expectEq(Loot.RollBlueprint(seq(0.7, 0), 1), "EmeraldGuardroom", "uncommon blueprint gated at 1")
+	expectEq(Loot.RollBlueprint(seq(0, 0.999999), 1), "CrystalGuard", "common blueprint")
+	expectEq(Loot.RollBlueprint(seq(0.7, 0), 1), "CrystalSentry", "uncommon blueprint gated at 1")
 	expectEq(Loot.RollBlueprint(seq(0.7, 0.999999), 5), "EmeraldGuardroom", "uncommon blueprint at 5: last unlocked")
 end)

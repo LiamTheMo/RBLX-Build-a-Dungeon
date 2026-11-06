@@ -79,7 +79,7 @@ test("opening a box adds a room of the rolled tier and spends the box", function
 	local room = p.Rooms[data.InstanceId]
 	expectEq(room.Id, data.RoomId, "room stored")
 	expectEq(Rooms.Rarity(room.Id), data.Rarity, "room of the rolled tier")
-	expect(data.Rarity ~= "Common", "a Rare Box is never Common")
+	expect(Loot.Odds("Rare").TierRooms[data.Rarity] ~= nil, "rolled tier is offered")
 	expectEq(room.Rarity, nil, "instance stores no rarity")
 	expectEq(room.Perks, nil, "instance stores no perks")
 	expectEq(#data.Perks, #Rooms.Get(room.Id).Perks, "returned perks are the definition's")

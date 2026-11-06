@@ -24,7 +24,8 @@ local ProfileSchema = {}
 -- a room instance is {Id, Level, Modifier?}. v4 -> v5: instance Rarity/Perks are
 -- dropped and Level is clamped to the definition's tier cap; every other field kept.
 -- v7 adds Crystal chests; older servers must not overwrite them.
-ProfileSchema.VERSION = 7
+-- v8 adds new chest-specific room identities.
+ProfileSchema.VERSION = 8
 ProfileSchema.MAX_MONEY = 1e12
 
 local function deepCopy(value)

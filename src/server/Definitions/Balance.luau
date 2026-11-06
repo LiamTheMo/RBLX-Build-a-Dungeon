@@ -322,6 +322,14 @@ Balance.Rooms = table.freeze({
 		SendsBack = true,
 	}),
 	VoidVault = table.freeze({ Exchange = 3.5, TheftScale = 0.5 }),
+	RoyalGuard = table.freeze({ DefenderHealth = 84, AttackDamage = 12.3, AttackInterval = 1.2 }),
+	CrystalGuard = table.freeze({ DefenderHealth = 88, AttackDamage = 12.6, AttackInterval = 1.2 }),
+	CrystalSentry = table.freeze({ DefenderHealth = 72, AttackDamage = 11, AttackInterval = 1.0, SlowFraction = 0.3, SlowDuration = 2 }),
+	CrystalBarricade = table.freeze({ Damage = 19, Cycle = 1.1, Telegraph = 0.35 }),
+	PrismGallery = table.freeze({ Damage = 17, Cycle = 0.9, Telegraph = 0.3 }),
+	PrismSentinel = table.freeze({ DefenderHealth = 264, AttackDamage = 22, AttackInterval = 1.6 }),
+	PrismSanctum = table.freeze({ DefenderHealth = 187, AttackDamage = 20, AttackInterval = 1.2, Burn = true, Revives = 1 }),
+	PrismBastion = table.freeze({ DefenderHealth = 374, AttackDamage = 35, AttackInterval = 1.6, ReviveFraction = 0.4 }),
 	EmeraldGuardroom = table.freeze({ DefenderHealth = 65, AttackDamage = 10, AttackInterval = 1.0, SlowFraction = 0.3, SlowDuration = 2 }),
 	ArcaneBarricade = table.freeze({ Damage = 17, Cycle = 1.1, Telegraph = 0.35 }),
 	StormGallery = table.freeze({ Damage = 15, Cycle = 0.9, Telegraph = 0.3 }),
@@ -360,13 +368,13 @@ local function tier(id: string, weight: number, rareWeight: number, crystalWeigh
 	})
 end
 Balance.Rarities = table.freeze({
-	tier("Common", 60, 0, 0, 3, 5, 2),
-	tier("Uncommon", 25, 45, 0, 4, 6, 3),
-	tier("Rare", 10, 32, 55, 5, 8, 4),
-	tier("Epic", 3.5, 14, 28, 6, 10, 5),
-	tier("Legendary", 1.2, 6, 12, 7, 12, 6),
-	tier("Mythic", 0.28, 2.5, 4, 8, 15, 8),
-	tier("Secret", 0.02, 0.5, 1, 10, 20, 10),
+	tier("Common", 60, 25, 15, 3, 5, 2),
+	tier("Uncommon", 25, 35, 25, 4, 6, 3),
+	tier("Rare", 10, 25, 35, 5, 8, 4),
+	tier("Epic", 3.5, 10, 15, 6, 10, 5),
+	tier("Legendary", 1.2, 3.5, 7, 7, 12, 6),
+	tier("Mythic", 0.28, 1.2, 2.5, 8, 15, 8),
+	tier("Secret", 0.02, 0.3, 0.5, 10, 20, 10),
 })
 local byId = {}
 for _, r in Balance.Rarities do
@@ -409,6 +417,11 @@ Balance.RoomPerks = table.freeze({
 	CelestialCoffer = perks("Coins", 0.20, "Loot", 0.10, "Xp", 0.10),
 	VoidGate = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
 	VoidVault = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
+	CrystalBarricade = perks("Xp", 0.05),
+	PrismGallery = perks("Loot", 0.10),
+	PrismSentinel = perks("Coins", 0.10, "Xp", 0.10),
+	PrismSanctum = perks("Coins", 0.10, "Loot", 0.10, "Xp", 0.10),
+	PrismBastion = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
 	ArcaneBarricade = perks("Xp", 0.05),
 	StormGallery = perks("Loot", 0.10),
 	CrystalSentinel = perks("Coins", 0.10, "Xp", 0.10),
@@ -432,8 +445,12 @@ Balance.Loot = table.freeze({
 	-- treasure rooms weigh less: only one treasure can be placed.
 	-- Royal and Dungeon chests have disjoint room pools; unlisted rooms belong to Dungeon.
 	RoyalRooms = table.freeze({
-		EmeraldGuardroom = true, ArcaneBarricade = true, StormGallery = true,
+		RoyalGuard = true, EmeraldGuardroom = true, ArcaneBarricade = true, StormGallery = true,
 		CrystalSentinel = true, SunfireSanctum = true, EclipseBastion = true,
+	}),
+	CrystalRooms = table.freeze({
+		CrystalGuard = true, CrystalSentry = true, CrystalBarricade = true, PrismGallery = true,
+		PrismSentinel = true, PrismSanctum = true, PrismBastion = true,
 	}),
 	RoomWeights = table.freeze({
 		TreasureRoom = 0,

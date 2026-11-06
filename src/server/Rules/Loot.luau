@@ -59,7 +59,8 @@ function Loot.TierRooms(tier: string, level: number?, boxType: string?): { any }
 	for _, id in Rooms.Order do
 		local def = Rooms.Get(id) :: any
 		local royal = Balance.Loot.RoyalRooms[id] == true
-		local included = boxType == nil or boxType == "Crystal" or (boxType == "Rare" and royal) or (boxType == "Dungeon" and not royal)
+		local crystal = Balance.Loot.CrystalRooms[id] == true
+		local included = boxType == nil or (boxType == "Crystal" and crystal) or (boxType == "Rare" and royal) or (boxType == "Dungeon" and not royal and not crystal)
 		if included and def.Rarity == tier and Loot.Craftable(id) then
 			table.insert(all, { Id = id, Weight = roomWeight(id) })
 		end

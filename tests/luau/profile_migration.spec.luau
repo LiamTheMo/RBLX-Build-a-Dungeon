@@ -263,3 +263,13 @@ test("version 5 profiles migrate and new royal rooms survive a round trip", func
 	expectEq(roundtrip.Rooms.r99.Id, "EclipseBastion", "new room retained")
 	expectEq(roundtrip.Blueprints.EmeraldGuardroom, 3, "new blueprints retained")
 end)
+
+
+test("new chest room identities survive a profile round trip", function()
+	local saved = ProfileSchema.Default()
+	saved.Rooms.r99 = { Id = "CrystalBarricade", Level = 1 }
+	saved.NextSerial = 100
+	local restored = ProfileSchema.Migrate(saved)
+	expectEq(restored.Rooms.r99.Id, "CrystalBarricade", "crystal room retained")
+	expectEq(restored.Version, ProfileSchema.VERSION, "current schema")
+end)

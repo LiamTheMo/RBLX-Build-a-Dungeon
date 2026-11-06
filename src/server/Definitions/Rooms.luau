@@ -149,7 +149,15 @@ local list = {
 	room("VoidVault", "Void Vault", "Treasure", "Loot", "Secret", "Best exchange; thieves take half.",
 		"A vault in the void: the best exchange, and thieves who reach it take only half as much. "
 			.. "Only one treasure can be placed."),
-	-- New Royal Chest rooms reuse existing models until distinct 3D art is authored.
+	-- Chest-specific rooms reuse existing models until distinct art is authored.
+	room("RoyalGuard", "Royal Guard", "Defender", "Loot", "Common", "A stronger guard.", "A royal guard with steady, heavy hits.", "GuardRoom"),
+	room("CrystalGuard", "Crystal Guard", "Defender", "Loot", "Common", "A crystal-armoured guard.", "A crystal-armoured guard with steady, heavy hits.", "GuardRoom"),
+	room("CrystalSentry", "Crystal Sentry", "Defender", "Loot", "Uncommon", "A nimble guard slows its target.", "A crystal sentry slows visitors with every strike.", "GuardRoom"),
+	room("CrystalBarricade", "Crystal Barricade", "Trap", "Loot", "Rare", "Quick crystal spikes.", "A crystal spike trap strikes in quick cycles.", "SpikeHall"),
+	room("PrismGallery", "Prism Gallery", "Trap", "Loot", "Epic", "Rapid crystal volleys.", "Crystal bolts strike visitors throughout the gallery.", "ArrowGallery"),
+	room("PrismSentinel", "Prism Sentinel", "Defender", "Loot", "Legendary", "A durable crystal guardian.", "A prism guardian holds the line with heavy, steady blows.", "GolemForge"),
+	room("PrismSanctum", "Prism Sanctum", "Defender", "Loot", "Mythic", "Burns and revives a defender once.", "A prism guardian burns visitors and revives the first fallen defender once.", "PhoenixNest"),
+	room("PrismBastion", "Prism Bastion", "Defender", "Loot", "Secret", "A guardian rises once after defeat.", "A prism guardian fights hard and rises once with partial health.", "DragonLair"),
 	room("EmeraldGuardroom", "Emerald Guardroom", "Defender", "Loot", "Uncommon", "A nimble guard slows its target.",
 		"An emerald guard slows visitors with every strike.", "GuardRoom"),
 	room("ArcaneBarricade", "Arcane Barricade", "Trap", "Loot", "Rare", "Quick arcane spikes.",
