@@ -2,9 +2,9 @@
 
 Implementable client UI spec. Text only. Sources: `docs/GDD.md` (Interface and onboarding; Visual direction) and `docs/ARCHITECTURE.md` (Remotes `State` fields). The client only renders and requests; the server owns all values.
 
-## Pending: AI design assistant mockup pass (browser not signed in)
+## AI design assistant design pass and device validation
 
-The initial UI specification is derived from the game design and Roblox constraints. Validate the layouts in Studio on desktop and phone.
+The 2026-11-05 pass consulted AI design assistant in the signed-in browser for a compact purple-and-gold design, then adapted existing game sprites and generated admin icons. The implemented admin, room inspector, loot, and combat changes need desktop and phone validation in Studio. Older screen descriptions below include superseded mechanics; the GDD and current implementation take precedence.
 
 ## Style
 

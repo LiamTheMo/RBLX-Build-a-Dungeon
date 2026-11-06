@@ -71,6 +71,7 @@ Add a spec for every new rules module. Gameplay that touches Instances, remotes 
 | Room, character, prop and map models (`Art.*`, `Workspace.Map`) | Built for this game from Parts in Studio; exported to `Assets\BuildADungeon\models\` | Original, per the Assets README. Cleared for use as stated there |
 | UI icons (`src/client/Ui/IconIds.luau`) | Cut from a AI design assistant-generated sheet (owner's account), `ui\mockups\05_icon_sheet_magenta.png` | **Rights to be confirmed by the owner before release** |
 | Sounds (`src/client/Ui/SoundIds.luau`) | Creator Store audio, chosen from search metadata only, not listened to. Listed in the Assets README | **Each needs listening and a licence check before release.** Theft, SlimeAttack, Ambience and Music have no sound yet |
+| Admin panel icons (`IconIds` Admin* entries) | Generated for this game; source, PNGs and upload IDs in `Assets/BuildADungeon/ui/sprites/admin` | Uploaded to group; moderation/rendering and rights still to be confirmed |
 | UI mockups and reference images | AI design assistant-generated (owner's account), in `ui\mockups\` and `reference\` | Concept and reference only; not cleared; never uploaded to Roblox |
 | `src/shared/Core/Loader.luau` | RBLX-Flintborn, same owner | Copied unchanged |
 | `src/shared/Core/Signal.luau` | RBLX-Flintborn, same owner | Copied unchanged |
@@ -91,3 +92,5 @@ Add a spec for every new rules module. Gameplay that touches Instances, remotes 
 ## Publishing
 
 The test place is published from Studio (**File → Publish to Roblox**) after syncing `main`. Running servers keep the old version until they restart, so test in a new server. Keep the test place private until a phase's playtest calls for outside testers.
+
+Royal room icon sources and upload records are in `Assets/BuildADungeon/ui/sprites/royal_rooms_v1/README.md`; chest and blueprint sources are in `ui/sprites/loot_v2/README.md`. The room world models reuse existing game art pending bespoke models.
