@@ -1,8 +1,11 @@
--- Rarity, room upgrades and Stout Defenders in the encounter simulation.
+-- Levels (capped by the room definition's rarity), Stout Defenders, Monster Den
+-- and Mushroom Cavern scaling in the encounter simulation. Since the 2026-11-05
+-- item model there is no per-instance rarity multiplier.
 
 local Server = game:GetService("ServerScriptService").Server
 local Balance = require(Server.Definitions.Balance)
-local EncounterSim = require(game:GetService("ServerScriptService").Server.Rules.EncounterSim)
+local Rooms = require(Server.Definitions.Rooms)
+local EncounterSim = require(Server.Rules.EncounterSim)
 
 local function run(visitorId, config)
 	config.visitorId = visitorId
@@ -16,44 +19,42 @@ local function run(visitorId, config)
 	return sim
 end
 
-test("rarity multiplies defender health and damage and trap damage", function()
-	local up = Balance.Upgrades
-	local mythic = EncounterSim.new({ route = { "GuardRoom" }, rarities = { "Mythic" }, visitorId = "Novice" })
-	expectNear(mythic.Defenders[1].MaxHealth, 80 * 1.85, 1e-9, "health")
-	expectNear(mythic.Defenders[1].Damage, 12 * 1.85, 1e-9, "damage")
-	local rare = EncounterSim.new({ route = { "SpikeHall" }, levels = { 2 }, rarities = { "Rare" }, visitorId = "Novice" })
-	expectNear(rare._traps[1].Damage, 15 * (1 + up.DamageBonusPerLevel) * 1.25, 1e-9, "trap")
-	local bogus = EncounterSim.new({ route = { "GuardRoom" }, rarities = { "Order" }, visitorId = "Novice" })
-	expectEq(bogus.Defenders[1].MaxHealth, 80, "unknown rarity is Common")
+test("stats come from the definition: a passed rarity changes nothing", function()
+	local plain = EncounterSim.new({ route = { "GuardRoom" }, visitorId = "Novice" })
+	local hacked = EncounterSim.new({ route = { "GuardRoom" }, rarities = { "Secret" }, visitorId = "Novice" } :: any)
+	expectEq(plain.Defenders[1].MaxHealth, 80, "guard health")
+	expectEq(hacked.Defenders[1].MaxHealth, 80, "rarity ignored")
+	expectEq(hacked.Defenders[1].Damage, 12, "damage")
 end)
 
-test("every tier scales stats by its Balance multiplier and caps levels", function()
-	for _, tier in Balance.Rarities do
-		local sim = EncounterSim.new({ route = { "GuardRoom" }, levels = { 99 }, rarities = { tier.Id }, visitorId = "Novice" })
-		local above = tier.MaxLevel - 1
+test("levels scale damage and health, capped by the room's tier", function()
+	local up = Balance.Upgrades
+	for _, id in { "GuardRoom", "BatRoost", "RestlessCrypt", "MimicRoom", "GolemForge", "DragonLair" } do
+		local cap = Balance.RarityById[Rooms.Rarity(id)].MaxLevel
+		local sim = EncounterSim.new({ route = { id }, levels = { 99 }, visitorId = "Novice" })
+		local base = Balance.Rooms[id].DefenderHealth
+		expectNear(sim.Defenders[1].MaxHealth, base * (1 + (cap - 1) * up.HealthBonusPerLevel), 1e-9, id .. " health at cap")
 		expectNear(
-			sim.Defenders[1].MaxHealth,
-			80 * (1 + above * Balance.Upgrades.HealthBonusPerLevel) * tier.StatMultiplier,
+			sim.Defenders[1].Damage,
+			Balance.Rooms[id].AttackDamage * (1 + (cap - 1) * up.DamageBonusPerLevel),
 			1e-9,
-			tier.Id
+			id .. " damage at cap"
 		)
 	end
-end)
-
-test("levels are capped by rarity", function()
-	local up = Balance.Upgrades
-	local common = EncounterSim.new({ route = { "GuardRoom" }, levels = { 6 }, visitorId = "Novice" })
-	expectNear(common.Defenders[1].MaxHealth, 80 * (1 + 2 * up.HealthBonusPerLevel), 1e-9, "common stops at 3")
-	local mythic = EncounterSim.new({ route = { "GuardRoom" }, levels = { 6 }, rarities = { "Mythic" }, visitorId = "Novice" })
-	expectNear(mythic.Defenders[1].MaxHealth, 80 * (1 + 5 * up.HealthBonusPerLevel) * 1.85, 1e-9, "mythic 6")
-	expectNear(EncounterSim.DefenderHealth("GuardRoom", 6, "Common", 0), 80 * (1 + 2 * up.HealthBonusPerLevel), 1e-9, "helper")
+	local spike = EncounterSim.new({ route = { "SpikeHall" }, levels = { 2 }, visitorId = "Novice" })
+	expectNear(spike._traps[1].Damage, 15 * (1 + up.DamageBonusPerLevel), 1e-9, "trap")
+	expectNear(EncounterSim.DefenderHealth("GuardRoom", 6, 0), 80 * (1 + 2 * up.HealthBonusPerLevel), 1e-9, "common stops at 3")
+	expectNear(EncounterSim.DefenderHealth("GoblinBarracks", 1, 0), 50, 1e-9, "first unit")
 	expectEq(EncounterSim.DefenderHealth("SpikeHall", 1), nil, "no defender")
+	expectEq(EncounterSim.DefenderHealth("TreasureRoom", 1), nil, "treasure has none")
 end)
 
-test("Stout Defenders adds to defender health only", function()
+test("Stout Defenders adds to defender health only, for every unit", function()
 	local sim = EncounterSim.new({ route = { "SlimeNest", "SpikeHall" }, healthBonus = 0.25, visitorId = "Novice" })
 	expectNear(sim.Defenders[1].MaxHealth, 40 * 1.25, 1e-9, "health")
 	expectEq(sim.Defenders[1].Damage, 6, "damage unchanged")
+	local lich = EncounterSim.new({ route = { "LichSanctum" }, healthBonus = 0.5, visitorId = "Novice" })
+	expectNear(lich.Defenders[1].Units[2].Health, 110 * 1.5, 1e-9, "second unit too")
 end)
 
 test("upgraded Monster Den and Mushroom Cavern grow their bonus; the strongest Den applies", function()
@@ -65,20 +66,16 @@ test("upgraded Monster Den and Mushroom Cavern grow their bonus; the strongest D
 	expectNear(two.Defenders[2].MaxHealth, 80 * (1 + den.HealthBonus + 2 * den.BonusPerLevel), 1e-9, "stronger den, once")
 	local events = two:Step(0.1)
 	expectEq(events[2].Den, 3, "boost credited to the stronger den")
+	local goblins = EncounterSim.new({ route = { "MonsterDen", "GoblinBarracks" }, visitorId = "Novice" })
+	expectNear(goblins.Defenders[2].Units[2].Damage, 9 * (1 + den.DamageBonus), 1e-9, "every unit boosted")
 	local mush = Balance.Rooms.MushroomCavern
-	local cav =
-		EncounterSim.new({ route = { "MushroomCavern" }, levels = { 2 }, rarities = { "Uncommon" }, visitorId = "Novice" })
-	expectNear(cav._caverns[1].Bonus, (mush.TrapDamageBonus + mush.TrapDamageBonusPerLevel) * 1.10, 1e-9, "spore bonus")
+	local cav = EncounterSim.new({ route = { "MushroomCavern" }, levels = { 2 }, visitorId = "Novice" })
+	expectNear(cav._caverns[1].Bonus, mush.TrapDamageBonus + mush.TrapDamageBonusPerLevel, 1e-9, "spore bonus")
 end)
 
-test("a fully Common, level-1 layout still beats a Novice", function()
-	local sim = run("Novice", { route = { "SlimeNest", "SpikeHall" }, levels = { 1, 1 }, rarities = { "Common", "Common" } })
+test("a fully Common, level-1 layout still beats a T1 Novice", function()
+	local sim = run("Novice", { route = { "SlimeNest", "SpikeHall" }, levels = { 1, 1 } })
 	expectEq(sim.Result, "Defeated", "common starter layout")
-end)
-
-test("rarity never helps the visitor", function()
-	local route = { "GuardRoom", "SpikeHall", "SlimeNest" }
-	local common = run("Cleric", { route = route })
-	local mythic = run("Cleric", { route = route, rarities = { "Mythic", "Mythic", "Mythic" } })
-	expect(mythic.Result == "Defeated" or mythic.Health <= common.Health, "mythic at least as strong")
+	local guard = run("Novice", { route = { "SlimeNest", "SpikeHall", "GuardRoom" } })
+	expectEq(guard.Result, "Defeated", "common layout with a guard")
 end)

@@ -1,16 +1,21 @@
 --!strict
 -- The display catalog the client fetches once with GetCatalog (docs/ARCHITECTURE.md,
 -- "Catalog"). Pure: built from the server definitions, no Instances. It holds only
--- what the UI shows (names, descriptions, prices, gates, labels); simulation
--- numbers (health, damage, rewards, theft, drop and box weights) stay server-side.
--- Everything per player (odds, upgrade costs, drop chances) is in the State snapshot.
+-- what the UI shows (names, descriptions, prices, gates, labels, base coin
+-- ranges, XP, theft shares and base drop tables, threat tiers, variants,
+-- events, each room's fixed rarity, perks and short ability line); simulation
+-- numbers (health, damage) stay server-side.
+-- Everything per player (odds, upgrade costs, effective drop tables) is in the
+-- State snapshot.
 
 local Definitions = script.Parent.Parent.Definitions
 local Balance = require(Definitions.Balance)
 local Grid = require(Definitions.Grid)
 local Rooms = require(Definitions.Rooms)
 local Visitors = require(Definitions.Visitors)
+local Economy = require(script.Parent.Economy)
 local Loot = require(script.Parent.Loot)
+local Threat = require(script.Parent.Threat)
 local Progression = require(script.Parent.Progression)
 local Route = require(script.Parent.Route)
 
@@ -40,8 +45,8 @@ local EFFECT: { [string]: (number) -> string } = {
 	VisitorInterval = function(a)
 		return string.format("%d s faster visitors", a)
 	end,
-	VaultBonusCap = function(a)
-		return string.format("+%s vault bonus cap", pct(a))
+	VaultRate = function(a)
+		return string.format("+%s vault exchange rate", pct(a))
 	end,
 }
 
@@ -58,15 +63,45 @@ local function deepFreeze(t: any): any
 	return table.freeze(t)
 end
 
+local function num(n: number): string
+	local v = math.floor(n * 100 + 0.5) / 100
+	return if v % 1 == 0 then tostring(math.floor(v)) else tostring(v)
+end
+
+-- Treasure ability line from Balance (so it never drifts from the numbers).
+local function treasureAbility(stats: any): string
+	local text = "Vault exchange x" .. num(stats.Exchange or 1)
+	if stats.VariantBonus then
+		text ..= string.format(", +%s rare variants", pct(stats.VariantBonus))
+	end
+	if stats.TheftScale then
+		text ..= string.format(", thieves take %s", pct(stats.TheftScale))
+	end
+	return text
+end
+
 local function room(def: any): any
 	local stats = Balance.Rooms[def.Id]
 	local cost = stats and stats.Cost
+	local perks = {}
+	for i, perk in def.Perks do
+		perks[i] = { Kind = perk.Kind, Amount = perk.Amount }
+	end
+	local tier = Balance.RarityById[def.Rarity]
 	return {
 		Id = def.Id,
 		DisplayName = def.DisplayName,
 		Kind = def.Kind,
 		Description = def.Description,
-		Source = def.Source,
+		Source = def.Source, -- "Shop" = sold for coins; "Loot" = boxes and blueprints only
+		Rarity = def.Rarity, -- fixed by the definition
+		Tier = Loot.RarityRank(def.Rarity), -- index in Rarities
+		MaxLevel = tier and tier.MaxLevel,
+		Perks = perks, -- {{Kind = "Coins"|"Loot"|"Xp", Amount}}
+		Ability = if def.Kind == "Treasure" and stats then treasureAbility(stats) else def.Ability,
+		Exchange = stats and stats.Exchange, -- treasure rooms: vault exchange multiplier
+		CraftCost = Loot.CraftCost(def.Id), -- blueprints to craft one (nil if not craftable)
+		ScrapReturn = Loot.ScrapReturn(def.Id), -- blueprints back for scrapping one
 		Cost = if type(cost) == "number" then cost else nil, -- shop price (Buy)
 		ShopLevel = Progression.ShopLevel(def.Id), -- keeper level to buy (1 = no gate)
 		Upgradable = def.Upgradable,
@@ -74,7 +109,7 @@ local function room(def: any): any
 		EndsRoute = def.EndsRoute,
 		Placeable = def.Placeable,
 		Craftable = Loot.Craftable(def.Id), -- blueprints craft it; scrapping returns them
-		-- Trap rooms with a fixed strike cycle: the warning flash timing (cosmetic).
+		-- Strike traps (Spike Hall, Arrow Gallery, Flame Vent): the warning flash timing (cosmetic).
 		TrapCycle = stats and stats.Cycle,
 		TrapTelegraph = stats and stats.Telegraph,
 	}
@@ -88,12 +123,19 @@ local function visitor(def: any): any
 			table.insert(traits, { Id = name, Name = text.Name, Text = text.Text })
 		end
 	end
+	local min, max = Economy.RewardRange(def.Id)
 	return {
 		Id = def.Id,
 		DisplayName = def.DisplayName,
 		Description = def.Description,
 		Arrival = def.Arrival,
 		Traits = traits,
+		Reward = { Min = min, Max = max }, -- base coins, rolled once per encounter
+		Xp = Progression.XpFor(def.Id, 0),
+		Theft = Balance.Visitors[def.Id].TheftFraction, -- share of vaulted coins stolen
+		-- Base drop table (threat 1, no bonuses, every blueprint room ungated; blueprint
+		-- entries carry RoomId and Rarity).
+		Drops = Loot.DropTable(def.Id, 0, 1, nil),
 	}
 end
 
@@ -124,18 +166,61 @@ function Catalog.Build(): any
 		visitors[id] = visitor(def)
 	end
 	local rarities = {}
+	local craftCost, scrapReturn = {}, {}
 	for i, r in Balance.Rarities do
+		local ids = {}
+		for _, id in Rooms.Order do
+			local def = Rooms.Get(id) :: any
+			if def.Placeable and def.Rarity == r.Id then
+				table.insert(ids, id)
+			end
+		end
 		rarities[i] = {
 			Id = r.Id,
-			StatMultiplier = r.StatMultiplier,
 			MaxLevel = r.MaxLevel,
-			PerkCount = r.PerkCount,
-			PerkSize = r.PerkSize,
+			CraftCost = r.CraftCost,
+			ScrapReturn = r.ScrapReturn,
+			Rooms = ids, -- placeable rooms of this tier, in RoomOrder
 		}
+		craftCost[r.Id] = r.CraftCost
+		scrapReturn[r.Id] = r.ScrapReturn
 	end
 	local permanents = {}
 	for i, id in Balance.Permanent.Order do
 		permanents[i] = permanent(id)
+	end
+	local variants = {}
+	for i, v in Balance.Variants do
+		variants[i] = {
+			Id = v.Id,
+			Chance = v.Chance,
+			Health = v.Health,
+			Coins = v.Coins,
+			Drops = v.Drops,
+			GuaranteedBox = v.GuaranteedBox,
+		}
+	end
+	local tiers = {}
+	for tier, level in Balance.Threat.UnlockLevels do
+		local scale = Threat.Scale(tier)
+		tiers[tier] = {
+			Tier = tier,
+			UnlockLevel = level,
+			Health = scale.Health,
+			Damage = scale.Damage,
+			Coins = scale.Coins,
+			Xp = scale.Xp,
+			Drops = scale.Drops,
+			Roster = Threat.Roster(tier),
+		}
+	end
+	local events = {}
+	for i, e in Balance.Events.List do
+		events[i] = { Id = e.Id, Name = e.Name, Text = e.Text }
+	end
+	local modifiers = {}
+	for i, m in Balance.Events.Modifiers do
+		modifiers[i] = { Id = m.Id, Name = m.Id, Effect = m.Effect, Amount = m.Amount, Text = m.Text }
 	end
 	local entrance = Grid.EntranceCell
 	return deepFreeze({
@@ -153,10 +238,15 @@ function Catalog.Build(): any
 		},
 		Loot = {
 			BoxTypes = table.clone(Loot.BoxTypes),
-			CraftCost = Balance.Loot.CraftCost,
-			ScrapReturn = Balance.Loot.ScrapReturn,
+			CraftCost = craftCost, -- [tier] = blueprints to craft a room of that tier
+			ScrapReturn = scrapReturn, -- [tier] = blueprints back for scrapping one
 		},
 		MaxKeeperLevel = Balance.Progression.MaxLevel,
+		Variants = variants, -- rarest first; base chances
+		Threat = tiers, -- index = tier
+		Events = events,
+		Modifiers = modifiers,
+		Vault = { MinInterval = Balance.Timing.MinVisitorInterval, BaseInterval = Balance.Timing.VisitorInterval },
 	})
 end
 

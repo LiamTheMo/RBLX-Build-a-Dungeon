@@ -65,7 +65,7 @@ local function v2Profile()
 	return v2
 end
 
-test("v2 profile migrates to v3: every field kept, rooms Common, progression added", function()
+test("v2 profile migrates to v5: every field kept, progression added, vault banked", function()
 	local v2 = v2Profile()
 	v2.Coins = 900
 	v2.Vault = 40
@@ -77,13 +77,13 @@ test("v2 profile migrates to v3: every field kept, rooms Common, progression add
 	v2.Tutorial = { Step = "Done", Done = true }
 	local p, problem = ProfileSchema.Migrate(v2)
 	expect(p ~= nil, "migrates " .. tostring(problem))
-	expectEq(p.Version, 3, "version")
-	expectEq(p.Coins, 900, "coins")
-	expectEq(p.Vault, 40, "vault")
+	expectEq(p.Version, ProfileSchema.VERSION, "version")
+	expectEq(p.Coins, 940, "vault banked into coins")
+	expectEq(p.Vault, nil, "vault dropped")
+	expectEq(p.VaultPercent, 0, "vault percent")
 	expectEq(p.Rooms.r3.Level, 3, "level kept (Common cap 3)")
-	expectEq(p.Rooms.r3.Rarity, "Common", "common")
-	expectEq(#p.Rooms.r3.Perks, 0, "no perks")
-	expectEq(p.Rooms.r1.Rarity, "Common", "starter common")
+	expectEq(p.Rooms.r3.Rarity, nil, "no instance rarity (definition's)")
+	expectEq(p.Rooms.r3.Perks, nil, "no instance perks")
 	expectEq(p.Layout["3,2"], "r1", "layout")
 	expectEq(p.NextSerial, 4, "serial")
 	expectEq(p.Stats.Wins, 13, "stats")
@@ -98,7 +98,7 @@ test("v2 profile migrates to v3: every field kept, rooms Common, progression add
 	expectEq(next(p.Blueprints), nil, "no blueprints")
 	expectEq(next(p.Permanent), nil, "no permanents")
 	expectEq(p.BoxPity, 0, "pity")
-	expectEq(v2.Rooms.r3.Rarity, nil, "input untouched")
+	expectEq(v2.Rooms.r3.Level, 3, "input untouched")
 end)
 
 test("v3 fields are validated and clamped", function()
@@ -110,12 +110,7 @@ test("v3 fields are validated and clamped", function()
 		Perks = { { Kind = "Coins", Amount = 50 }, { Kind = "Loot", Amount = 0.2 } },
 	}
 	s.Rooms.r4 = { Id = "SlimeNest", Level = 6, Rarity = "Bogus", Perks = { { Kind = "Coins", Amount = 0.2 } } }
-	s.Rooms.r5 = {
-		Id = "MonsterDen",
-		Level = 6,
-		Rarity = "Mythic",
-		Perks = { { Kind = "Xp" }, { Kind = "Xp" }, { Kind = "Hax", Amount = 9 }, "x", { Kind = "Loot" } },
-	}
+	s.Rooms.r5 = { Id = "MonsterDen", Level = 6, Rarity = "Mythic", Perks = { { Kind = "Xp" } } }
 	s.NextSerial = 6
 	s.Level = 1e9
 	s.Xp = -4
@@ -124,21 +119,11 @@ test("v3 fields are validated and clamped", function()
 	s.Permanent = { GoldenTouch = 99, Scholar = 2.5, Bogus = 3, Lure = -2 }
 	s.BoxPity = 50
 	local p = ProfileSchema.Migrate(s)
-	local r3 = p.Rooms.r3
-	expectEq(r3.Level, 5, "rare cap 5")
-	expectEq(#r3.Perks, 1, "rare has one perk")
-	expectEq(r3.Perks[1].Kind, "Coins", "first valid kept")
-	expectEq(r3.Perks[1].Amount, 0.10, "amount re-derived, not trusted")
-	expectEq(p.Rooms.r4.Rarity, "Common", "unknown rarity -> Common")
+	expectEq(p.Rooms.r3.Level, 3, "guard is Common: cap 3 (saved rarity ignored)")
+	expectEq(p.Rooms.r3.Rarity, nil, "rarity dropped")
+	expectEq(p.Rooms.r3.Perks, nil, "perks dropped, never trusted")
 	expectEq(p.Rooms.r4.Level, 3, "common cap 3")
-	expectEq(#p.Rooms.r4.Perks, 0, "common has no perks")
-	local r5 = p.Rooms.r5
-	expectEq(r5.Level, 6, "saved mythic level kept (cap is now 8)")
-	expectEq(r5.Rarity, "Mythic", "mythic kept")
-	expectEq(#r5.Perks, 2, "two distinct")
-	expectEq(r5.Perks[1].Kind, "Xp", "xp")
-	expectEq(r5.Perks[2].Kind, "Loot", "loot, duplicates and junk skipped")
-	expectEq(r5.Perks[2].Amount, 0.40, "large loot")
+	expectEq(p.Rooms.r5.Level, 5, "monster den is Rare: cap 5")
 	expectEq(p.Level, 100, "level clamped")
 	expectEq(p.Xp, 0, "xp at max level")
 	expectEq(p.Boxes.Dungeon, 3, "floored")
@@ -160,21 +145,106 @@ test("v3 fields are validated and clamped", function()
 	expectEq(ProfileSchema.Migrate(t).Xp, 74, "xp kept below the next level")
 end)
 
-test("a v3 profile round-trips unchanged and newer versions are still rejected", function()
+test("a v5 profile round-trips unchanged and newer versions are rejected", function()
 	local s = ProfileSchema.Default()
-	RoomInventory.Add(s, "RestlessCrypt", "Mythic", { { Kind = "Coins", Amount = 0.2 }, { Kind = "Xp", Amount = 0.4 } })
+	RoomInventory.Add(s, "RestlessCrypt", "Lucky")
+	s.Rooms.r3.Level = 4
 	s.Level, s.Xp, s.BoxPity = 7, 30, 4
 	s.Boxes.Rare = 2
 	s.Blueprints.GuardRoom = 3
 	s.Permanent.Lure = 2
 	local p = ProfileSchema.Migrate(s)
-	expectEq(p.Rooms.r3.Rarity, "Mythic", "rarity")
-	expectEq(#p.Rooms.r3.Perks, 2, "perks")
+	expectEq(p.Rooms.r3.Id, "RestlessCrypt", "room")
+	expectEq(p.Rooms.r3.Level, 4, "level")
+	expectEq(p.Rooms.r3.Modifier, "Lucky", "modifier")
 	expectEq(p.Level, 7, "level")
 	expectEq(p.Xp, 30, "xp")
 	expectEq(p.BoxPity, 4, "pity")
 	expectEq(p.Boxes.Rare, 2, "boxes")
 	expectEq(p.Blueprints.GuardRoom, 3, "blueprints")
 	expectEq(p.Permanent.Lure, 2, "permanent")
-	expectEq(select(2, ProfileSchema.Migrate({ Version = 4, Coins = 1 })), "NewerVersion", "v4 rejected")
+	expectEq(select(2, ProfileSchema.Migrate({ Version = 6, Coins = 1 })), "NewerVersion", "v6 rejected")
+end)
+
+test("v4 profile migrates to v5: instance rarity and perks dropped, levels clamped to the definition's tier", function()
+	local v4 = ProfileSchema.Default()
+	v4.Version = 4
+	v4.Coins, v4.VaultPercent, v4.Threat = 1234, 40, 2
+	v4.Level, v4.Xp = 9, 12
+	v4.Rooms.r1 = { Id = "SlimeNest", Level = 7, Rarity = "Epic", Perks = { { Kind = "Coins", Amount = 0.1 } } }
+	v4.Rooms.r2 = { Id = "TreasureRoom", Level = 5, Rarity = "Legendary", Perks = {} }
+	v4.Rooms.r3 = { Id = "RestlessCrypt", Level = 4, Rarity = "Common", Perks = {}, Modifier = "Blazing" }
+	v4.Rooms.r4 = { Id = "MushroomCavern", Level = 2, Rarity = "Secret", Perks = { { Kind = "Xp", Amount = 0.6 } } }
+	v4.NextSerial = 5
+	v4.Layout = { ["3,2"] = "r1", ["3,3"] = "r3", ["3,4"] = "r2" }
+	v4.Blueprints = { GuardRoom = 7, RestlessCrypt = 2 }
+	v4.Boxes = { Dungeon = 4, Rare = 1 }
+	v4.BoxPity = 3
+	v4.Permanent = { DeepVault = 2 }
+	v4.Discovered.RestlessCrypt = true
+	v4.Stats.Wins = 40
+	local p, problem = ProfileSchema.Migrate(v4)
+	expect(p ~= nil, "migrates " .. tostring(problem))
+	expectEq(p.Version, 5, "version")
+	for id, room in p.Rooms do
+		expectEq(room.Rarity, nil, id .. " rarity dropped")
+		expectEq(room.Perks, nil, id .. " perks dropped")
+	end
+	expectEq(p.Rooms.r1.Level, 3, "Epic slime clamped to the Common cap")
+	expectEq(p.Rooms.r2.Level, 3, "coin cache clamped to 3")
+	expectEq(p.Rooms.r3.Level, 4, "crypt (Rare, cap 5) keeps level 4")
+	expectEq(p.Rooms.r3.Modifier, "Blazing", "modifier kept")
+	expectEq(p.Rooms.r4.Level, 2, "mushroom level kept")
+	expectEq(p.Coins, 1234, "coins")
+	expectEq(p.VaultPercent, 40, "vault percent")
+	expectEq(p.Threat, 2, "threat")
+	expectEq(p.Level, 9, "keeper level")
+	expectEq(p.Xp, 12, "xp")
+	expectEq(p.Layout["3,4"], "r2", "layout kept")
+	expectEq(p.Blueprints.GuardRoom, 7, "blueprints kept")
+	expectEq(p.Boxes.Dungeon, 4, "boxes kept")
+	expectEq(p.BoxPity, 3, "pity kept")
+	expectEq(p.Permanent.DeepVault, 2, "permanent kept")
+	expectEq(p.Discovered.RestlessCrypt, true, "discovered kept")
+	expectEq(p.Stats.Wins, 40, "stats kept")
+	expectEq(p.NextSerial, 5, "serial")
+	expectEq(v4.Rooms.r1.Rarity, "Epic", "input untouched")
+	-- Two treasures saved in a layout: only the first (key order) is kept.
+	local two = ProfileSchema.Default()
+	RoomInventory.Add(two, "Strongbox")
+	two.Layout = { ["3,2"] = "r1", ["3,3"] = "r2", ["2,2"] = "r3" }
+	local q = ProfileSchema.Migrate(two)
+	expectEq(q.Layout["2,2"], "r3", "first treasure in key order kept")
+	expectEq(q.Layout["3,3"], nil, "second treasure dropped")
+end)
+
+test("v3 profile migrates to v4: vault banked into Coins, every other field kept", function()
+	local v3 = ProfileSchema.Default()
+	v3.Version = 3
+	v3.VaultPercent, v3.Threat = nil, nil
+	v3.Coins, v3.Vault = 500, 120
+	v3.Level, v3.Xp = 6, 30
+	v3.Boxes = { Dungeon = 2, Rare = 1 }
+	v3.Permanent = { DeepVault = 3 }
+	v3.ChallengerUnlocked = true
+	v3.Rooms.r2.Level = 2
+	local p, problem = ProfileSchema.Migrate(v3)
+	expect(p ~= nil, "migrates " .. tostring(problem))
+	expectEq(p.Version, ProfileSchema.VERSION, "version")
+	expectEq(p.Coins, 620, "Coins += Vault")
+	expectEq(p.Vault, nil, "Vault dropped")
+	expectEq(p.VaultPercent, 0, "nothing at risk after the update")
+	expectEq(p.Threat, 1, "threat 1")
+	expectEq(p.Level, 6, "level kept")
+	expectEq(p.Xp, 30, "xp kept")
+	expectEq(p.Boxes.Rare, 1, "boxes kept")
+	expectEq(p.Permanent.DeepVault, 3, "deep vault level kept")
+	expectEq(p.Rooms.r2.Level, 2, "treasure level kept")
+	expectEq(p.ChallengerUnlocked, true, "legacy flag kept")
+	expectEq(v3.Vault, 120, "input untouched")
+	-- A v4 profile never re-adds a stray Vault field.
+	local again = ProfileSchema.Migrate({ Version = 4, Coins = 10, Vault = 999, VaultPercent = 30, Threat = 2 })
+	expectEq(again.Coins, 10, "v4 ignores Vault")
+	expectEq(again.VaultPercent, 30, "percent kept")
+	expectEq(again.Threat, 1, "threat clamped to the level-1 unlock")
 end)

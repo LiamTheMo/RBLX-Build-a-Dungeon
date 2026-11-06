@@ -1,14 +1,14 @@
 --!strict
 -- Plot grid shape (GDD "Building"; values from docs/PHASE0.md). Data only: the
--- server's route validation arrives in Phase 1.
+-- route itself is computed by Rules/Route.
 --
 -- Cells are addressed { Column, Row }, both 1-based. Row 1 is the front edge,
 -- where visitors arrive. Every room is a small open square (about player
 -- height) with a doorway on all four sides, so orthogonally adjacent rooms
--- always connect. A valid layout is therefore one unbranched chain that starts
--- at the entrance: each room touches only the rooms before and after it on the
--- route. The route ends at its last room, or at the Treasure Room if one is
--- placed (it must be the last room).
+-- always connect. Rooms may go in any cell but the entrance (rule of
+-- 2026-11-05); the server picks the route as the longest simple path of
+-- adjacent rooms from the entrance, ending at the Treasure Room when it is
+-- reachable. Rooms off that route are idle.
 
 export type Cell = { Column: number, Row: number }
 

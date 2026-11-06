@@ -49,7 +49,12 @@ test("defenders and traps have balance entries", function()
 		local stats = Balance.Rooms[id]
 		if def.Kind == "Defender" then
 			expect(stats ~= nil, id .. " has no balance")
-			if stats then
+			if stats and stats.Units then
+				expect(#stats.Units >= 2, id .. " Units lists several")
+				for _, u in stats.Units do
+					expect(isPositive(u.Health) and isPositive(u.Damage) and isPositive(u.Interval), id .. " unit stats")
+				end
+			elseif stats then
 				expect(isPositive(stats.DefenderHealth), id .. " DefenderHealth")
 				expect(isPositive(stats.AttackDamage), id .. " AttackDamage")
 				expect(isPositive(stats.AttackInterval), id .. " AttackInterval")
@@ -59,6 +64,8 @@ test("defenders and traps have balance entries", function()
 			if stats and stats.SporeDuration then
 				expect(isPositive(stats.SporeDuration), id .. " SporeDuration")
 				expect(isPositive(stats.TrapDamageBonus), id .. " TrapDamageBonus")
+			elseif stats and stats.ZoneDamage then
+				expect(isPositive(stats.ZoneDamage), id .. " ZoneDamage")
 			elseif stats then
 				expect(isPositive(stats.Damage), id .. " Damage")
 				expect(isPositive(stats.Cycle), id .. " Cycle")
@@ -67,7 +74,14 @@ test("defenders and traps have balance entries", function()
 		end
 		if def.Source == "Shop" then
 			expect(stats and isPositive(stats.Cost) and stats.Cost % 1 == 0, id .. " needs a whole-number Cost")
+			expect(def.Rarity == "Common" or def.Rarity == "Uncommon", id .. " only Common/Uncommon are sold")
+		elseif stats and stats.Cost ~= nil then
+			expect(false, id .. " has a Cost but is not sold")
 		end
+		if def.Kind == "Treasure" then
+			expect(stats ~= nil and isPositive(stats.Exchange), id .. " Exchange")
+		end
+		expect(Balance.RarityById[def.Rarity] ~= nil, id .. " known rarity")
 	end
 	for id in Balance.Rooms do
 		expect(Rooms.All[id] ~= nil, "balance for unknown room " .. id)
@@ -83,7 +97,11 @@ test("every visitor has stats and balance has no unknown visitors", function()
 			expect(isPositive(stats.Health), id .. " Health")
 			expect(isPositive(stats.AttackInterval), id .. " AttackInterval")
 			expect(isPositive(stats.WalkSpeed), id .. " WalkSpeed")
-			expect(isPositive(stats.Reward) and stats.Reward % 1 == 0, id .. " whole-number Reward")
+			local r = stats.Reward
+			expect(
+				type(r) == "table" and isPositive(r.Min) and r.Min % 1 == 0 and r.Max % 1 == 0 and r.Max >= r.Min,
+				id .. " whole-number Reward range"
+			)
 			expect(isFraction(stats.TheftFraction), id .. " TheftFraction")
 		end
 	end
@@ -96,12 +114,9 @@ test("grid and economy values are in range", function()
 	expect(Grid.Columns >= 2 and Grid.Rows >= 2, "grid too small")
 	local e = Grid.EntranceCell
 	expect(e.Column >= 1 and e.Column <= Grid.Columns and e.Row >= 1 and e.Row <= Grid.Rows, "entrance inside grid")
-	expect(isFraction(Balance.Economy.VaultBonusPer100), "VaultBonusPer100")
-	expect(isFraction(Balance.Economy.VaultBonusCap), "VaultBonusCap")
-	expect(
-		Balance.Timing.VisitorIntervalWithTreasure < Balance.Timing.VisitorInterval,
-		"a treasure room must attract visitors more often"
-	)
+	local t = Balance.Timing
+	expect(isPositive(t.MinVisitorInterval) and t.MinVisitorInterval <= t.VisitorInterval, "interval floor")
+	expect(isPositive(Balance.Vault.RatePerPercent), "vault rate")
 end)
 
 test("definitions are frozen", function()

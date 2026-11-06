@@ -1,6 +1,5 @@
 -- Tutorial driver. The state machine is pure (Rules/TutorialRules); this applies
--- its side effects: the one-time Spike Hall grant, the challenger unlock and
--- visitor timing. Other services call Notify(player, event).
+-- its side effects: the one-time Spike Hall grant and visitor timing. Other services call Notify(player, event).
 -- The Spike Hall grant happens once ever: never if the player owns or has ever
 -- owned a SpikeHall (Discovered.SpikeHall). Ownership alone is not enough since
 -- rooms can be scrapped for blueprints (a scrap-and-regrant loop).
@@ -52,11 +51,6 @@ function TutorialService.Notify(player: Player, event: string)
 			notice(player, "You received a Spike Hall. Place it behind your slime!", "Good")
 			changed = true
 		end
-	end
-	if step == "Done" and not profile.ChallengerUnlocked then
-		profile.ChallengerUnlocked = true
-		notice(player, "The Armored Challenger can now be invited.", "Good")
-		changed = true
 	end
 	if changed then
 		ProfileService.Changed(player)

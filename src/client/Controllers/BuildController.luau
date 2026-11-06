@@ -3,11 +3,13 @@
 -- the server checks it (PreviewLayout, debounced) to draw the route and the
 -- offending cell, re-validates CommitLayout and owns the real layout. Cells come
 -- from the plot's server-built tiles (Ui/Cells); room data from the Catalog.
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Ui = script.Parent.Parent.Ui
+local Badges = require(Ui.Badges)
 local Bus = require(Ui.Bus)
 local Catalog = require(Ui.Catalog)
 local Cells = require(Ui.Cells)
@@ -55,12 +57,15 @@ local ghost: Instance? = nil
 local ghostKey = ""
 local draftModels: { Instance } = {}
 local markers: { [string]: Part } = {}
+local hintHand: BillboardGui? = nil
 local lastTap = 0
 local lastHint = -10
 local returnAt = 0
 -- Latest server answer for the draft (PreviewLayout). Sig identifies the draft it
 -- belongs to; Pending while a check for the current draft is outstanding.
-local preview = { Sig = nil :: string?, Gen = 0, Pending = false, Ok = true, Data = {} :: any, Cell = nil :: string? }
+local preview = { Sig = nil :: string?, Gen = 0, Pending = false, Ok = true, Data = {} :: any, Cell = nil :: string?, Off = {} :: { [string]: boolean } }
+local modelKeys: { [Instance]: string } = {}
+local applyOffRoute
 
 local function cellSize(): number
 	return Catalog.Current.Grid.CellSize
@@ -100,7 +105,7 @@ local function groupKey(room: any): string
 		table.insert(kinds, p.Kind)
 	end
 	table.sort(kinds)
-	return ("%s|%s|%s|%d"):format(room.Id, room.Rarity or "Common", table.concat(kinds, ","), room.Level or 1)
+	return ("%s|%s|%s|%d|%s"):format(room.Id, Catalog.RoomRarity(room.Id, room), table.concat(kinds, ","), room.Level or 1, room.Modifier or "")
 end
 
 local function inventory(): ({ [string]: any }, { string })
@@ -114,7 +119,7 @@ local function inventory(): ({ [string]: any }, { string })
 			local k = groupKey(room)
 			local g = groups[k]
 			if not g then
-				g = { Key = k, Id = room.Id, Rarity = room.Rarity or "Common", Level = room.Level or 1, Perks = room.Perks or {}, Free = {} }
+				g = { Key = k, Id = room.Id, Rarity = Catalog.RoomRarity(room.Id, room), Level = room.Level or 1, Perks = room.Perks or {}, Modifier = room.Modifier, Free = {} }
 				groups[k] = g
 				table.insert(keys, k)
 			end
@@ -142,8 +147,37 @@ local function inventory(): ({ [string]: any }, { string })
 	return groups, keys
 end
 
--- Flat tinted marker on a cell; nil hides it.
-local function marker(name: string, key: string?, color: Color3?)
+-- World visuals are ChatGPT sprites on invisible flat parts (SurfaceGui, top face). The cell overlay sprites are opaque, so
+-- their transparency is set here in code.
+local WORLD = Kit.Spec("World")
+local PX_PER_STUD = 40
+
+local function flatPart(name: string, size: Vector3): (Part, SurfaceGui)
+	local part = make("Part", {
+		Name = name,
+		Anchored = true,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		CastShadow = false,
+		Transparency = 1,
+		Size = size,
+	})
+	local sg = make("SurfaceGui", {
+		Face = Enum.NormalId.Top,
+		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
+		PixelsPerStud = PX_PER_STUD,
+		LightInfluence = 0,
+		AlwaysOnTop = false,
+		Adornee = part,
+	}, part)
+	return part, sg
+end
+
+local MARKER_SPEC = { Selected = "CellSelected", Offender = "CellInvalid", Hint = "CellValid", Ghost = "CellValid" }
+
+-- Flat sprite marker on a cell (CellValid / CellInvalid / CellSelected); nil hides it. `spec` overrides the sprite name.
+local function marker(name: string, key: string?, color: Color3?, spec: string?)
 	local part = markers[name]
 	if not key then
 		if part then
@@ -152,19 +186,17 @@ local function marker(name: string, key: string?, color: Color3?)
 		return
 	end
 	if not part then
-		part = make("Part", {
-			Name = name,
-			Anchored = true,
-			CanCollide = false,
-			CanQuery = false,
-			CanTouch = false,
-			Material = Enum.Material.Neon,
-			Transparency = 0.55,
-			Size = Vector3.new(cellSize() - 0.4, 0.2, cellSize() - 0.4),
-		})
+		local sg
+		part, sg = flatPart(name, Vector3.new(cellSize() - 0.4, 0.05, cellSize() - 0.4))
+		local img = Kit.Sprite(sg, "World." .. (spec or MARKER_SPEC[name] or "CellValid"), { Name = "Img", Size = UDim2.fromScale(1, 1), ImageTransparency = 0.45, ScaleType = Enum.ScaleType.Stretch })
 		markers[name] = part
 	end
-	part.Color = color :: Color3
+	local img = part.SurfaceGui.Img
+	local want = Kit.Spec("World." .. (spec or MARKER_SPEC[name] or "CellValid"))
+	if want and img.Image ~= want.Id then
+		img.Image = want.Id
+	end
+	img.ImageColor3 = if color then Color3.new(1, 1, 1):Lerp(color, 0.0) else Color3.new(1, 1, 1)
 	part.CFrame = cellWorld(key, 0.15)
 	part.Parent = worldFolder
 end
@@ -174,6 +206,7 @@ local function clearDraftModels()
 		m:Destroy()
 	end
 	table.clear(draftModels)
+	table.clear(modelKeys)
 end
 
 local function artRoom(roomId: string): Instance?
@@ -239,6 +272,36 @@ local function renderDraft()
 			end
 			model.Parent = worldFolder
 			table.insert(draftModels, model)
+			modelKeys[model] = key
+		end
+	end
+	applyOffRoute()
+end
+
+-- Rooms the server says are off the route (any cell is allowed; they just never see visitors) are dimmed
+-- and carry a small "off route" tag.
+function applyOffRoute()
+	for model, key in modelKeys do
+		local off = preview.Off[key] == true
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.LocalTransparencyModifier = if off then 0.55 else 0
+			end
+		end
+		if model:IsA("BasePart") then
+			model.LocalTransparencyModifier = if off then 0.55 else 0
+		end
+		local tag = model:FindFirstChild("OffRouteTag")
+		if off and not tag then
+			local adornee = if model:IsA("BasePart") then model else model:FindFirstChildWhichIsA("BasePart", true)
+			if adornee then
+				local gui = make("BillboardGui", { Name = "OffRouteTag", Adornee = adornee, Size = UDim2.fromOffset(44, 44), StudsOffset = Vector3.new(0, 5, 0), AlwaysOnTop = true, MaxDistance = 200 }, model)
+				Kit.Icon(gui, "Map", UDim2.fromScale(1, 1))
+				local x = Kit.Icon(gui, "Cross", UDim2.fromScale(0.5, 0.5))
+				x.AnchorPoint, x.Position = Vector2.new(1, 1), UDim2.fromScale(1, 1)
+			end
+		elseif not off and tag then
+			tag:Destroy()
 		end
 	end
 end
@@ -253,18 +316,27 @@ local function renderRoute(order: { string }?)
 	end
 	local overlay = make("Folder", { Name = "Overlay" }, worldFolder)
 	local prev = cellWorld(entranceKey(), 0.4).Position
+	local WIDTH = 1.6
 	for _, key in order do
 		local nextPos = cellWorld(key, 0.4).Position
 		local len = (nextPos - prev).Magnitude
-		make("Part", {
-			Anchored = true,
-			CanCollide = false,
-			CanQuery = false,
-			Material = Enum.Material.Neon,
-			Color = Theme.Success,
-			Size = Vector3.new(0.35, 0.2, len + 0.35),
-			CFrame = CFrame.lookAt((prev + nextPos) / 2, nextPos),
-		}, overlay)
+		if len > 0.5 then
+			-- One flat strip per leg: a row of RouteDot sprites with a RouteArrow in the middle pointing along the path.
+			local part, sg = flatPart("Leg", Vector3.new(WIDTH, 0.05, len))
+			part.CFrame = CFrame.lookAt((prev + nextPos) / 2, nextPos)
+			local w, h = WIDTH * PX_PER_STUD, len * PX_PER_STUD
+			local dots = math.max(2, math.floor(len / 1.4))
+			for i = 1, dots do
+				local f = (i - 0.5) / dots
+				if math.abs(f - 0.5) > 0.12 then
+					local d = Kit.Sprite(sg, "World.RouteDot", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(w / 2, h * f), Size = UDim2.fromOffset(w * 0.4, w * 0.4), ImageTransparency = 0.15 })
+					d.ZIndex = 1
+				end
+			end
+			-- Top-face "up" is the part's -Z, which looks toward the next cell.
+			Kit.Sprite(sg, "World.RouteArrow", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(w / 2, h / 2), Size = UDim2.fromOffset(w * 0.8, w * 0.95), ZIndex = 2 })
+			part.Parent = overlay
+		end
 		prev = nextPos
 	end
 end
@@ -272,6 +344,12 @@ end
 local function remaining(key: string?): number
 	local g = key and inventory()[key]
 	return if g then #g.Free else 0
+end
+
+-- Card frame border in reference px (v4 rarity frame, uniform slice scale capped at 0.5).
+local function cardBorder(w: number, h: number): number
+	local spec = Kit.Spec("Rarity.Common.Frame")
+	return math.ceil(math.min(w / spec.Size.X, h / spec.Size.Y, 0.5) * spec.SliceCenter.Min.X)
 end
 
 local function refreshInventory()
@@ -282,7 +360,12 @@ local function refreshInventory()
 	end
 	local groups, keys = inventory()
 	local phone = Scale.Phone
-	local cardW, cardH = if phone then 112 else 132, if phone then 128 else 150
+	if ui.Empty then
+		ui.Empty.Visible = #keys == 0
+	end
+	local cardW, cardH = if phone then 112 else 140, if phone then 128 else 168
+	local border = cardBorder(cardW, cardH)
+	local roomSize = if phone then 36 else 48
 	for i, key in keys do
 		local g = groups[key]
 		local def = Catalog.Room(g.Id)
@@ -292,6 +375,7 @@ local function refreshInventory()
 			Size = UDim2.fromOffset(cardW, cardH),
 			LayoutOrder = i,
 			Rarity = g.Rarity,
+			Tip = g.Rarity,
 			OnClick = function()
 				carry = nil
 				selectedCell = nil
@@ -299,28 +383,41 @@ local function refreshInventory()
 				Build.Refresh()
 			end,
 		})
+		-- Content sits inside the frame's border: icon, name, perks; the count chip rests at the bottom.
 		local inner = make("CanvasGroup", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), GroupTransparency = if count > 0 then 0 else 0.5, ZIndex = 2 }, btn.Instance)
 		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, inner)
-		make("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 28), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, inner)
-		P.RoomImage(inner, g.Id, if phone then 38 else 52, def.Kind).LayoutOrder = 0
-		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 14 else 16, Theme.TextPrimary, true)
-		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 28 else 34), 1
-		Kit.Rarity(inner, g.Rarity).LayoutOrder = 2
+		make("UIPadding", { PaddingTop = UDim.new(0, border + 5), PaddingBottom = UDim.new(0, border + 26), PaddingLeft = UDim.new(0, border + 3), PaddingRight = UDim.new(0, border + 3) }, inner)
+		P.RoomImage(inner, g.Id, roomSize, def.Kind).LayoutOrder = 0
+		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 13 else 15, Theme.TextPrimary, true)
+		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 30 else 36), 1
+		name.TextYAlignment = Enum.TextYAlignment.Top
+		name.TextTruncate = Enum.TextTruncate.AtEnd
 		if #g.Perks > 0 then
 			Kit.Perks(inner, g.Perks, phone).LayoutOrder = 3
 		end
 		if RarityColors.Shimmer[g.Rarity] then
 			btn.Shimmer()
 		end
-		local gem = Kit.Gem(btn.Instance, g.Rarity, UDim2.fromOffset(if phone then 20 else 24, if phone then 20 else 24))
-		gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, -8, 0, 8), 4
-		local pill = Kit.Pill(btn.Instance, ("x%d"):format(count), if count > 0 then Theme.Gold else Theme.Disabled, if count > 0 then Theme.TextOnGold else Theme.DisabledText, 20)
-		pill.AnchorPoint, pill.Position, pill.ZIndex = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -10), 4
+		if g.Modifier then
+			local mod = Badges.Modifier(btn.Instance, g.Modifier, if phone then 22 else 26)
+			if mod then
+				mod.AnchorPoint, mod.Position, mod.ZIndex = Vector2.new(0, 0), UDim2.new(0, border + 2, 0, border + 2), 4
+				for _, d in mod:GetDescendants() do
+					if d:IsA("GuiObject") then
+						d.ZIndex = 4
+					end
+				end
+			end
+		end
+		-- Rarity gem inside the top-right of the frame; count chip inside the bottom.
+		local gemSize = if phone then 18 else 22
+		local gem = Kit.Gem(btn.Instance, g.Rarity, UDim2.fromOffset(gemSize, gemSize))
+		gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, -(border + 2), 0, border + 2), 4
+		local pill = Kit.Pill(btn.Instance, ("x%d"):format(count), if count > 0 then Theme.Gold else Theme.Disabled, if count > 0 then Theme.TextOnGold else Theme.DangerText, 22)
+		pill.AnchorPoint, pill.Position, pill.ZIndex = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(border + 3)), 4
+		Kit.PillLabel(pill).ZIndex = 5
 		btn.SetSelected(selectedType == key)
 		btn.SetEnabled(count > 0)
-		if selectedType == key and btn.Stroke.Enabled then
-			btn.Stroke.Thickness = 5
-		end
 	end
 end
 
@@ -332,11 +429,9 @@ local function showRouteStatus()
 	end
 	if preview.Pending then
 		routeValid = false
-		ui.Status.Text = "Checking route..."
-		ui.IconOk.Visible, ui.IconBad.Visible = false, false
-		ui.StatusStroke.Color = Theme.TextMuted
-		ui.Commit.SetEnabled(false, "Checking...")
-		ui.Commit.SetStyle("Primary")
+		ui.Status.Text = "..."
+		ui.BannerSpec("Info")
+		ui.Commit.SetEnabled(false, "Confirm")
 		marker("Offender", nil)
 		return
 	end
@@ -344,18 +439,20 @@ local function showRouteStatus()
 	routeValid = ok
 	if ok then
 		local n = #orderOrReason
-		ui.Status.Text = if n == 0 then "Route connected - place rooms next to the entrance" else ("Route connected: %d rooms"):format(n)
-		ui.IconOk.Visible, ui.IconBad.Visible = true, false
-		ui.StatusStroke.Color = Theme.Success
+		local offCount = 0
+		for _ in preview.Off do
+			offCount += 1
+		end
+		ui.Status.Text = if n == 0 then "Place a room" elseif offCount > 0 then ("%d rooms, %d off route"):format(n, offCount) else ("%d rooms"):format(n)
+		ui.BannerSpec("Good")
 		renderRoute(orderOrReason)
+		applyOffRoute()
 	else
 		ui.Status.Text = ReasonText.Get(orderOrReason)
-		ui.IconOk.Visible, ui.IconBad.Visible = false, true
-		ui.StatusStroke.Color = Theme.Danger
+		ui.BannerSpec("Bad")
 		renderRoute(nil)
 	end
-	ui.Commit.SetEnabled(ok, "Fix route")
-	ui.Commit.SetStyle(if ok then "Success" else "Primary")
+	ui.Commit.SetEnabled(ok, "Confirm")
 	marker("Offender", if ok then nil else offender, BAD)
 end
 
@@ -401,6 +498,12 @@ local function requestPreview()
 		preview.Ok = ok
 		preview.Data = if ok and type(data) ~= "table" then {} else data
 		preview.Cell = if type(cell) == "string" then cell else nil
+		preview.Off = {}
+		if ok and type(cell) == "table" then -- third value: cells of rooms that are off the route
+			for _, k in cell do
+				preview.Off[k] = true
+			end
+		end
 		showRouteStatus()
 	end)
 end
@@ -419,7 +522,17 @@ function Build.Refresh()
 	requestPreview()
 	showRouteStatus()
 	marker("Selected", selectedCell, Theme.TextPrimary)
-	marker("Hint", if hintCell and not draft[hintCell] then hintCell else nil, Theme.Gold)
+	marker("Hint", if hintCell and not draft[hintCell] then hintCell else nil, nil)
+	if not hintHand then
+		hintHand = make("BillboardGui", { Name = "TapHint", Size = UDim2.fromOffset(56, 56), StudsOffset = Vector3.new(0, 3, 0), AlwaysOnTop = true, LightInfluence = 0 })
+		Kit.Icon(hintHand, "TapHand", UDim2.fromScale(1, 1))
+	end
+	if hintCell and not draft[hintCell] and markers.Hint then
+		hintHand.Adornee = markers.Hint
+		hintHand.Parent = worldFolder
+	else
+		hintHand.Parent = nil
+	end
 	renderDraft()
 	refreshInventory()
 
@@ -496,6 +609,7 @@ local function updateGhost()
 		if ghost then
 			ghost.Parent = nil
 		end
+		marker("GhostMark", nil)
 		return
 	end
 	local key = cellAtViewport(UserInputService:GetMouseLocation())
@@ -503,6 +617,7 @@ local function updateGhost()
 		if ghost then
 			ghost.Parent = nil
 		end
+		marker("GhostMark", nil)
 		return
 	end
 	local valid = placeable(key) and draft[key] == nil
@@ -525,13 +640,13 @@ local function updateGhost()
 				end
 			end
 		else
+			-- No ghost art: an empty anchor (the GhostOk / GhostBad cell sprite below carries the preview).
 			ghost = make("Part", {
 				Anchored = true,
 				CanCollide = false,
 				CanQuery = false,
-				Transparency = 0.5,
-				Material = Enum.Material.Neon,
-				Size = Vector3.new(cellSize() - 0.6, 3, cellSize() - 0.6),
+				Transparency = 1,
+				Size = Vector3.new(0.2, 0.2, 0.2),
 			})
 		end
 	end
@@ -542,7 +657,8 @@ local function updateGhost()
 		g.CFrame = cellWorld(key, if g.Name == "GhostRoom" then 0 else 1.5)
 	end
 	local color = if valid then GOOD else BAD
-	if g:IsA("BasePart") then
+	marker("GhostMark", key, nil, if valid then "GhostOk" else "GhostBad")
+	if g:IsA("BasePart") and g.Transparency < 1 then
 		g.Color = color
 	end
 	for _, d in g:GetDescendants() do
@@ -558,6 +674,35 @@ end
 local camConn: RBXScriptConnection? = nil
 local savedType, savedCF = Enum.CameraType.Custom, CFrame.new()
 local returning = false
+local overview = false -- false: the normal player camera (rotate, zoom, walk); true: the angled overview
+local savedZoom: { Min: number, Max: number }? = nil
+
+-- Normal camera, pushed out a little so the whole plot fits: raises the minimum zoom distance.
+local function freeCamera()
+	if camConn then
+		camConn:Disconnect()
+		camConn = nil
+	end
+	local cam = workspace.CurrentCamera
+	if cam.CameraType == Enum.CameraType.Scriptable then
+		cam.CameraType = Enum.CameraType.Custom
+	end
+	local player = Players.LocalPlayer
+	if not savedZoom then
+		savedZoom = { Min = player.CameraMinZoomDistance, Max = player.CameraMaxZoomDistance }
+	end
+	player.CameraMaxZoomDistance = math.max(savedZoom.Max, 90)
+	player.CameraMinZoomDistance = math.max(savedZoom.Min, 28)
+end
+
+local function restoreZoom()
+	if savedZoom then
+		local player = Players.LocalPlayer
+		player.CameraMinZoomDistance = savedZoom.Min
+		player.CameraMaxZoomDistance = savedZoom.Max
+		savedZoom = nil
+	end
+end
 
 local function camGoal(): CFrame
 	return anchor * CFrame.lookAt(Vector3.new(0, 36, 26), Vector3.new(0, 0, -2))
@@ -622,7 +767,11 @@ local function enter()
 	active = true
 	worldFolder = make("Folder", { Name = "BuildDraft" }, workspace)
 	setServerRoomsHidden(true)
-	startCamera()
+	if overview then
+		startCamera()
+	else
+		freeCamera()
+	end
 	ui.Gui.Enabled = true
 	Build.Layout()
 	Build.Refresh()
@@ -647,6 +796,7 @@ local function exit()
 	setServerRoomsHidden(false)
 	returning = true
 	returnAt = os.clock()
+	restoreZoom()
 	if not camConn then
 		workspace.CurrentCamera.CameraType = if savedType == Enum.CameraType.Scriptable then Enum.CameraType.Custom else savedType
 	end
@@ -669,19 +819,26 @@ function Build.Layout()
 	end
 	local phone = Scale.Phone
 	local bn, bs = ui.Banner, ui.Inventory
+	local invH = if phone then 196 else 256
+	local invBottom = if phone then 4 else 16
 	if phone then
-		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 52), UDim2.fromOffset(420, 40)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -4), UDim2.fromOffset(560, 148)
-		ui.Buttons.AnchorPoint, ui.Buttons.Position, ui.Buttons.Size = Vector2.new(1, 0.5), UDim2.new(1, -8, 0.5, 0), UDim2.fromOffset(120, 120)
-		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 0), UDim2.new(0, 8, 0, 100)
+		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 56), UDim2.fromOffset(320, 48)
+		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(1, -16, 0, invH)
+		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 8, 1, -(invBottom + invH + 8))
 	else
-		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 96), UDim2.fromOffset(640, 44)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -16), UDim2.fromOffset(900, 176)
-		ui.Buttons.AnchorPoint, ui.Buttons.Position, ui.Buttons.Size = Vector2.new(1, 1), UDim2.new(1, -16, 1, -204), UDim2.fromOffset(160, 120)
-		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 16, 1, -204)
+		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 96), UDim2.fromOffset(440, 56)
+		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(1, -32, 0, invH)
+		ui.Callout.AnchorPoint, ui.Callout.Position = Vector2.new(0, 1), UDim2.new(0, 16, 1, -(invBottom + invH + 10))
 	end
-	ui.Commit.Instance.Size = UDim2.new(1, 0, 0, 56)
-	ui.Cancel.Instance.Size = UDim2.new(1, 0, 0, 56)
+	-- Confirm / Cancel: centred right above the inventory bar, big touch targets.
+	ui.Buttons.AnchorPoint, ui.Buttons.Position = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(invBottom + invH + (if phone then 8 else 12)))
+	local bw, bh = if phone then 150 else 210, if phone then 52 else 64
+	ui.Commit.Instance.Size = UDim2.fromOffset(bw, bh)
+	ui.Cancel.Instance.Size = UDim2.fromOffset(bw, bh)
+	ui.View.Instance.AnchorPoint = Vector2.new(1, 1)
+	ui.View.Instance.Position = UDim2.new(1, if phone then -8 else -16, 1, -(invBottom + invH + (if phone then 8 else 12)))
+	ui.Commit.SetTextSize(if phone then 20 else 24)
+	ui.Cancel.SetTextSize(if phone then 20 else 24)
 end
 
 local function buildUi()
@@ -689,29 +846,40 @@ local function buildUi()
 	gui.Enabled = false
 	ui = { Gui = gui }
 
-	-- Plain drawn pill: its border colour is the route state (green / red / grey) next to a check or "!".
-	ui.Banner = Kit.Panel(gui, { Sprite = false, BackgroundColor3 = Theme.BgPanel })
-	ui.Banner:FindFirstChildOfClass("UICorner").CornerRadius = Theme.CornerPill
-	ui.StatusStroke = ui.Banner:FindFirstChildOfClass("UIStroke")
-	ui.IconOk = Kit.Icon(ui.Banner, "Check", UDim2.fromOffset(28, 28), Theme.Success)
-	ui.IconOk.Position = UDim2.fromOffset(12, 6)
-	ui.IconBad = Kit.Label(ui.Banner, "!", 24, Theme.Danger, true)
-	ui.IconBad.Size = UDim2.fromOffset(40, 40)
-	ui.IconBad.Visible = false
-	ui.Status = Kit.Label(ui.Banner, "", Theme.TextSize.Body, Theme.TextPrimary)
-	ui.Status.Position = UDim2.fromOffset(48, 0)
-	ui.Status.Size = UDim2.new(1, -60, 1, 0)
+	-- Route-state banner: ToastInfo (checking) / ToastGood (valid) / ToastBad (blocked) sprite with the matching icon.
+	ui.Banner = Kit.Panel(gui, { Sprite = "ToastInfo" })
+	ui.Banner:FindFirstChild("Inset"):Destroy()
+	ui.BannerSpec = function(kind: string)
+		local spec = Kit.Spec("Feedback.Toast" .. kind)
+		if spec and ui.Banner.Image ~= spec.Id then
+			ui.Banner.Image = spec.Id
+			ui.Banner.SliceCenter = spec.SliceCenter
+		end
+		ui.IconInfo.Visible, ui.IconOk.Visible, ui.IconBad.Visible = kind == "Info", kind == "Good", kind == "Bad"
+	end
+	ui.IconInfo = Kit.Icon(ui.Banner, "Info", UDim2.fromOffset(28, 28))
+	ui.IconInfo.AnchorPoint, ui.IconInfo.Position = Vector2.new(0, 0.5), UDim2.new(0, 20, 0.5, 0)
+	ui.IconOk = Kit.Icon(ui.Banner, "Good", UDim2.fromOffset(28, 28))
+	ui.IconOk.AnchorPoint, ui.IconOk.Position = Vector2.new(0, 0.5), UDim2.new(0, 20, 0.5, 0)
+	ui.IconBad = Kit.Icon(ui.Banner, "Warn", UDim2.fromOffset(28, 28))
+	ui.IconBad.AnchorPoint, ui.IconBad.Position = Vector2.new(0, 0.5), UDim2.new(0, 20, 0.5, 0)
+	ui.IconOk.Visible, ui.IconBad.Visible = false, false
+	ui.Status = Kit.Label(ui.Banner, "", Theme.TextSize.Body, Theme.TextPrimary, true)
+	ui.Status.Position = UDim2.fromOffset(58, 0)
+	ui.Status.Size = UDim2.new(1, -80, 1, 0)
 	ui.Status.TextXAlignment = Enum.TextXAlignment.Left
+	ui.Status.TextScaled = true
+	make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = Theme.TextSize.Body }, ui.Status)
 
-	ui.Inventory = Kit.Panel(gui, { Sprite = "Large" })
+	ui.Inventory = Kit.Panel(gui, { Sprite = "Large", Pad = Vector2.new(6, 4) })
 	ui.Scroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -28, 1, -16),
-		Position = UDim2.fromOffset(14, 8),
+		Size = UDim2.fromScale(1, 1),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.X,
 		ScrollingDirection = Enum.ScrollingDirection.X,
-		ScrollBarThickness = 6,
+		ScrollBarThickness = 8,
+		HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
 		BorderSizePixel = 0,
 	}, ui.Inventory)
 	make("UIListLayout", {
@@ -720,16 +888,20 @@ local function buildUi()
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, ui.Scroll)
-	make("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), PaddingTop = UDim.new(0, 6) }, ui.Scroll)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2) }, ui.Scroll)
+	ui.Empty = P.Empty(ui.Inventory, "No rooms to place", 1)
+	ui.Empty.AnchorPoint, ui.Empty.Position, ui.Empty.Visible = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), false
 
-	ui.Buttons = make("Frame", { BackgroundTransparency = 1 }, gui)
-	make("UIListLayout", { Padding = UDim.new(0, 8) }, ui.Buttons)
+	ui.Buttons = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY }, gui)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 16), HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, SortOrder = Enum.SortOrder.LayoutOrder }, ui.Buttons)
 	ui.Commit = Kit.Button(ui.Buttons, {
-		Text = "Commit",
+		Text = "Confirm",
 		Style = "Success",
 		Icon = "Check",
 		IconLayout = "Row",
-		TextSize = 20,
+		TextSize = 24,
+		LayoutOrder = 1,
+		Shadow = true,
 		OnClick = function()
 			if not routeValid then
 				return
@@ -749,10 +921,12 @@ local function buildUi()
 	})
 	ui.Cancel = Kit.Button(ui.Buttons, {
 		Text = "Cancel",
-		Style = "Cancel",
+		Style = "Danger",
 		Icon = "Cross",
 		IconLayout = "Row",
-		TextSize = 20,
+		TextSize = 24,
+		LayoutOrder = 2,
+		Shadow = true,
 		OnClick = function()
 			if requestBuilding(false) then
 				exit()
@@ -760,14 +934,45 @@ local function buildUi()
 		end,
 	})
 
-	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(300, 128) })
-	ui.CalloutIcon = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 6), Size = UDim2.fromOffset(44, 44), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Callout)
+	-- View toggle: normal camera (default) or the angled overview.
+	ui.View = Kit.Button(gui, {
+		Text = "",
+		Icon = "Map",
+		IconScale = 0.7,
+		Style = "Secondary",
+		Round = true,
+		Size = UDim2.fromOffset(56, 56),
+		Tip = "Overview",
+		Shadow = true,
+		OnClick = function()
+			overview = not overview
+			ui.View.SetSelected(overview)
+			if overview then
+				restoreZoom()
+				startCamera()
+			else
+				if camConn then
+					camConn:Disconnect()
+					camConn = nil
+				end
+				workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+				freeCamera()
+			end
+		end,
+	})
+
+	-- Selected-room callout: icon + name, then Move / Remove side by side.
+	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(300, 140), Pad = Vector2.new(4, 2) })
+	ui.CalloutIcon = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 0), Size = UDim2.fromOffset(40, 40), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Callout)
 	ui.CalloutName = Kit.Label(ui.Callout, "", 20, Theme.TextPrimary, true)
-	ui.CalloutName.Position = UDim2.fromOffset(64, 0)
-	ui.CalloutName.Size = UDim2.new(1, -72, 0, 52)
-	Kit.Button(ui.Callout, {
+	ui.CalloutName.Position = UDim2.fromOffset(48, 0)
+	ui.CalloutName.Size = UDim2.new(1, -48, 0, 40)
+	ui.CalloutName.TextXAlignment = Enum.TextXAlignment.Left
+	ui.CalloutName.TextScaled = true
+	make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 22 }, ui.CalloutName)
+	local move = Kit.Button(ui.Callout, {
 		Text = "Move",
-		Size = UDim2.fromOffset(130, 52),
+		Size = UDim2.new(0.5, -4, 0, 50),
 		OnClick = function()
 			local instanceId = selectedCell and draft[selectedCell]
 			if instanceId then
@@ -779,11 +984,12 @@ local function buildUi()
 				Build.Refresh()
 			end
 		end,
-	}).Instance.Position = UDim2.fromOffset(14, 58)
-	Kit.Button(ui.Callout, {
+	})
+	move.Instance.Position = UDim2.fromOffset(0, 48)
+	local remove = Kit.Button(ui.Callout, {
 		Text = "Remove",
 		Style = "Danger",
-		Size = UDim2.fromOffset(130, 52),
+		Size = UDim2.new(0.5, -4, 0, 50),
 		OnClick = function()
 			if selectedCell then
 				draft[selectedCell] = nil
@@ -792,7 +998,8 @@ local function buildUi()
 				Build.Refresh()
 			end
 		end,
-	}).Instance.Position = UDim2.fromOffset(156, 58)
+	})
+	remove.Instance.AnchorPoint, remove.Instance.Position = Vector2.new(1, 0), UDim2.new(1, 0, 0, 48)
 
 	Scale.Changed:Connect(function()
 		Build.Layout()

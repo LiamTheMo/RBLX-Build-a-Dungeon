@@ -11,13 +11,13 @@ local Remotes = {}
 
 Remotes.Kinds = table.freeze({
 	GetCatalog = "Function", -- () -> (true, catalog); no loaded profile needed
-	PreviewLayout = "Function", -- (layout) -> (true, routeCells) | (false, reason, cellKey?); nothing is applied
+	PreviewLayout = "Function", -- (layout) -> (true, routeCells, offRouteCells) | (false, reason, cellKey?); nothing is applied
 	SetBuilding = "Function",
 	CommitLayout = "Function",
-	Bank = "Function",
 	Buy = "Function",
 	Upgrade = "Function",
-	InviteChallenger = "Function",
+	SetThreat = "Function", -- (tier: integer) -> (true, tier) | (false, "ThreatLocked" | "EncounterActive")
+	SetVaultPercent = "Function", -- (percent: integer 0..100) -> (true, percent) | (false, "EncounterActive")
 	TutorialAction = "Function",
 	SaveSettings = "Function",
 	OpenBox = "Function",
@@ -27,6 +27,7 @@ Remotes.Kinds = table.freeze({
 	State = "Event",
 	EncounterFx = "Event",
 	Notice = "Event",
+	ServerEvent = "Event", -- server -> all: {Kind = "Start" | "End", Id, EndsAt?}
 })
 
 return table.freeze(Remotes)

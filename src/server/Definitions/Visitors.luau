@@ -3,9 +3,9 @@
 -- and rewards live in Balance.luau, keyed by the same Id. Ids are persisted:
 -- never rename or reuse one.
 
--- Tutorial: sent once by onboarding. Automatic: arrives on the visitor timer.
--- Invited: only arrives after the player explicitly invites it.
-export type Arrival = "Tutorial" | "Automatic" | "Invited"
+-- Tutorial: sent once by onboarding. Automatic: arrives on the visitor timer,
+-- picked from the active threat tier's roster (Balance.Threat).
+export type Arrival = "Tutorial" | "Automatic"
 
 export type VisitorDef = {
 	Id: string,
@@ -18,7 +18,7 @@ export type VisitorDef = {
 
 local Visitors = {}
 
-Visitors.Version = 2
+Visitors.Version = 3
 
 local definitions: { [string]: VisitorDef } = {
 	Practice = {
@@ -38,8 +38,8 @@ local definitions: { [string]: VisitorDef } = {
 	ArmoredChallenger = {
 		Id = "ArmoredChallenger",
 		DisplayName = "Armored Challenger",
-		Arrival = "Invited",
-		Description = "Tough and well paid. Steals more if it reaches your Treasure Room.",
+		Arrival = "Automatic",
+		Description = "Tough and well paid. Steals more if it reaches your Treasure Room. Arrives from threat level 4.",
 		Traits = {},
 	},
 	Scout = {

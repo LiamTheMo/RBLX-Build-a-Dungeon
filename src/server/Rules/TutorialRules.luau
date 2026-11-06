@@ -1,5 +1,6 @@
 -- Pure tutorial state machine (docs/PHASE0.md, "First five minutes"). Events:
--- Next, Skip, DeclineTreasure, EncounterEnd, Banked, Commit, Bought, Load.
+-- Next, Skip, DeclineTreasure, EncounterEnd, VaultSet, Commit, Bought, Load.
+-- The BankVault step (id kept: it is saved) now teaches the vault share slider.
 -- Reduce() never leaves a player stuck: after every event the step is "settled"
 -- against what the profile actually contains (placed spike, placed treasure,
 -- owned guard), so unexpected actions just move the tutorial to a sensible step.
@@ -57,7 +58,7 @@ local function advance(step: string, event: string): string
 		return "TreasureOffer"
 	elseif step == "TreasureOffer" and event == "DeclineTreasure" then
 		return "BuyGuard"
-	elseif step == "BankVault" and (event == "Banked" or event == "DeclineTreasure") then
+	elseif step == "BankVault" and (event == "VaultSet" or event == "DeclineTreasure") then
 		return "BuyGuard"
 	end
 	return step

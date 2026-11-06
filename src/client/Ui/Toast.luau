@@ -1,14 +1,17 @@
 -- Toast stack: 0.2 s in, 2.5 s hold, 0.3 s out (instant-ish when reduced).
 local Players = game:GetService("Players")
 
+local Bus = require(script.Parent.Bus)
 local Theme = require(script.Parent.Theme)
 local Scale = require(script.Parent.Scale)
 local Settings = require(script.Parent.Settings)
+local Kit = require(script.Parent.Kit)
 
 local Toast = {}
 
 local KIND_COLOR = { Info = Theme.Accent, Good = Theme.Success, Bad = Theme.Danger }
-local KIND_ICON = { Info = "i", Good = "+", Bad = "!" }
+local KIND_ICON = { Info = "Info", Good = "Good", Bad = "Warn" }
+local KIND_FRAME = { Info = "ToastInfo", Good = "ToastGood", Bad = "ToastBad" }
 local MAX = 4
 
 local stack: Frame? = nil
@@ -27,11 +30,11 @@ local function ensure(): Frame
 	f.BackgroundTransparency = 1
 	f.Parent = gui
 	local function place()
-		-- Phones: left of the encounter panel and right of the level panel.
+		-- Centre column below the next-visitor chip.
 		local phone = Scale.Phone
-		f.AnchorPoint = if phone then Vector2.new(0, 0) else Vector2.new(0.5, 0)
-		f.Position = if phone then UDim2.fromOffset(316, 96) else UDim2.new(0.5, 0, 0, 148)
-		f.Size = UDim2.fromOffset(if phone then 320 else 460, 10)
+		f.AnchorPoint = Vector2.new(0.5, 0)
+		f.Position = UDim2.new(0.5, 0, 0, (if phone then 104 else 148) + Bus.ToastOffset)
+		f.Size = UDim2.fromOffset(if phone then 300 else 460, 10)
 	end
 	place()
 	Scale.Changed:Connect(place)
@@ -53,12 +56,12 @@ function Toast.Show(text: string, kind: string?)
 	local panelFrame = dim and dim:FindFirstChildWhichIsA("GuiObject")
 	local toastGui = parent.Parent :: ScreenGui
 	if panelFrame then
-		local y = (panelFrame.AbsolutePosition.Y - toastGui.AbsolutePosition.Y) / Scale.Value + 132
+		local y = (panelFrame.AbsolutePosition.Y - toastGui.AbsolutePosition.Y) / Scale.Value + 84
 		parent.AnchorPoint = Vector2.new(0.5, 0)
 		parent.Position = UDim2.new(0.5, 0, 0, y)
 	else
-		parent.AnchorPoint = if Scale.Phone then Vector2.new(0, 0) else Vector2.new(0.5, 0)
-		parent.Position = if Scale.Phone then UDim2.fromOffset(316, 96) else UDim2.new(0.5, 0, 0, 148)
+		parent.AnchorPoint = Vector2.new(0.5, 0)
+		parent.Position = UDim2.new(0.5, 0, 0, (if Scale.Phone then 104 else 148) + Bus.ToastOffset)
 	end
 	local live = {}
 	for _, c in parent:GetChildren() do
@@ -75,37 +78,29 @@ function Toast.Show(text: string, kind: string?)
 
 	local g = Instance.new("CanvasGroup")
 	g.LayoutOrder = os.clock() * 1000
-	g.Size = UDim2.new(1, 0, 0, 0)
-	g.AutomaticSize = Enum.AutomaticSize.Y
-	Instance.new("UISizeConstraint", g).MinSize = Vector2.new(0, 48)
-	g.BackgroundColor3 = Theme.BgDeep
+	-- Height from the measured text (automatic sizing under a CanvasGroup clipped the second line); the frame's
+	-- border is ~18 px each side (ToastInfo/Good/Bad sprites).
+	local width = if Scale.Phone then 300 else 460
+	local lines = math.max(1, math.ceil(#text * Theme.TextSize.Body * 0.5 / math.max(width - 110, 100)))
+	g.Size = UDim2.new(1, 0, 0, math.max(64, 44 + lines * (Theme.TextSize.Body + 4)))
+	g.BackgroundTransparency = 1
 	g.GroupTransparency = 1
-	Instance.new("UICorner", g).CornerRadius = Theme.CornerButton
-	local st = Instance.new("UIStroke")
-	st.Thickness = 3
-	st.Color = KIND_COLOR[kind]
-	st.Parent = g
-	local icon = Instance.new("TextLabel")
-	icon.BackgroundTransparency = 1
-	icon.Size = UDim2.fromOffset(40, 48)
-	icon.Text = KIND_ICON[kind]
-	icon.TextColor3 = KIND_COLOR[kind]
-	icon.TextSize = 26
-	icon.FontFace = Theme.HeadingFont
-	icon.Parent = g
+	local frame = Kit.Panel(g, { Sprite = KIND_FRAME[kind], Size = UDim2.fromScale(1, 1), ZIndex = 0 })
+	frame:FindFirstChild("Inset"):Destroy()
+	local icon = Kit.Icon(g, KIND_ICON[kind], UDim2.fromOffset(30, 30))
+	icon.AnchorPoint, icon.Position, icon.ZIndex = Vector2.new(0, 0.5), UDim2.new(0, 22, 0.5, 0), 2
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
-	label.Position = UDim2.fromOffset(40, 0)
-	label.Size = UDim2.new(1, -48, 0, 0)
-	label.AutomaticSize = Enum.AutomaticSize.Y
-	local lp = Instance.new("UIPadding", label)
-	lp.PaddingTop, lp.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8)
+	label.Position = UDim2.fromOffset(60, 0)
+	label.Size = UDim2.new(1, -86, 1, 0)
+	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Text = text
 	label.TextWrapped = true
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextColor3 = Theme.TextPrimary
 	label.TextSize = Theme.TextSize.Body
 	label.FontFace = Theme.BodyFont
+	label.ZIndex = 2
 	label.Parent = g
 	g.Parent = parent
 

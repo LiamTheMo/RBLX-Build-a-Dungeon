@@ -13,7 +13,7 @@ test("happy path", function()
 	s = T.Reduce(s, "Commit", ctx({ spike = true })); expectEq(s, "WatchNovice", "spike placed")
 	s = T.Reduce(s, "EncounterEnd", ctx({ spike = true })); expectEq(s, "TreasureOffer", "novice end")
 	s = T.Reduce(s, "Commit", ctx({ spike = true, treasure = true })); expectEq(s, "BankVault", "treasure placed")
-	s = T.Reduce(s, "Banked", ctx({ spike = true, treasure = true })); expectEq(s, "BuyGuard", "banked")
+	s = T.Reduce(s, "VaultSet", ctx({ spike = true, treasure = true })); expectEq(s, "BuyGuard", "vault share set")
 	s = T.Reduce(s, "Bought", ctx({ spike = true, treasure = true, guard = true })); expectEq(s, "Done", "guard")
 end)
 

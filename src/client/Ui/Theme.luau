@@ -32,12 +32,8 @@ local Theme = {
 	CornerPill = UDim.new(1, 0),
 }
 
-local function font(family: string, weight: Enum.FontWeight?, fallback: Enum.Font): Font
-	local ok, f = pcall(Font.fromName, family, weight or Enum.FontWeight.Regular)
-	return if ok then f else Font.fromEnum(fallback)
-end
-
-Theme.HeadingFont = font("FredokaOne", Enum.FontWeight.Bold, Enum.Font.FredokaOne)
-Theme.BodyFont = font("BuilderSans", Enum.FontWeight.Medium, Enum.Font.GothamMedium)
+Theme.HeadingFont = Font.fromEnum(Enum.Font.FredokaOne)
+-- One family everywhere (owner request): hierarchy comes from size, not from a second font.
+Theme.BodyFont = Theme.HeadingFont
 
 return Theme
