@@ -75,3 +75,8 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 
 - Crystal Chest art was generated for this game and uploaded to the game group as decal 130698869939144 (image 78896703019278); Roblox reports it approved and the image preloaded successfully. Confirm in-game appearance and rights before release.
 - Desktop and iPhone 17 Pro landscape simulation showed the compact collection, three-column Keeper layout and chest cards; the Crystal image also loaded. Validate on physical mobile devices, including touch, discovery, long visitor details and chest opening. The Crystal Chest numbers are initial tuning assumptions. Profile schema v7 prevents older servers from loading newer profiles; plan rollout and server restarts.
+
+## Chest and build interface revision (2026-11-06)
+
+- New chest-specific rooms reuse existing game-owned models and icons; distinct visual assets and polish remain to be made. The room balance and revised tier odds require playtesting. Schema v8 requires coordinated rollout because older servers reject newer profiles.
+- Confirm the compact build palette filters, room selection and move/remove popup, reduced UI scale, chest opening, touch targets and safe areas on physical devices. Reused Creator Store sounds have not been auditioned or cleared for release; verify purchase and reward-arrival sounds and volume.

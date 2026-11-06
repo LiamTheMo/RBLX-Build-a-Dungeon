@@ -223,7 +223,7 @@ The admin panel uses the existing server-side UserId/group-rank policy. It provi
 
 ### Chest and vault revision (owner-approved)
 
-The Dungeon Chest retains its existing rooms across all rarities. The Royal Chest has a separate pool: Emerald Guardroom, Arcane Barricade, Storm Gallery, Crystal Sentinel, Sunfire Sanctum and Eclipse Bastion. Blueprints can still yield rooms from either pool. Older Secret rooms retain their unique abilities. Pity remains active but its bar is hidden. Royal room icons are new; their world models temporarily reuse existing room art.
+The Dungeon Chest retains its existing rooms across all rarities. The Royal Chest has a separate pool: Royal Guard, Emerald Guardroom, Arcane Barricade, Storm Gallery, Crystal Sentinel, Sunfire Sanctum and Eclipse Bastion. Blueprints can still yield rooms from either pool. Older Secret rooms retain their unique abilities. Pity remains active but its bar is hidden. Royal room icons are new; their world models temporarily reuse existing room art.
 
 Vault speed bonus is `25 * log10(1 + vaultedCoins / 100) * exchangeRate` percent. Empty vaults give no bonus, and additional coins have diminishing returns. This is an initial balance and requires playtesting. Global event commands are stored temporarily and polled by servers, including servers joining during an event; propagation normally takes up to 15 seconds and can be delayed by service failures.
 
@@ -231,6 +231,12 @@ Profile schema v6 adds new room IDs. Older servers must not write profiles after
 
 ## Crystal chest and compact collection (owner-requested 2026-11-06)
 
-A Crystal Chest is awarded in addition to the normal level reward at every tenth keeper level, without retroactive awards. It draws from both existing chest pools, with tier weights Rare 55%, Epic 28%, Legendary 12%, Mythic 4% and Secret 1%. Room weights, shared pity, event bonuses and blueprint access follow the existing rules. Excess chests convert to 600 coins. Profile schema v7 retains the new chest count and prevents older servers from saving newer profiles. These values are starting assumptions for playtesting.
+A Crystal Chest is awarded in addition to the normal level reward at every tenth keeper level, without retroactive awards. Its original shared room pool and odds were replaced by the separate pool and weights in the revision below. Room weights, shared pity, event bonuses and blueprint access follow the existing rules. Excess chests convert to 600 coins. Profile schema v7 retains the new chest count and prevents older servers from saving newer profiles. These values are starting assumptions for playtesting.
 
 The collection uses compact room cards, keeping discovery, ownership, source and stats visible; visitor details remain in the collection. Chest rarity controls keep their touch targets, and the Keeper panel uses three upgrade cards per row when space permits.
+
+## Chest and build interface revision (owner-requested 2026-11-06)
+
+Dungeon, Royal and Crystal chests have disjoint room pools. Each rarity has a chest-specific room; the new Royal Guard and Crystal Guard improve modestly on the Common Guard Room, and Crystal rooms improve on their Royal counterparts. The new Crystal rooms and Royal Guard reuse existing models and icons pending distinct art. The existing blueprint route includes all pools. Royal rarity weights are 25 / 35 / 25 / 10 / 3.5 / 1.2 / 0.3 percent from Common through Secret; Crystal weights are 15 / 25 / 35 / 15 / 7 / 2.5 / 0.5 percent. Dungeon weights and shared pity remain unchanged. These are starting values for playtesting, not final balance. Profile schema v8 preserves the new room IDs and prevents older servers from saving them.
+
+Build mode starts in the closer overview, with a shorter room palette and filters for All, Defender, Trap, Treasure and Support. Selecting a placed room positions Move and Remove near the interaction, clamped to the screen. Loot odds and purchase buttons are positioned within their cards. Shop and upgrade purchases use distinct existing sound slots; coin and loot arrival effects play locally for the owner.

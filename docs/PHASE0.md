@@ -252,3 +252,7 @@ The tutorial must recover from unexpected actions: removing the slime, skipping 
 | Studio place synced with Rojo and run without errors | Done 2026-11-04: synced into place `78621805707922`, played in Studio, and both server and client required the definitions with no script errors. The only console output was an asset-type warning for `rbxassetid://203785492`, which no instance in the place references (Studio or plugin noise) |
 | Definitions spec | 6/6 pass, run in Studio. It was also checked to fail on deliberately broken values |
 | Exit check: another developer can sync and run the empty plot | Pending: needs a second person or a fresh clone |
+
+### Chest room progression, 2026-11-06
+
+Chest rarity odds and room-pool changes are recorded in the GDD. Royal Guard uses 84 health and 12.3 damage per 1.2 seconds; Crystal Guard uses 88 health and 12.6 damage per 1.2 seconds. Crystal Sentry, Crystal Barricade, Prism Gallery, Prism Sentinel, Prism Sanctum and Prism Bastion use their matching Royal mechanics with modest stat increases; their numbers are in `Balance.luau`. These estimates need encounter and economy playtests.
