@@ -6,8 +6,11 @@
 local Rooms = require(script.Parent.Parent.Definitions.Rooms)
 local Balance = require(script.Parent.Parent.Definitions.Balance)
 local Visitors = require(script.Parent.Parent.Definitions.Visitors)
+local Events = require(script.Parent.Events)
 local Loot = require(script.Parent.Loot)
+local Economy = require(script.Parent.Economy)
 local Progression = require(script.Parent.Progression)
+local Threat = require(script.Parent.Threat)
 
 local ProfileSchema = {}
 
@@ -15,7 +18,12 @@ local ProfileSchema = {}
 -- v3 adds room Rarity/Perks, keeper Xp/Level, Boxes, Blueprints, Permanent and
 -- BoxPity. v2 -> v3: rooms become Common; Xp is seeded from Stats.Wins at the
 -- Novice rate (levels only, no retroactive level-up boxes).
-ProfileSchema.VERSION = 3
+-- v4 replaces the vault balance with VaultPercent and adds Threat and room
+-- Modifier. v3 -> v4: Coins += Vault, Vault dropped, VaultPercent = 0, Threat = 1.
+-- v5 (item model of 2026-11-05) moves rarity and perks to the room definitions:
+-- a room instance is {Id, Level, Modifier?}. v4 -> v5: instance Rarity/Perks are
+-- dropped and Level is clamped to the definition's tier cap; every other field kept.
+ProfileSchema.VERSION = 5
 ProfileSchema.MAX_MONEY = 1e12
 
 local function deepCopy(value)
@@ -34,16 +42,17 @@ function ProfileSchema.Default()
 	return {
 		Version = ProfileSchema.VERSION,
 		Coins = 0,
-		Vault = 0,
+		VaultPercent = 0, -- 0..100: share of Coins at risk while the Treasure Room is on the route
+		Threat = 1, -- selected threat tier (Balance.Threat)
 		NextSerial = 3,
 		Rooms = {
-			r1 = { Id = "SlimeNest", Level = 1, Rarity = "Common", Perks = {} },
-			r2 = { Id = "TreasureRoom", Level = 1, Rarity = "Common", Perks = {} },
+			r1 = { Id = "SlimeNest", Level = 1 },
+			r2 = { Id = "TreasureRoom", Level = 1 }, -- the Coin Cache
 		},
 		Layout = { ["3,2"] = "r1" },
 		Tutorial = { Step = "Welcome", Done = false },
-		Settings = { ReducedMotion = false, MusicVolume = 0.5, SfxVolume = 0.8 },
-		ChallengerUnlocked = false,
+		Settings = { ReducedMotion = false, MusicVolume = 0.5, SfxVolume = 0.4 },
+		ChallengerUnlocked = false, -- legacy (the challenger invite was removed in v4); kept, unused
 		Stats = { Encounters = 0, Wins = 0, Escapes = 0, Robberies = 0, Earned = 0 },
 		Discovered = { SlimeNest = true, TreasureRoom = true },
 		Xp = 0,
@@ -108,10 +117,15 @@ function ProfileSchema.Migrate(stored: any)
 	end
 
 	local default = ProfileSchema.Default()
+	local coins = whole(stored.Coins, ProfileSchema.MAX_MONEY)
+	if stored.Version < 4 then
+		coins = math.min(ProfileSchema.MAX_MONEY, coins + whole(stored.Vault, ProfileSchema.MAX_MONEY))
+	end
 	local profile = {
 		Version = ProfileSchema.VERSION,
-		Coins = whole(stored.Coins, ProfileSchema.MAX_MONEY),
-		Vault = whole(stored.Vault, ProfileSchema.MAX_MONEY),
+		Coins = coins,
+		VaultPercent = if stored.Version < 4 then 0 else whole(stored.VaultPercent, 100),
+		Threat = if Threat.Valid(stored.Threat) then stored.Threat else 1,
 		profileRevision = whole(stored.profileRevision, 2 ^ 52),
 		ChallengerUnlocked = boolOr(stored.ChallengerUnlocked, false),
 	}
@@ -122,29 +136,19 @@ function ProfileSchema.Migrate(stored: any)
 		profile.sessionLease = { jobId = lease.jobId, expiresAt = lease.expiresAt }
 	end
 
-	-- Rooms: only known, player-placeable room ids with a sane rarity and a level
-	-- within that rarity's cap. Perks: known, distinct kinds, at most the
-	-- rarity's count; Amount is re-derived from Balance (never trusted).
+	-- Rooms: only known, player-placeable room ids, as {Id, Level, Modifier?}.
+	-- Rarity and perks belong to the definition (v5): any saved Rarity/Perks are
+	-- dropped. Level is clamped to the definition's tier cap.
 	local rooms = {}
 	local highestSerial = 0
 	for instanceId, room in asTable(stored.Rooms) do
 		local serial = serialOf(instanceId)
 		local def = type(room) == "table" and type(room.Id) == "string" and Rooms.All[room.Id] or nil
 		if serial and def and def.Placeable then
-			local rarity = if Loot.RarityRank(room.Rarity) then room.Rarity else "Common"
-			local tier = Balance.RarityById[rarity]
-			local maxLevel = tier.MaxLevel
+			local maxLevel = Economy.MaxLevel(def.Rarity)
 			local level = isFinite(room.Level) and math.clamp(math.floor(room.Level), 1, maxLevel) or 1
-			local perks, seen = {}, {}
-			for _, perk in asTable(room.Perks) do
-				local kind = type(perk) == "table" and perk.Kind or nil
-				local amount = Loot.PerkAmount(rarity, kind)
-				if amount and not seen[kind] and #perks < tier.PerkCount then
-					seen[kind] = true
-					table.insert(perks, { Kind = kind, Amount = amount })
-				end
-			end
-			rooms[instanceId] = { Id = room.Id, Level = level, Rarity = rarity, Perks = perks }
+			local modifier = if Events.Modifier(room.Modifier) then room.Modifier else nil
+			rooms[instanceId] = { Id = room.Id, Level = level, Modifier = modifier }
 			highestSerial = math.max(highestSerial, serial)
 		end
 	end
@@ -153,8 +157,13 @@ function ProfileSchema.Migrate(stored: any)
 	local nextSerial = isFinite(stored.NextSerial) and math.floor(stored.NextSerial) or 0
 	profile.NextSerial = math.max(nextSerial, highestSerial + 1, 1)
 
-	-- Layout: drop entries pointing at missing or duplicate instances (in key
-	-- order so the repair is deterministic), then require a valid route.
+	-- Layout: drop, entry by entry in key order (so the repair is deterministic),
+	-- cells that are malformed, out of bounds or on the entrance, entries pointing
+	-- at missing or duplicate instances or unplaceable rooms, and rooms over their
+	-- MaxPlaced or their Kind's limit (Rooms.KindLimit: one treasure of any tier).
+	-- The shape is never repaired: any shape is valid since 2026-11-05
+	-- (Route.Build only picks the route; other rooms are idle).
+	local Route = require(script.Parent.Route)
 	local storedLayout = asTable(stored.Layout)
 	local keys = {}
 	for key, instanceId in storedLayout do
@@ -163,18 +172,24 @@ function ProfileSchema.Migrate(stored: any)
 		end
 	end
 	table.sort(keys)
-	local layout, used, cells = {}, {}, {}
+	local layout, used, counts, kinds = {}, {}, {}, {}
 	for _, key in keys do
 		local instanceId = storedLayout[key]
-		if rooms[instanceId] and not used[instanceId] then
-			layout[key] = instanceId
-			cells[key] = rooms[instanceId].Id
-			used[instanceId] = true
+		local room = rooms[instanceId]
+		if room and not used[instanceId] and Route.CellProblem(key, room.Id) == nil then
+			local def = Rooms.Get(room.Id) :: any
+			local count = (counts[room.Id] or 0) + 1
+			local kindCount = (kinds[def.Kind] or 0) + 1
+			local kindLimit = Rooms.KindLimit[def.Kind]
+			if not (def.MaxPlaced and count > def.MaxPlaced) and not (kindLimit and kindCount > kindLimit) then
+				layout[key] = instanceId
+				used[instanceId] = true
+				counts[room.Id] = count
+				kinds[def.Kind] = kindCount
+			end
 		end
 	end
-	local Route = require(script.Parent.Route)
-	local routeOk = Route.Build(cells)
-	profile.Layout = if routeOk then layout else {}
+	profile.Layout = layout
 
 	local tutorial = asTable(stored.Tutorial)
 	profile.Tutorial = {
@@ -228,6 +243,7 @@ function ProfileSchema.Migrate(stored: any)
 	end
 	profile.Level = level
 	profile.Xp = if level >= P.MaxLevel then 0 else math.min(xp, Progression.XpToNext(level) - 1)
+	profile.Threat = math.min(profile.Threat, Threat.Unlocked(level))
 
 	local cap = Balance.Loot.MaxStack
 	local boxes = asTable(stored.Boxes)

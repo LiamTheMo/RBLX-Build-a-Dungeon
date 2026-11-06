@@ -3,6 +3,7 @@
 
 local Server = game:GetService("ServerScriptService").Server
 local Balance = require(Server.Definitions.Balance)
+local Rooms = require(Server.Definitions.Rooms)
 local Visitors = require(Server.Definitions.Visitors)
 local Economy = require(Server.Rules.Economy)
 local Loot = require(Server.Rules.Loot)
@@ -52,19 +53,35 @@ test("pity changes the odds the snapshot shows", function()
 	expect(pity.Rarities[1].Id ~= "Common", "pity removes tiers below " .. Balance.Loot.PityRarity)
 end)
 
-test("rooms are copies with NextUpgradeCost; the profile is untouched", function()
+test("rooms are copies with the definition's Rarity, Perks, MaxLevel and NextUpgradeCost; the profile is untouched", function()
 	local profile = ProfileSchema.Default()
-	local rare = RoomInventory.Add(profile, "GuardRoom", "Rare")
-	profile.Rooms[rare].Level = 5 -- Rare max
+	local crypt = RoomInventory.Add(profile, "RestlessCrypt")
+	profile.Rooms[crypt].Level = 5 -- Rare max
+	local lair = RoomInventory.Add(profile, "DragonLair")
 	local view = StateView.Derived(profile)
 	for id, room in profile.Rooms do
 		local copy = view.Rooms[id]
+		local def = Rooms.Get(room.Id)
 		expect(copy ~= nil and copy ~= room, "copied " .. id)
 		expectEq(copy.Id, room.Id, "same room " .. id)
-		expectEq(copy.NextUpgradeCost, Economy.UpgradeCost(room.Level, room.Rarity), "cost " .. id)
+		expectEq(copy.Rarity, def.Rarity, "definition rarity " .. id)
+		expectEq(copy.MaxLevel, Economy.MaxLevel(def.Rarity), "max level " .. id)
+		expectEq(#copy.Perks, #def.Perks, "definition perks " .. id)
+		expectEq(copy.NextUpgradeCost, Economy.UpgradeCost(room.Level, def.Rarity), "cost " .. id)
 		expectEq(room.NextUpgradeCost, nil, "profile not modified " .. id)
+		expectEq(room.Rarity, nil, "profile room has no rarity " .. id)
 	end
-	expectEq(view.Rooms[rare].NextUpgradeCost, nil, "nil at the rarity's max")
+	expectEq(view.Rooms[crypt].NextUpgradeCost, nil, "nil at the tier's max")
+	expectEq(view.Rooms[lair].Rarity, "Mythic", "mythic lair")
+	expectEq(#view.Rooms[lair].Perks, 3, "three perks")
+	expectEq(view.Rooms.r1.NextUpgradeCost, 60, "common slime level 1")
+end)
+
+test("BoxOdds lists the rooms inside each tier", function()
+	local odds = StateView.Derived(profileWith(10, 0)).BoxOdds.Dungeon
+	for _, t in odds.Rarities do
+		expect(odds.TierRooms[t.Id] ~= nil and #odds.TierRooms[t.Id] > 0, t.Id .. " rooms listed")
+	end
 end)
 
 test("permanent next costs match Progression.PermanentCost, nil at max", function()
@@ -88,14 +105,64 @@ test("drop chances include the player's loot bonus", function()
 	end
 end)
 
-test("vault bonus, cap, XP and bonuses match the rules", function()
+test("vault fields, XP and bonuses match the rules", function()
 	local profile = ProfileSchema.Default()
-	profile.Vault, profile.Level = 1234, 4
+	profile.Coins, profile.VaultPercent, profile.Level = 1234, 50, 4
+	profile.Layout["3,3"] = "r2"
 	profile.Permanent = { DeepVault = 2 }
 	local view = StateView.Derived(profile)
-	local extra = Progression.VaultCapBonus(profile)
-	expectEq(view.VaultBonus, Economy.VaultBonus(1234, extra), "vault bonus")
-	expectEq(view.VaultBonusCap, Economy.VaultBonus(1e12, extra), "cap")
+	expectEq(view.VaultPercent, 50, "percent")
+	expectEq(view.Vaulted, 617, "vaulted")
+	expectNear(view.VaultRate, 1.1, 1e-9, "rate with Deep Vault 2")
+	expectNear(view.VaultBonus, 55, 1e-9, "bonus percent")
+	expectNear(view.VisitorInterval, 30 / 1.55, 1e-9, "interval")
 	expectEq(view.XpToNext, Progression.XpToNext(4), "xp to next")
 	expect(deepEqual(view.Bonuses, Progression.Bonuses(profile)), "bonuses")
+end)
+
+test("threat fields and next unlocks", function()
+	local profile = ProfileSchema.Default()
+	profile.Level, profile.Threat, profile.Coins = 9, 3, 250
+	local view = StateView.Derived(profile)
+	expectEq(view.ThreatUnlocked, 3, "level 9 unlocks tier 3")
+	expectEq(view.ThreatActive, 1, "tutorial uses tier 1")
+	profile.Tutorial.Done = true
+	view = StateView.Derived(profile)
+	expectEq(view.ThreatActive, 3, "selected tier after the tutorial")
+	expectEq(view.NextUnlocks.Threat.Tier, 4, "next tier")
+	expectEq(view.NextUnlocks.Threat.Level, 13, "at level 13")
+	expect(view.NextUnlocks.ShopRoom == nil, "every shop room unlocked by level 9")
+	expectEq(view.NextUnlocks.Permanent.Id, "GoldenTouch", "cheapest permanent (first on a tie)")
+	expectEq(view.NextUnlocks.Permanent.Affordable, true, "250 >= 200")
+	profile.Level = 1
+	view = StateView.Derived(profile, { UnlockAll = true })
+	expectEq(view.ThreatUnlocked, 6, "admin override")
+	expectEq(view.NextUnlocks.Threat, nil, "nothing left")
+	expectEq(view.NextUnlocks.ShopRoom.RoomId, "MushroomCavern", "next shop room")
+	expectEq(view.NextUnlocks.ShopRoom.Level, 3, "at level 3")
+end)
+
+test("drop tables follow the threat tier and the event; box odds follow Blessed Boxes", function()
+	local profile = ProfileSchema.Default()
+	profile.Level, profile.Threat, profile.Tutorial.Done = 30, 5, true
+	local plain = StateView.Derived(profile)
+	local lucky = StateView.Derived(profile, { EventId = "LuckyStars" })
+	local novice, luckyNovice = plain.DropTables.Novice, lucky.DropTables.Novice
+	expectNear(novice.Drops[1].Chance, 0.06 * 2, 1e-9, "tier 5 box chance (x2)")
+	expectNear(luckyNovice.Drops[1].Chance, 0.06 * 4, 1e-9, "Lucky Stars doubles it")
+	expectEq(novice.Coins.Min, 54, "18 * 3")
+	expectEq(novice.Coins.Max, 78, "26 * 3")
+	expectEq(novice.Xp, 26, "10 * 2.6")
+	expectEq(lucky.ActiveEvent, "LuckyStars", "event id")
+	local blessed = StateView.Derived(profile, { EventId = "BlessedBoxes" })
+	local function chance(odds, id)
+		for _, e in odds.Rarities do
+			if e.Id == id then
+				return e.Chance
+			end
+		end
+		return 0
+	end
+	expect(chance(blessed.BoxOdds.Dungeon, "Epic") > chance(plain.BoxOdds.Dungeon, "Epic") * 1.9, "Epic boosted")
+	expect(chance(blessed.BoxOdds.Dungeon, "Common") < chance(plain.BoxOdds.Dungeon, "Common"), "Common lower")
 end)

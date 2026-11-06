@@ -72,8 +72,8 @@ Check every remote in `src/shared/Net/Remotes.luau`, from a test client that sen
 
 Sources are listed in the table in [DEVELOPMENT.md](DEVELOPMENT.md) and in `Assets\BuildADungeon\README.md`.
 
-- [ ] Owner confirms rights and usage terms for the ChatGPT-generated icons (`IconIds.luau`), or the icons are replaced.
-- [ ] Owner confirms rights and usage terms for the ChatGPT-generated mockups and reference images. They are not used in the game or store page unless confirmed.
+- [ ] Owner confirms rights and usage terms for the AI design assistant-generated icons (`IconIds.luau`), or the icons are replaced.
+- [ ] Owner confirms rights and usage terms for the AI design assistant-generated mockups and reference images. They are not used in the game or store page unless confirmed.
 - [ ] Every Creator Store sound in `SoundIds.luau` is listened to, its licence is checked, and weak fits (such as Rise) are replaced.
 - [ ] Theft, SlimeAttack, Ambience and Music are filled or the features are dropped.
 - [ ] Studio-built art is saved in the place file, and weld and Motor6D offsets are re-checked after import.

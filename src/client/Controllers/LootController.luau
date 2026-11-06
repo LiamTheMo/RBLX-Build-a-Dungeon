@@ -32,7 +32,7 @@ local function render()
 	end
 	local scroll = shell.Scrolls[current]
 	if current == "Loot" then
-		PanelsLoot.Build(scroll, state, shell.Gui)
+		PanelsLoot.Build(scroll, state)
 	elseif current == "Collection" then
 		PanelsCollection.BuildCollection(scroll, state)
 	else

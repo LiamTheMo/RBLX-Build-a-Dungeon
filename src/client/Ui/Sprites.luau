@@ -1,14 +1,23 @@
--- Load tracking for the uploaded UI sprites (SpriteIds). Every id is preloaded once;
--- an id that is missing or fails to load is marked Failed, and the UI pieces that use
--- it switch to their code-drawn look (Watch). Status holds the last fetch status per id.
+-- Load tracking for the uploaded UI sprites (SpriteIds, SpriteIds3, SpriteIds4). Every id is preloaded once;
+-- an id that is missing or fails to load is marked Failed, and the UI pieces that use it switch to the minimal
+-- neutral fallback image (Sprites.Fallback; never a code-drawn replacement shape). Status holds the last fetch
+-- status per id.
 local ContentProvider = game:GetService("ContentProvider")
 local RunService = game:GetService("RunService")
 
 local Ids = require(script.Parent.SpriteIds)
+local Ids3 = require(script.Parent.SpriteIds3)
+local ids4Module = script.Parent:FindFirstChild("SpriteIds4") -- v4 frames and reel art (optional until it lands)
+local Ids4 = if ids4Module then require(ids4Module) else {}
 
-local Sprites = { Failed = {} :: { [string]: boolean }, Status = {} :: { [string]: string }, Ids = Ids }
+local Sprites = { Failed = {} :: { [string]: boolean }, Status = {} :: { [string]: string }, Ids = Ids, Ids3 = Ids3, Ids4 = Ids4 }
 
 local watchers: { [string]: { () -> () } } = {}
+
+-- Minimal neutral image shown when a sprite is unusable: the plain small panel (a AI design assistant sprite itself).
+local fallbackSpec = if type((Ids4 :: any).Panels) == "table" then (Ids4 :: any).Panels.Small else nil
+Sprites.Fallback = fallbackSpec
+Sprites.FallbackId = if fallbackSpec then fallbackSpec.Id else (Ids.Kit and Ids.Kit.PanelSmall and Ids.Kit.PanelSmall.Id) or ""
 
 local function collect(node: any, out: { string })
 	if type(node) == "string" then
@@ -25,6 +34,23 @@ local function collect(node: any, out: { string })
 			end
 		end
 	end
+end
+
+-- Looks a sprite up by dotted path in the v4 set ("Reel.Pointer", "Frames.Pill", ...): an id string or a
+-- spec table, nil until SpriteIds4 has it. Every element still waiting for AI design assistant art routes through here, so
+-- landing the art only needs ids, no code changes.
+function Sprites.Get(path: string): any
+	local node: any = Ids4
+	for part in string.gmatch(path, "[^%.]+") do
+		if type(node) ~= "table" then
+			return nil
+		end
+		node = node[part]
+	end
+	if type(node) == "string" and not Sprites.Ok(node) then
+		return nil
+	end
+	return node
 end
 
 -- True when the id is usable (present and not known to have failed).
@@ -61,6 +87,8 @@ end
 task.spawn(function()
 	local ids = {}
 	collect(Ids, ids)
+	collect(Ids3, ids)
+	collect(Ids4, ids)
 	local seen, unique = {}, {}
 	for _, id in ids do
 		if not seen[id] then

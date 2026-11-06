@@ -58,12 +58,16 @@ end
 local ROOM_FIELDS = set({
 	"Id", "DisplayName", "Kind", "Description", "Source", "Cost", "ShopLevel", "Upgradable",
 	"MaxPlaced", "EndsRoute", "Placeable", "Craftable", "TrapCycle", "TrapTelegraph",
+	"Rarity", "Tier", "MaxLevel", "Perks", "Ability", "Exchange", "CraftCost", "ScrapReturn",
 })
-local VISITOR_FIELDS = set({ "Id", "DisplayName", "Description", "Arrival", "Traits" })
+local VISITOR_FIELDS = set({ "Id", "DisplayName", "Description", "Arrival", "Traits", "Reward", "Xp", "Theft", "Drops" })
 local TRAIT_FIELDS = set({ "Id", "Name", "Text" })
-local RARITY_FIELDS = set({ "Id", "StatMultiplier", "MaxLevel", "PerkCount", "PerkSize" })
+local RARITY_FIELDS = set({ "Id", "MaxLevel", "CraftCost", "ScrapReturn", "Rooms" })
 local PERMANENT_FIELDS = set({ "Id", "Name", "MaxLevel", "PerLevelText", "EffectText" })
-local TOP_FIELDS = set({ "Rooms", "RoomOrder", "Visitors", "Rarities", "Permanent", "Grid", "Loot", "MaxKeeperLevel" })
+local TOP_FIELDS = set({
+	"Rooms", "RoomOrder", "Visitors", "Rarities", "Permanent", "Grid", "Loot", "MaxKeeperLevel",
+	"Variants", "Threat", "Events", "Modifiers", "Vault",
+})
 
 test("the catalog is deeply frozen and deterministic", function()
 	local c = Catalog.Build()
@@ -71,7 +75,7 @@ test("the catalog is deeply frozen and deterministic", function()
 	expect(deepEqual(c, Catalog.Build()), "same result every build")
 end)
 
-test("only display fields: no simulation numbers or loot weights", function()
+test("only display fields: no defender stats", function()
 	local c = Catalog.Build()
 	onlyKeys(c, TOP_FIELDS, "catalog")
 	for id, r in c.Rooms do
@@ -107,6 +111,20 @@ test("rooms mirror the definitions, prices and gates", function()
 		expectEq(r.Cost, Balance.Rooms[id] and Balance.Rooms[id].Cost, id .. " cost")
 		expectEq(r.ShopLevel, Progression.ShopLevel(id), id .. " shop level")
 		expectEq(r.Craftable, Loot.Craftable(id), id .. " craftable")
+		expectEq(r.Rarity, def.Rarity, id .. " fixed rarity")
+		expectEq(r.Tier, Loot.RarityRank(def.Rarity), id .. " tier rank")
+		expectEq(r.MaxLevel, Balance.RarityById[def.Rarity].MaxLevel, id .. " max level")
+		expectEq(r.CraftCost, Loot.CraftCost(id), id .. " craft cost")
+		expectEq(r.ScrapReturn, Loot.ScrapReturn(id), id .. " scrap return")
+		expectEq(#r.Perks, #def.Perks, id .. " perks")
+		for i, perk in def.Perks do
+			expectEq(r.Perks[i].Kind, perk.Kind, id .. " perk kind")
+			expectEq(r.Perks[i].Amount, perk.Amount, id .. " perk amount")
+		end
+		expect(type(r.Ability) == "string" and #r.Ability > 0 and #r.Ability <= 60, id .. " short ability text")
+		if def.Source == "Shop" then
+			expect(r.Cost ~= nil and (r.Rarity == "Common" or r.Rarity == "Uncommon"), id .. " sold: Common/Uncommon")
+		end
 	end
 	for _ in c.Rooms do
 		count -= 1
@@ -115,6 +133,12 @@ test("rooms mirror the definitions, prices and gates", function()
 	expectEq(c.Rooms.SpikeHall.TrapCycle, Balance.Rooms.SpikeHall.Cycle, "spike cycle")
 	expectEq(c.Rooms.SpikeHall.TrapTelegraph, Balance.Rooms.SpikeHall.Telegraph, "spike telegraph")
 	expectEq(c.Rooms.GuardRoom.TrapCycle, nil, "defenders have no trap cycle")
+	expectEq(c.Rooms.ArrowGallery.TrapCycle, 0.8, "arrow cycle")
+	expectEq(c.Rooms.TreasureRoom.DisplayName, "Coin Cache", "id kept, new name")
+	expectEq(c.Rooms.DragonHoard.Ability, "Vault exchange x2, +25% rare variants", "hoard ability from Balance")
+	expectEq(c.Rooms.VoidVault.Ability, "Vault exchange x3.5, thieves take 50%", "void vault ability")
+	expectEq(c.Rooms.Strongbox.Exchange, 1.15, "exchange shown")
+	expectEq(c.Rooms.MonsterDen.Cost, nil, "Rare rooms are not sold")
 end)
 
 test("visitors carry trait names and texts", function()
@@ -139,7 +163,13 @@ test("rarities keep the server order and every tier has a client colour", functi
 	for i, r in Balance.Rarities do
 		expectEq(c.Rarities[i].Id, r.Id, "rank " .. i)
 		expectEq(c.Rarities[i].MaxLevel, r.MaxLevel, r.Id .. " max level")
-		expectEq(c.Rarities[i].PerkSize, r.PerkSize, r.Id .. " perk size")
+		expectEq(c.Rarities[i].CraftCost, r.CraftCost, r.Id .. " craft cost")
+		expectEq(c.Loot.CraftCost[r.Id], r.CraftCost, r.Id .. " loot craft cost")
+		expectEq(c.Loot.ScrapReturn[r.Id], r.ScrapReturn, r.Id .. " loot scrap return")
+		expect(#c.Rarities[i].Rooms > 0, r.Id .. " lists its rooms")
+		for _, id in c.Rarities[i].Rooms do
+			expectEq(c.Rooms[id].Rarity, r.Id, id .. " in " .. r.Id)
+		end
 		expect(RarityColors.Fill[r.Id] ~= nil, "client colour for " .. r.Id)
 	end
 end)
@@ -163,7 +193,7 @@ test("permanent upgrades: order, names and effect texts per level", function()
 		byId[p.Id] = p
 	end
 	expectEq(byId.Lure.EffectText[3], "2 s faster visitors", "lure level 2")
-	expectEq(byId.DeepVault.PerLevelText, "+2% vault bonus cap", "deep vault")
+	expectEq(byId.DeepVault.PerLevelText, "+5% vault exchange rate", "deep vault")
 	expectEq(byId.Scholar.EffectText[6], "+50% XP", "scholar max")
 end)
 
@@ -175,7 +205,7 @@ test("grid, loot and keeper constants", function()
 	expectEq(c.Grid.EntranceCell.Column, Grid.EntranceCell.Column, "entrance column")
 	expectEq(c.Grid.EntranceKey, "3,1", "entrance key")
 	expect(deepEqual(c.Loot.BoxTypes, Loot.BoxTypes), "box types")
-	expectEq(c.Loot.CraftCost, Balance.Loot.CraftCost, "craft cost")
-	expectEq(c.Loot.ScrapReturn, Balance.Loot.ScrapReturn, "scrap return")
+	expectEq(c.Loot.CraftCost.Common, 5, "common craft cost")
+	expectEq(c.Loot.ScrapReturn.Secret, 10, "secret scrap return")
 	expectEq(c.MaxKeeperLevel, Balance.Progression.MaxLevel, "max keeper level")
 end)

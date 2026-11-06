@@ -44,8 +44,9 @@ local STEPS = {
 		Cell = "3,4",
 	},
 	BankVault = {
-		Text = "Your reward waits in the vault. Tap Bank to move it to your coins where it's safe.",
-		Target = "Bank",
+		-- Step id kept (it is saved); the step now teaches the vault share slider.
+		Text = "Tap the vault and slide in some coins: visitors come faster, but thieves can steal.",
+		Target = "Vault",
 	},
 	BuyGuard = {
 		Text = "Open the Shop and buy a Guard Room, then place it in your dungeon.",
@@ -75,9 +76,6 @@ end
 local function clearTarget()
 	if target and target.Button then
 		target.Button.SetHighlight(nil)
-	elseif target and target.Stroke then
-		target.Stroke.Thickness = 3
-		target.Stroke.Color = Theme.Stroke
 	end
 	target = nil
 end
@@ -91,13 +89,16 @@ end
 
 local function layout()
 	local phone = Scale.Phone
-	ui.Bubble.Position = if phone then UDim2.new(0.5, 0, 1, -120) else UDim2.new(0.5, 0, 1, -170)
-	ui.Bubble.Size = if phone then UDim2.fromOffset(420, 88) else UDim2.fromOffset(520, 96)
-	ui.Text.TextSize = if phone then 16 else 20
-	local m = if phone then 64 else 76
+	-- Above the bottom bar (3 buttons: 76 / 108 px tall) and its margin.
+	-- The bubble sprite's tail stretches, so the bubble stays near its native width (<= ~1.4x at the 0.5 slice scale).
+	ui.Bubble.Position = if phone then UDim2.new(0.5, 40, 1, -96) else UDim2.new(0.5, 50, 1, -144)
+	ui.Bubble.Size = if phone then UDim2.fromOffset(340, 170) else UDim2.fromOffset(350, 196)
+	ui.TextLimit.MaxTextSize = if phone then 15 else 18
+	local m = if phone then 64 else 84
 	ui.Mascot.Size = UDim2.fromOffset(m, m)
-	ui.Text.Position = UDim2.fromOffset(m + 24, 6)
-	ui.Text.Size = UDim2.new(1, -(m + 36), 1, -12)
+	-- Text sits inside the bubble body: 34 px of border at the sides and top, 66 px at the bottom (tail band).
+	ui.Text.Position = UDim2.fromOffset(32, 24)
+	ui.Text.Size = UDim2.new(1, -64, 1, -(24 + 58))
 end
 
 local function refresh()
@@ -141,24 +142,27 @@ local function buildUi()
 	ui = {}
 	ui.Root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, gui)
 	-- Cream bubble (drawn, dark text) with the Keeper portrait as the mascot at the left.
-	ui.Bubble = Kit.Panel(ui.Root, { Sprite = false, AnchorPoint = Vector2.new(0.5, 1), Visible = false, BackgroundColor3 = Theme.TextPrimary })
-	ui.Mascot = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), AnchorPoint = Vector2.new(0, 0.5), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Bubble)
-	ui.Mascot.Position = UDim2.new(0, 12, 0.5, 0)
+	ui.Bubble = Kit.Panel(ui.Root, { Sprite = "Bubble", AnchorPoint = Vector2.new(0.5, 1), Visible = false })
+	ui.Bubble:FindFirstChild("Inset"):Destroy() -- text and buttons are placed explicitly
+	ui.Bubble.ClipsDescendants = false
+	-- The Keeper mascot stands left of the bubble.
+	ui.Mascot = make("ImageLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Bubble)
+	ui.Mascot.Position = UDim2.new(0, 10, 1, 0)
 	local portrait = SpriteIds.Portraits.Keeper
 	if Sprites.Ok(portrait) then
 		ui.Mascot.Image = portrait
 		Sprites.Watch(portrait, function()
-			ui.Mascot.Image = ""
-			ui.Mascot.Visible = false
+			Kit.Neutral(ui.Mascot)
 		end)
 	else
 		ui.Mascot.Visible = false
 	end
 	ui.Text = Kit.Label(ui.Bubble, "", 20, Theme.BgDeep)
-	ui.Text.Position = UDim2.fromOffset(100, 6)
-	ui.Text.Size = UDim2.new(1, -112, 1, -12)
+	ui.Text.ZIndex = 3
 	ui.Text.TextXAlignment = Enum.TextXAlignment.Left
-	ui.Text.TextYAlignment = Enum.TextYAlignment.Top
+	ui.Text.TextYAlignment = Enum.TextYAlignment.Center
+	ui.Text.TextScaled = true -- long steps shrink to fit instead of running out of the bubble
+	ui.TextLimit = make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 20 }, ui.Text)
 
 	-- Buttons sit just above the bubble, right-aligned.
 	ui.Buttons = make("Frame", {
@@ -174,7 +178,7 @@ local function buildUi()
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, ui.Buttons)
 	local function btn(text: string, style: string, order: number, fn: () -> ())
-		return Kit.Button(ui.Buttons, { Text = text, Style = style, LayoutOrder = order, Size = UDim2.fromOffset(120, 44), TextSize = 18, OnClick = fn })
+		return Kit.Button(ui.Buttons, { Text = text, Style = style, LayoutOrder = order, Size = UDim2.fromOffset(if Scale.Phone then 104 else 120, 48), TextSize = 18, OnClick = fn })
 	end
 	ui.Place = btn("Place", "Primary", 1, function()
 		Bus.BuildRequested:Fire()
@@ -189,12 +193,8 @@ local function buildUi()
 		action("Skip")
 	end)
 
-	ui.Arrow = Kit.Label(ui.Root, "v", 36, Theme.Gold, true)
-	ui.Arrow.AnchorPoint = Vector2.new(0.5, 1)
-	ui.Arrow.Size = UDim2.fromOffset(40, 40)
-	ui.Arrow.TextStrokeTransparency = 0
-	ui.Arrow.TextStrokeColor3 = Theme.Stroke
-	ui.Arrow.Visible = false
+	-- Pointer arrow (Feedback.TutorialArrow) above the highlighted button.
+	ui.Arrow = Kit.Sprite(ui.Root, "Feedback.TutorialArrow", { AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(40, 44), Visible = false, ZIndex = 5 })
 
 	Scale.Changed:Connect(layout)
 	layout()
@@ -224,9 +224,6 @@ function Tutorial.Start()
 		ui.Arrow.Visible = inst.Visible
 		if target.Button then
 			target.Button.SetHighlight(5 + pulse)
-		elseif target.Stroke then
-			target.Stroke.Color = Theme.Gold
-			target.Stroke.Thickness = 5 + pulse
 		end
 	end)
 end

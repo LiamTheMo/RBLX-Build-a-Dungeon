@@ -2,20 +2,23 @@
 -- plots. Payouts happen in the same step that sets sim.Result, guarded by
 -- run.Paid and by removing the run first, so an encounter pays exactly once.
 -- A player who leaves mid-encounter cancels it: no payout, no theft. A defeat's
--- drops and XP are rolled in that same non-yielding step (Rules/Rewards).
+-- coins, drops and XP are applied in that same non-yielding step (Rules/Rewards).
+-- The visitor (from the active threat tier's roster), its variant and its base
+-- coin reward are rolled on the server; the client only sees the results.
 
 local RunService = game:GetService("RunService")
 
-local Balance = require(script.Parent.Parent.Definitions.Balance)
 local Economy = require(script.Parent.Parent.Rules.Economy)
 local Progression = require(script.Parent.Parent.Rules.Progression)
-local VisitorRotation = require(script.Parent.Parent.Rules.VisitorRotation)
-local Rooms = require(script.Parent.Parent.Definitions.Rooms)
+local Threat = require(script.Parent.Parent.Rules.Threat)
 local Visitors = require(script.Parent.Parent.Definitions.Visitors)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
+local Balance = require(script.Parent.Parent.Definitions.Balance)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local EncounterSim = require(script.Parent.Parent.Rules.EncounterSim)
 local LayoutRules = require(script.Parent.Parent.Rules.LayoutRules)
 local Rewards = require(script.Parent.Parent.Rules.Rewards)
+local EventService = require(script.Parent.EventService)
 local LootService = require(script.Parent.LootService)
 local PlotService = require(script.Parent.PlotService)
 local ProfileService = require(script.Parent.ProfileService)
@@ -33,16 +36,20 @@ local VISITOR_ATTRS = {
 	"VisitorFighting",
 	"VisitorSlowed",
 	"VisitorSpored",
-	"VisitorReward",
-	"VisitorRewardDestination",
+	"VisitorBurning",
+	"VisitorChilled",
+	"VisitorVariant",
+	"VisitorRewardMin",
+	"VisitorRewardMax",
 	"VisitorTheft",
 }
 
-local runs = {} -- Player -> { Id, Sim, Keys, VisitorId, HasTreasure, Paid }
-local challengerReadyAt = {} -- Player -> server time the next challenger invite is allowed
-local queued = {} -- Player -> true (Armored Challenger invited)
+local runs = {} -- Player -> { Id, Sim, Keys, VisitorId, Variant, Base, Threat, HasTreasure, Paid }
+local planned = {} -- Player -> visitor id announced as NextVisitorId
+local idle = {} -- Player -> { Since, Set }: when the last encounter ended and the NextVisitorAt we derived
 local nextRunId = 0
 local accumulator = 0
+local rng = LootService.Rng
 
 local function notice(player: Player, text: string, kind: string)
 	Net.Fire("Notice", player, { Text = text, Kind = kind })
@@ -54,10 +61,21 @@ local function clearVisitor(plot: Instance)
 	end
 end
 
--- Moves a plot's next visitor earlier (never later).
+local function unlockAll(player: Player): boolean
+	return ProfileService.GetTransient(player, "ThreatUnlockAll") == true
+end
+
+-- Rewards.Context for the player now (active event, admin override).
+local function context(player: Player, profile)
+	return Rewards.Context(profile, EventService.ActiveId(), unlockAll(player))
+end
+
+-- Moves a plot's next visitor earlier (never later). Used by the tutorial, so it
+-- also drops the interval rule until the next encounter ends.
 function EncounterService.Expedite(player: Player, seconds: number)
 	local plot = PlotService.GetPlot(player)
 	if plot then
+		idle[player] = nil
 		local at = workspace:GetServerTimeNow() + seconds
 		local current = plot:GetAttribute("NextVisitorAt")
 		if current == nil or current > at then
@@ -70,43 +88,68 @@ local function tutorialStep(profile): string
 	return if profile.Tutorial.Done then "Done" else profile.Tutorial.Step
 end
 
--- Who arrives next, by the rules: tutorial practice, an invited challenger, else
--- the rotation. The plot attribute NextVisitorId announces it before it enters.
-local function planVisitor(player: Player, profile): string
-	if tutorialStep(profile) == "PracticeEncounter" then
-		return "Practice"
-	elseif queued[player] then
-		return "ArmoredChallenger"
+local function inRoster(visitorId: string?, tier: number): boolean
+	for _, e in Threat.Roster(tier) do
+		if e.Id == visitorId then
+			return true
+		end
 	end
-	return VisitorRotation.Pick(profile.Tutorial.Done, profile.Stats.Wins, profile.Stats.Encounters)
+	return false
 end
 
-local function announce(player: Player, plot: Instance, profile)
-	plot:SetAttribute("NextVisitorId", planVisitor(player, profile))
+-- Who arrives next: the tutorial's practice visitor, else the planned visitor if it
+-- still fits the active tier's roster, else a fresh roll from that roster.
+local function planVisitor(player: Player, profile, reroll: boolean?): string
+	if tutorialStep(profile) == "PracticeEncounter" then
+		return "Practice"
+	end
+	local tier = Progression.ActiveThreat(profile, unlockAll(player))
+	local current = planned[player]
+	if not reroll and inRoster(current, tier) then
+		return current :: string
+	end
+	return Threat.PickVisitor(tier, rng)
+end
+
+-- Sets NextVisitorId (and the plot's Threat) before the visitor enters.
+local function announce(player: Player, plot: Instance, profile, reroll: boolean?)
+	local visitorId = planVisitor(player, profile, reroll)
+	planned[player] = visitorId
+	plot:SetAttribute("NextVisitorId", visitorId)
+	plot:SetAttribute("Threat", Progression.ActiveThreat(profile, unlockAll(player)))
 end
 
 local function cancel(player: Player)
 	local run = runs[player]
 	runs[player] = nil
 	if run then
-		if run.VisitorId == "ArmoredChallenger" then
-			challengerReadyAt[player] = workspace:GetServerTimeNow() + Balance.Loot.ChallengerCooldown
-		end
 		local plot = PlotService.GetPlot(player)
 		if plot then
 			clearVisitor(plot)
 			plot:SetAttribute("State", "Idle")
 			plot:SetAttribute("NextVisitorId", nil)
 		end
+		planned[player] = nil
 	end
+end
+
+local function displayName(visitorId: string, variant: string?): string
+	local def = Visitors.Get(visitorId)
+	local name = def and def.DisplayName or visitorId
+	return if variant then `{variant} {name}` else name
+end
+
+-- The reward context for a run: the tier it spawned at (fixed for the encounter).
+local function runContext(player: Player, profile, run)
+	local ctx = context(player, profile)
+	ctx.Threat = run.Threat
+	ctx.Scale = Threat.Scale(run.Threat)
+	return ctx
 end
 
 local function finish(player: Player, plot: Instance, profile, run, now: number)
 	run.Paid = true
 	runs[player] = nil -- first, so nothing below can ever pay twice
-	if run.VisitorId == "ArmoredChallenger" then
-		challengerReadyAt[player] = now + Balance.Loot.ChallengerCooldown
-	end
 
 	local result, visitorId = run.Sim.Result, run.VisitorId
 	local amount, destination = 0, "None"
@@ -114,46 +157,32 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	local stats = profile.Stats
 	stats.Encounters += 1
 	if result == "Defeated" then
-		local bonuses = Progression.Bonuses(profile)
-		amount, destination =
-			Economy.WinPayout(visitorId, profile.Vault, run.HasTreasure, bonuses.Coins, Progression.VaultCapBonus(profile))
-		if destination == "Bank" then
-			profile.Coins += amount
-		else
-			profile.Vault += amount
-		end
+		reward = Rewards.Defeat(profile, visitorId, rng, runContext(player, profile, run), run.Base, run.Variant)
+		amount, destination = reward.Amount, "Bank"
 		stats.Wins += 1
 		stats.Earned += amount
-		reward = Rewards.Defeat(profile, visitorId, LootService.Rng, bonuses)
 	elseif result == "Robbed" then
-		amount = Economy.Theft(visitorId, profile.Vault)
-		profile.Vault -= amount
+		amount = Economy.Theft(visitorId, Progression.Vaulted(profile), run.VaultSnapshot, Progression.TheftScale(profile))
+		profile.Coins -= amount
 		destination = "Vault"
 		stats.Robberies += 1
 	else
 		stats.Escapes += 1
 	end
 
-	local names = {
-		ArmoredChallenger = "The Armored Challenger",
-		Practice = "The practice adventurer",
-		Scout = "A scout",
-		Cleric = "A cleric",
-	}
-	local name = names[visitorId] or "A novice"
+	local name = displayName(visitorId, run.Variant)
 	if result == "Defeated" then
-		local where = if destination == "Vault" then " to your vault" else ""
-		notice(player, `{name} was defeated! +{amount} coins{where}.`, "Good")
+		notice(player, `The {name} was defeated! +{amount} coins.`, "Good")
 	elseif result == "Robbed" then
-		notice(player, `{name} reached your treasure and stole {amount} coins!`, "Bad")
+		notice(player, `The {name} reached your treasure and stole {amount} coins!`, "Bad")
 	else
-		notice(player, `{name} got through your dungeon without a fight.`, "Info")
+		notice(player, `The {name} got through your dungeon without a fight.`, "Info")
 	end
 	for _, drop in reward.Drops do
 		if drop.Source == "Visitor" then
 			local def = drop.RoomId and Rooms.Get(drop.RoomId)
 			local what = if drop.Kind == "Box" then `a {drop.Type} Box` else `a {def and def.DisplayName} blueprint`
-			notice(player, `{name} dropped {what}!`, "Good")
+			notice(player, `The {name} dropped {what}!`, "Good")
 		end
 	end
 	for _, drop in reward.Drops do
@@ -169,6 +198,9 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 		Plot = plot:GetAttribute("Index"),
 		Kind = "End",
 		Result = result,
+		VisitorId = visitorId,
+		Variant = run.Variant or "",
+		Threat = run.Threat,
 		Amount = amount,
 		Destination = destination,
 		Drops = reward.Drops,
@@ -177,28 +209,33 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	})
 	clearVisitor(plot)
 	plot:SetAttribute("State", "Idle")
-	plot:SetAttribute("NextVisitorAt", now + Economy.VisitorInterval(run.HasTreasure, Progression.IntervalReduction(profile)))
+	local at = now + Progression.VisitorInterval(profile, EventService.Effects())
+	idle[player] = { Since = now, Set = at }
+	plot:SetAttribute("NextVisitorAt", at)
 	PlotService.RefreshRoomAttrs(player)
 	ProfileService.Changed(player)
 	TutorialService.Notify(player, "EncounterEnd")
-	announce(player, plot, profile) -- after the tutorial step advanced, so it never announces a stale Practice
+	announce(player, plot, profile, true) -- after the tutorial step advanced, so it never announces a stale Practice
 end
 
--- What the encounter panel shows: the payout if the visitor is defeated now (coin
--- bonus and vault bonus applied) and what it would steal on reaching the treasure.
--- Display only; finish() computes the real payout in the same step as the result.
-local function setOutcomePreview(plot: Instance, profile, run)
-	local bonuses = Progression.Bonuses(profile)
-	local amount, destination =
-		Economy.WinPayout(run.VisitorId, profile.Vault, run.HasTreasure, bonuses.Coins, Progression.VaultCapBonus(profile))
-	plot:SetAttribute("VisitorReward", amount)
-	plot:SetAttribute("VisitorRewardDestination", destination)
-	plot:SetAttribute("VisitorTheft", if run.HasTreasure then Economy.Theft(run.VisitorId, profile.Vault) else 0)
+-- What the encounter panel shows: the coin range if the visitor is defeated now
+-- (bonuses and event applied; the base roll stays hidden until End) and what it
+-- would steal on reaching the treasure. Display only; finish() pays.
+local function setOutcomePreview(player: Player, plot: Instance, profile, run)
+	local range = Rewards.CoinRange(run.VisitorId, runContext(player, profile, run), run.Variant)
+	plot:SetAttribute("VisitorRewardMin", range and range.Min or 0)
+	plot:SetAttribute("VisitorRewardMax", range and range.Max or 0)
+	plot:SetAttribute(
+		"VisitorTheft",
+		if run.HasTreasure
+			then Economy.Theft(run.VisitorId, Progression.Vaulted(profile), run.VaultSnapshot, Progression.TheftScale(profile))
+			else 0
+	)
 end
 
 local function stepRun(player: Player, plot: Instance, profile, run, dt: number, now: number)
 	local sim = run.Sim
-	setOutcomePreview(plot, profile, run) -- unchanged values do not replicate
+	setOutcomePreview(player, plot, profile, run) -- unchanged values do not replicate
 	local events = sim:Step(dt)
 	plot:SetAttribute("VisitorHealth", sim.Health)
 	plot:SetAttribute("VisitorMaxHealth", sim.MaxHealth)
@@ -206,12 +243,15 @@ local function stepRun(player: Player, plot: Instance, profile, run, dt: number,
 	plot:SetAttribute("VisitorFighting", sim.Fighting)
 	plot:SetAttribute("VisitorSlowed", sim.Slowed)
 	plot:SetAttribute("VisitorSpored", sim.Spored)
+	plot:SetAttribute("VisitorBurning", sim.Burning)
+	plot:SetAttribute("VisitorChilled", sim.Chilled)
 	local rooms = plot:FindFirstChild("Rooms")
 	for index, defender in sim.Defenders do
 		local model = rooms and rooms:FindFirstChild(run.Keys[index])
 		if model then
 			model:SetAttribute("DefenderHealth", defender.Health)
 			model:SetAttribute("DefenderMaxHealth", defender.MaxHealth)
+			model:SetAttribute("DefenderUnit", defender.Unit) -- 1-based; Goblin Barracks / Lich Sanctum step through units
 		end
 	end
 	local plotIndex = plot:GetAttribute("Index")
@@ -220,6 +260,8 @@ local function stepRun(player: Player, plot: Instance, profile, run, dt: number,
 			event.Plot = plotIndex
 			if event.Kind == "Spawn" then
 				event.VisitorId = run.VisitorId
+				event.Variant = run.Variant or ""
+				event.Threat = run.Threat
 			end
 			Net.FireAll("EncounterFx", event)
 		end
@@ -229,7 +271,28 @@ local function stepRun(player: Player, plot: Instance, profile, run, dt: number,
 	end
 end
 
+-- Keeps NextVisitorAt in step with the current interval (vault share, treasure,
+-- Lure, Swarm). A time set by someone else (build mode resume) is only ever
+-- pushed later, so lowering the vault share after a fast timer was set cannot
+-- keep the fast timer without the risk.
+local function retime(player: Player, plot: Instance, profile, now: number)
+	local info = idle[player]
+	if info == nil then
+		return
+	end
+	local at = info.Since + Progression.VisitorInterval(profile, EventService.Effects())
+	local current = plot:GetAttribute("NextVisitorAt")
+	if current == info.Set or (current ~= nil and at > current) then
+		info.Set = at
+		plot:SetAttribute("NextVisitorAt", at)
+	end
+end
+
 local function trySpawn(player: Player, plot: Instance, profile, now: number)
+	if plot:GetAttribute("State") == "Encounter" then
+		return
+	end
+	retime(player, plot, profile, now)
 	if plot:GetAttribute("State") ~= "Idle" then
 		return
 	end
@@ -251,27 +314,19 @@ local function trySpawn(player: Player, plot: Instance, profile, now: number)
 		return
 	end
 
-	local route, levels, rarities, hasTreasure = {}, {}, {}, false
+	local route, levels, modifiers, hasTreasure = {}, {}, {}, false
 	for i, key in routeCells do
 		local instance = profile.Rooms[profile.Layout[key]]
 		route[i] = cells[key]
 		levels[i] = instance.Level
-		rarities[i] = instance.Rarity
-		hasTreasure = hasTreasure or cells[key] == "TreasureRoom"
+		modifiers[i] = instance.Modifier
+		hasTreasure = hasTreasure or Rooms.IsTreasure(cells[key])
 	end
-	-- What was announced stands unless the tutorial or an invite overrides it.
 	local visitorId = planVisitor(player, profile)
-	local announced = plot:GetAttribute("NextVisitorId")
-	local def = Visitors.Get(visitorId)
-	local announcedDef = if type(announced) == "string" then Visitors.Get(announced) else nil
-	if def and def.Arrival == "Automatic" and announcedDef and announcedDef.Arrival == "Automatic" then
-		visitorId = announced
-	end
-	if visitorId == "ArmoredChallenger" then
-		challengerReadyAt[player] = math.huge -- cooldown starts when the encounter ends
-		queued[player] = nil
-		ProfileService.SetTransient(player, "ChallengerQueued", false)
-	end
+	local ctx = context(player, profile)
+	local variant = Threat.RollVariant(visitorId, ctx.VariantMult, rng)
+	local base = Economy.RollReward(visitorId, rng)
+	local v = Threat.Variant(variant)
 	if not profile.Discovered[visitorId] then
 		profile.Discovered[visitorId] = true
 		ProfileService.Changed(player)
@@ -283,19 +338,32 @@ local function trySpawn(player: Player, plot: Instance, profile, now: number)
 		Sim = EncounterSim.new({
 			route = route,
 			levels = levels,
-			rarities = rarities,
+			modifiers = modifiers,
 			healthBonus = Progression.DefenderHealthBonus(profile),
 			visitorId = visitorId,
+			visitorHealth = ctx.Scale.Health * (v and v.Health or 1),
+			visitorDamage = ctx.Scale.Damage,
 		}),
 		Keys = routeCells,
 		VisitorId = visitorId,
+		Variant = variant,
+		Base = base,
+		Threat = ctx.Threat,
 		HasTreasure = hasTreasure,
+		VaultSnapshot = Progression.Vaulted(profile), -- theft never exceeds what was vaulted at spawn
 		Paid = false,
 	}
 	runs[player] = run
+	idle[player] = nil
+	planned[player] = nil
 	plot:SetAttribute("State", "Encounter")
-	setOutcomePreview(plot, profile, run) -- before VisitorId, so the panel never shows a stale value
+	plot:SetAttribute("Threat", run.Threat)
+	plot:SetAttribute("VisitorVariant", variant or "")
+	setOutcomePreview(player, plot, profile, run) -- before VisitorId, so the panel never shows a stale value
 	plot:SetAttribute("VisitorId", visitorId)
+	if variant then
+		notice(player, `A {displayName(visitorId, variant)} is coming!`, "Good")
+	end
 	stepRun(player, plot, profile, run, STEP, now)
 end
 
@@ -322,39 +390,54 @@ local function tick(dt: number)
 	end
 end
 
+-- Re-rolls the announced visitor after the active tier changed (not mid-encounter).
+function EncounterService.Reannounce(player: Player)
+	local plot = PlotService.GetPlot(player)
+	local profile = ProfileService.Get(player)
+	if plot and profile and runs[player] == nil then
+		announce(player, plot, profile, true)
+	end
+end
+
+-- SetThreat: picks the active threat tier. Whole number 1..Count, at most the
+-- unlocked tier (ThreatLocked), never during an encounter (EncounterActive).
+function EncounterService.SetThreat(player: Player, tier: number)
+	local profile = ProfileService.Get(player)
+	if profile == nil then
+		return false, "ProfileNotLoaded"
+	end
+	local plot = PlotService.GetPlot(player)
+	if runs[player] or (plot and plot:GetAttribute("State") == "Encounter") then
+		return false, "EncounterActive"
+	end
+	if tier > Progression.ThreatUnlocked(profile, unlockAll(player)) then
+		return false, "ThreatLocked"
+	end
+	if profile.Threat ~= tier then
+		profile.Threat = tier
+		ProfileService.Changed(player)
+		EncounterService.Reannounce(player)
+	end
+	return true, tier
+end
+
+-- Whether a visitor is inside the player's dungeon (server truth).
+function EncounterService.InEncounter(player: Player): boolean
+	return runs[player] ~= nil
+end
+
 function EncounterService.Init()
-	Net.Handle("InviteChallenger", function(...)
-		return select("#", ...) == 0
-	end, function(player)
-		local profile = ProfileService.Get(player)
-		if profile == nil then
-			return false, "ProfileNotLoaded"
-		end
-		if not profile.ChallengerUnlocked then
-			return false, "ChallengerLocked"
-		end
-		if queued[player] then
-			return false, "ChallengerQueued"
-		end
-		if workspace:GetServerTimeNow() < (challengerReadyAt[player] or 0) then
-			return false, "ChallengerCooldown"
-		end
-		queued[player] = true
-		local plot = PlotService.GetPlot(player)
-		if plot and plot:GetAttribute("State") ~= "Encounter" then
-			announce(player, plot, profile)
-		end
-		ProfileService.SetTransient(player, "ChallengerQueued", true)
-		notice(player, "The Armored Challenger will arrive with your next visitor.", "Info")
-		return true, nil
-	end)
+	Net.Handle("SetThreat", function(...)
+		local tier = ...
+		return select("#", ...) == 1 and Threat.Valid(tier)
+	end, EncounterService.SetThreat)
 end
 
 function EncounterService.Start()
 	ProfileService.Left:Connect(function(player)
 		cancel(player)
-		queued[player] = nil
-		challengerReadyAt[player] = nil
+		planned[player] = nil
+		idle[player] = nil
 	end)
 	TutorialService.WantsVisitor:Connect(EncounterService.Expedite)
 	RunService.Heartbeat:Connect(function(dt)

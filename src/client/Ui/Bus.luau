@@ -8,5 +8,6 @@ return {
 	ShopRequested = Signal.new(),
 	OpenPanel = Signal.new(), -- "Loot" | "Collection" | "Keeper" | "Close" (HUD fires, LootController listens)
 	CellHint = Signal.new(), -- fires cell key "3,3" or nil; shown by BuildController while building
-	Targets = {} :: { [string]: { Instance: GuiObject, Stroke: UIStroke? } }, -- "Build", "Bank", "Shop", "Loot"...
+	ToastOffset = 0, -- px (reference) the toast stack moves down while the event banner shows
+	Targets = {} :: { [string]: { Instance: GuiObject, Stroke: UIStroke?, Button: any? } }, -- "Build", "Shop", "Loot", "Vault"...
 }

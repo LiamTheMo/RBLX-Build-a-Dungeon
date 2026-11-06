@@ -8,7 +8,7 @@ local Net = require(script.Parent.Net)
 local State = require(script.Parent.State)
 
 local Settings = {
-	Values = { ReducedMotion = false, MusicVolume = 0.5, SfxVolume = 0.8 },
+	Values = { ReducedMotion = false, MusicVolume = 0.5, SfxVolume = 0.4 },
 	Changed = Signal.new(),
 }
 

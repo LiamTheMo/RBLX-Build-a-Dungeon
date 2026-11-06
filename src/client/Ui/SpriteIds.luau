@@ -1,6 +1,6 @@
--- Generated from ChatGPT sprite sheets cut by tools/cut_sheet.py (Assets repo). Origin: owner's ChatGPT account;
+-- Generated from AI design assistant sprite sheets cut by tools/cut_sheet.py (Assets repo). Origin: owner's AI design assistant account;
 -- rights to be confirmed by the owner before release. SliceCenter is in image pixels (SliceScale 1).
-return table.freeze({
+local base = {
 	Kit = {
 		PanelLarge = { Id = "rbxassetid://124887060420461", SliceCenter = Rect.new(25, 25, 487, 141), Size = Vector2.new(512, 166) },
 		PanelSmall = { Id = "rbxassetid://126666251218482", SliceCenter = Rect.new(28, 31, 407, 174), Size = Vector2.new(435, 205) },
@@ -74,4 +74,13 @@ return table.freeze({
 		Secret = { Frame = { Id = "rbxassetid://78179547574337", SliceCenter = Rect.new(107, 105, 288, 285), Size = Vector2.new(395, 390) }, Gem = "rbxassetid://123345850137737" },
 		Mythic = { Frame = { Id = "rbxassetid://89463632045840", SliceCenter = Rect.new(153, 154, 358, 358), Size = Vector2.new(511, 512) }, Gem = "rbxassetid://114231824191237" },
 	},
-})
+}
+
+-- Room icons and creature portraits of the 2026-11-05 roster (SpriteIds5) join the base tables.
+local Ids5 = require(script.Parent.SpriteIds5)
+for _, group in { "Rooms", "Portraits" } do
+	for id, asset in Ids5[group] do
+		base[group][id] = asset
+	end
+end
+return table.freeze(base)

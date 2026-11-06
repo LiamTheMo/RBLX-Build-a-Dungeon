@@ -69,9 +69,9 @@ Add a spec for every new rules module. Gameplay that touches Instances, remotes 
 | Item | Source | Status |
 | --- | --- | --- |
 | Room, character, prop and map models (`Art.*`, `Workspace.Map`) | Built for this game from Parts in Studio; exported to `Assets\BuildADungeon\models\` | Original, per the Assets README. Cleared for use as stated there |
-| UI icons (`src/client/Ui/IconIds.luau`) | Cut from a ChatGPT-generated sheet (owner's account), `ui\mockups\05_icon_sheet_magenta.png` | **Rights to be confirmed by the owner before release** |
+| UI icons (`src/client/Ui/IconIds.luau`) | Cut from a AI design assistant-generated sheet (owner's account), `ui\mockups\05_icon_sheet_magenta.png` | **Rights to be confirmed by the owner before release** |
 | Sounds (`src/client/Ui/SoundIds.luau`) | Creator Store audio, chosen from search metadata only, not listened to. Listed in the Assets README | **Each needs listening and a licence check before release.** Theft, SlimeAttack, Ambience and Music have no sound yet |
-| UI mockups and reference images | ChatGPT-generated (owner's account), in `ui\mockups\` and `reference\` | Concept and reference only; not cleared; never uploaded to Roblox |
+| UI mockups and reference images | AI design assistant-generated (owner's account), in `ui\mockups\` and `reference\` | Concept and reference only; not cleared; never uploaded to Roblox |
 | `src/shared/Core/Loader.luau` | RBLX-Flintborn, same owner | Copied unchanged |
 | `src/shared/Core/Signal.luau` | RBLX-Flintborn, same owner | Copied unchanged |
 | `tests/luau/prelude.luau` | RBLX-Flintborn, same owner | Copied unchanged |

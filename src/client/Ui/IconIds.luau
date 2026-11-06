@@ -1,5 +1,5 @@
 --!strict
--- UI icons uploaded to group 33284082 via Open Cloud (ChatGPT-generated, rights to be confirmed by owner before release).
+-- UI icons uploaded to group 33284082 via Open Cloud (AI design assistant-generated, rights to be confirmed by owner before release).
 return table.freeze({
 	Coin = "rbxassetid://100829017297779",
 	Vault = "rbxassetid://91122178323189",

@@ -95,12 +95,14 @@ local function snapshot(player: Player)
 	local out = { LoadState = state.loadState }
 	if profile and (state.loadState == "Loaded" or state.loadState == "Studio") then
 		out.Coins = profile.Coins
-		out.Vault = profile.Vault
 		out.Rooms = profile.Rooms
 		-- Server-computed display values (Rules/StateView): the client runs no game rules.
+		-- The active event is server-set on Workspace (EventService).
 		local r = getRules()
 		if r then
-			local ok, derived = pcall(r.StateView.Derived, profile)
+			local active = workspace:GetAttribute("ActiveEvent")
+			local world = { EventId = if active ~= "" then active else nil, UnlockAll = state.transient.ThreatUnlockAll == true }
+			local ok, derived = pcall(r.StateView.Derived, profile, world)
 			if ok then
 				for key, value in derived do
 					out[key] = value
@@ -112,7 +114,6 @@ local function snapshot(player: Player)
 		out.Layout = profile.Layout
 		out.Tutorial = profile.Tutorial
 		out.Settings = profile.Settings
-		out.ChallengerUnlocked = profile.ChallengerUnlocked
 		out.Stats = profile.Stats
 		out.Discovered = profile.Discovered
 		out.Xp = profile.Xp
@@ -418,7 +419,7 @@ function ProfileService.Changed(player: Player)
 	push(player)
 end
 
--- Non-persistent state shown in the snapshot (e.g. Building, ChallengerQueued).
+-- Non-persistent state shown in the snapshot (e.g. Building, ThreatUnlockAll).
 function ProfileService.SetTransient(player: Player, key: string, value: any)
 	local state = states[player]
 	if state == nil then
@@ -428,6 +429,11 @@ function ProfileService.SetTransient(player: Player, key: string, value: any)
 		state.transient[key] = value
 		push(player)
 	end
+end
+
+function ProfileService.GetTransient(player: Player, key: string): any
+	local state = states[player]
+	return state and state.transient[key]
 end
 
 function ProfileService.SaveNow(player: Player)

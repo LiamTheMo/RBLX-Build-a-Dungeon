@@ -9,7 +9,7 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 
 - **Sprite fallback untested live.** `src/client/Ui/Sprites.luau` preloads the 70 UI sprites and falls back to code-drawn UI for any that fail. In Studio Play, `PreloadAsync` reports Failure even for sprites that render, so the fallback switch only acts on real servers. Check on the published place that the sprites show and the fallback doesn't trigger by mistake.
 - **Desktop layout unseen.** The last checks ran in a 1175×599 window, which uses the phone layout. Check the desktop layout and real phones.
-- **Image and model rights unconfirmed.** The icons, sprites and concept references come from ChatGPT through the owner's account. The models were made in Blender from those references. Confirm rights before release (see the Assets README).
+- **Image and model rights unconfirmed.** The icons, sprites and concept references come from AI design assistant through the owner's account. The models were made in Blender from those references. Confirm rights before release (see the Assets README).
 - **Minor UI rough edges.** Shop cards have a small notch at the top-right corner, and the build-card count pill sits tight against the frame.
 - **Four sound slots are empty.** Theft, SlimeAttack, Ambience and Music have no entry in `src/client/Ui/SoundIds.luau`.
 - **Sounds not listened to.** Every sound was picked from Creator Store search metadata. Rise is a weak fit (per the Assets README).
@@ -24,16 +24,32 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 
 - **Numbers are untuned.** Every value in `Balance.luau`, and the rates in `docs/PHASE0.md` and `docs/GDD.md`, is a hypothesis awaiting playtests.
 - **Box overflow converts to coins.** When a box stack is full (999 of one type), a new box is converted to banked coins: 100 for a Dungeon Box and 300 for a Rare Box (`Balance.Loot.BoxOverflowCoins`). A notice is shown.
-- **Scrapping refunds blueprints only.** Scrapping an unplaced room returns 2 blueprints of its type (`Balance.Loot.ScrapReturn`, `Rewards.Scrap`). It refunds no coins and no upgrade spending.
+- **Scrapping refunds blueprints only.** Scrapping an unplaced room returns its tier's scrap return in blueprints of its type (2 Common up to 10 Secret; `Balance.Rarities`, `Rewards.Scrap`). It refunds no coins and no upgrade spending.
 - **Economy not simulated with real sessions.** Phase 7 leaves economy tuning with real sessions open.
+- **Threat, vault and event numbers untuned (2026-11-05).** Threat scaling, rosters, variant chances, the vault exchange rate and event effects are starting values. Since the treasure line (2026-11-05) a level-10 Void Vault at 100% gives +753% (rate 3.5 × 2.15), and a level-8 Celestial Coffer about +468%, both at or near the 5 s floor; check that high shares and top treasures are not mandatory.
+- **Secret tier has no duelling room.** Void Gate (Secret) scores 83 in the tier duel because its value is sending the visitor back through the route; the duel spec skips Secret. Bat Roost was raised to 60 HP / 6 damage so Uncommon out-duels Common.
+- **Schema v5 clamps levels without refunds.** Rooms saved with a rarity above their new fixed tier lose levels above the tier cap (e.g. an Epic Slime Nest at level 6 becomes level 3), and the upgrade coins are not refunded. Saved instance rarities and rolled perks are gone. Monster Den and Restless Crypt are no longer sold (owned ones are kept).
+- **Uncommon box rolls at keeper level 1–2.** Every Uncommon room is level-gated (3–6), so the gate falls back to the lowest-gated room: an Uncommon box or blueprint at level 1–2 is always a Mushroom Cavern.
+- **Spending during an encounter lowers a theft.** Theft takes TheftFraction of the vaulted coins when the visitor reaches the treasure, so coins spent on rooms or upgrades during the encounter are no longer at risk. The vault share itself is locked during encounters.
+- **Event effects apply at resolution.** Coins, drops and variant chances use the event running when the encounter ends (variants: when it spawns). An event that ends mid-encounter no longer counts.
 
 ## Persistence and testing
 
 - **Published-place failure tests not run.** Save failures, retries, shutdown and duplicate sessions still need testing on the published place ([RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)).
 - **Studio saves are separate.** Studio playtests use `PlayerProfiles_v1_Studio`. If Studio cannot reach DataStores, progress is kept in memory only and is lost when the session ends.
+- **2026-11-05 roster play-tested in Studio (client FX).** Creatures, trap art and every new `EncounterFx` kind are wired in `PlotViewController` and were watched in a solo Play session (dragon breath, goblins, mimic ambush puff, lich, phoenix, frost, void snap measured at one frame, arrows, flame vent, chest lid). Not seen live: the lich's skeleton rising (event flow and logic checked only), phoenix revive on a real knock-out, burn tick numbers on screen; the tutorial bubble tail at SliceScale 0.4, route dots/ghost overlay, level-up banner and load-fail panel were not re-checked this pass. Wing flap direction, lid/jaw hinge angles and the chest-lid hinge are inferred from the art and may need a tweak.
 - **Phase 7 Play-mode test pending.** The new loot and progression remotes need a Play-mode test.
+- **2026-11-05 server changes not play-tested.** `SetThreat`, `SetVaultPercent`, the visitor roster and variants, the next-visitor retiming, server events (schedule, Workspace attributes, `ServerEvent`) and the admin chat commands passed specs and a compile check only; Studio was in use for UI testing, so no Play session was run for them. Admin commands rely on the server-side `TextChatCommand.Triggered` (Roblox's own custom-command example connects it from a server Script); confirm in Play that `/event list` answers an admin and stays silent for others. Automatic events are off in Studio (`Balance.Events.RunInStudio`); use `/event start` there.
+- **Client updated for schema v4 (2026-11-05).** Threat picker, vault slider, event banner, variants, drop cards, next-goal chip, modifier badges, free build camera and the rolling box reel are in; the old entry follows for history: **Client not yet updated for schema v4.** Until the client pass, the HUD still calls the removed `Bank` and `InviteChallenger` remotes, reads the removed `Vault`, `VaultBonus` (now a percentage), `VaultBonusCap`, `ChallengerUnlocked`/`ChallengerQueued` and `VisitorReward`/`VisitorRewardDestination`, and the tutorial's BankVault step still says "Tap Bank" (it now advances on `SetVaultPercent`).
+- **Admin group rank lookup.** `GetRankInGroup` failures are not cached (retried on the next command); while it fails, only the listed UserIds are admins.
 - **Fresh-clone check pending.** The Phase 0 exit check (another developer syncs and runs the empty plot) has not been done ([PHASE0.md](PHASE0.md)).
 - **Test place privacy not confirmed.** The owner must confirm the test place (`78621805707922`) is private in the Creator Dashboard.
+
+## Client UI (2026-11-05)
+
+- **9-slice clipping.** Sliced sprite frames lose their right/bottom slices at some scales (reveal card at SliceScale 0.92, PanelSmall tiles at 0.41, Mythic frame at small sizes). Mitigations in `Kit.fit`: uniform scale capped at 0.5, a delayed SliceScale re-assignment, Small panel cap 9. New 9-slice-ready frames are expected in `SpriteIds4.Frames` (hooks in `Kit`); check every frame again then.
+- **Waiting on sprites (SpriteIds4, looked up with `Sprites.Get`).** Reel pointer/window/slot/burst/spin button, panel frames, pills, tooltips, toasts, tutorial bubble and arrow, nameplate health bars, owner sign, cell highlights and route markers, off-route tag, modifier chips (drawn circle plus an icon), HUD bars.
+- **Admin chat path** was not verified through typed chat in Studio; commands parse and `EventService.Begin` works.
 
 ## Tooling
 

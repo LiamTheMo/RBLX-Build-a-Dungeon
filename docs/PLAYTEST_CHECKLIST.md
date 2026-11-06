@@ -37,7 +37,7 @@ Repeat this for every playtest, so results are comparable across phases. Copy th
 Run the ones that apply to the phase, and record pass or fail.
 
 - [ ] Placing outside the grid, on an occupied cell, or a room you do not own is rejected with a clear reason.
-- [ ] Layouts that branch, loop or disconnect cannot be committed; cancel restores the last valid layout.
+- [ ] Layouts that branch, loop or disconnect can be committed; the preview and the built dungeon show the same route (longest path, ending at a connected treasure room) and mark idle rooms; idle rooms give no perks and an off-route treasure room cannot be robbed; cancel restores the last committed layout.
 - [ ] A treasure room that is not last, or a second treasure room, is rejected.
 - [ ] Build mode shows "Checking route..." briefly after each change, then the server's route or reason; spamming changes never shows a stale result, and `PreviewLayout` with altered or foreign instance ids returns a reason without changing anything.
 - [ ] The client works with only `Core` and `Net` in `ReplicatedStorage.Shared`: shop prices and level gates, box odds and pity, upgrade costs, keeper upgrades, collection drop chances and the encounter reward/vault-risk line all show (they come from `GetCatalog`, `State` and plot attributes).

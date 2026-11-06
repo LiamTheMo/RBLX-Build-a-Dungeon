@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Balance = require(script.Parent.Parent.Definitions.Balance)
 local Grid = require(script.Parent.Parent.Definitions.Grid)
+local Rooms = require(script.Parent.Parent.Definitions.Rooms)
 local PlotGeometry = require(script.Parent.Parent.Rules.PlotGeometry)
 local Progression = require(script.Parent.Parent.Rules.Progression)
 local Route = require(script.Parent.Parent.Rules.Route)
@@ -15,6 +16,16 @@ local LayoutRules = require(script.Parent.Parent.Rules.LayoutRules)
 local ProfileService = require(script.Parent.ProfileService)
 
 local PlotService = {}
+
+-- Sign boards (SpriteIds4.World.SignBoardOwned / SignBoardFree: ids, 9-slice centres).
+local SIGN_OWNED = { Id = "rbxassetid://125171418630241", Center = Rect.new(55, 55, 351, 211) }
+local SIGN_FREE = { Id = "rbxassetid://105037912850813", Center = Rect.new(49, 49, 347, 217) }
+local function setSign(plot, text: string, owned: boolean)
+	local spec = if owned then SIGN_OWNED else SIGN_FREE
+	plot.Sign.Text = text
+	plot.SignBoard.Image = spec.Id
+	plot.SignBoard.SliceCenter = spec.Center
+end
 
 local CELL = Grid.CellSize
 local WALL = Grid.WallHeight
@@ -26,8 +37,14 @@ local VISITOR_ATTRS = {
 	"VisitorProgress",
 	"VisitorFighting",
 	"VisitorSlowed",
-	"VisitorReward",
-	"VisitorRewardDestination",
+	"VisitorSpored",
+	"VisitorBurning",
+	"VisitorChilled",
+	"VisitorVariant",
+	"VisitorRewardMin",
+	"VisitorRewardMax",
+	"NextVisitorId",
+	"Threat",
 	"VisitorTheft",
 }
 local TILE_LIFT = 0.04 -- studs; keeps EmptyCellTile art off the base slab (no z-fighting)
@@ -84,7 +101,7 @@ local ROLE_COLOR = {
 -- North = -Z (back), South = +Z (front), East = +X, West = -X.
 local function grayboxRoom(roomId: string, cf: CFrame): Model
 	local model = Instance.new("Model")
-	local accent = ROLE_COLOR[roomId] or Color3.fromRGB(200, 200, 200)
+	local accent = ROLE_COLOR[roomId] or (if Rooms.IsTreasure(roomId) then ROLE_COLOR.TreasureRoom else Color3.fromRGB(200, 200, 200))
 	local floor = part(model, "Floor", Vector3.new(CELL, 0.4, CELL), cf * CFrame.new(0, -0.2, 0), Color3.fromRGB(120, 112, 105))
 	floor.CanCollide = true
 	for _, sx in { -1, 1 } do
@@ -120,7 +137,7 @@ local function grayboxRoom(roomId: string, cf: CFrame): Model
 	elseif roomId == "GuardRoom" then
 		part(model, "Prop", Vector3.new(1.6, 3.2, 1.6), cf * CFrame.new(0, 1.6, 0), accent)
 		part(model, "Prop", Vector3.new(0.3, 2, 1.6), cf * CFrame.new(1.2, 1.8, 0), Color3.fromRGB(230, 230, 240))
-	elseif roomId == "TreasureRoom" then
+	elseif Rooms.IsTreasure(roomId) then
 		part(model, "Prop", Vector3.new(2.6, 1.4, 1.8), cf * CFrame.new(0, 0.7, 0), Color3.fromRGB(120, 80, 40), Enum.Material.Wood)
 		part(model, "Prop", Vector3.new(2.7, 0.5, 1.9), cf * CFrame.new(0, 1.65, 0), accent, Enum.Material.Metal)
 	end
@@ -132,15 +149,32 @@ local function buildBase(plot)
 	local base = Instance.new("Model")
 	base.Name = "Base"
 	local width, depth = Grid.Columns * CELL, Grid.Rows * CELL
-	-- Grid (z -12..12) plus a 10-stud walkway and margins.
-	local slab = part(base, "Floor", Vector3.new(width + 4, 1, depth + 24), cf * CFrame.new(0, -0.5, 5), Color3.fromRGB(70, 66, 74), Enum.Material.Slate)
-	slab.CanCollide = true
-	local lineColor = Color3.fromRGB(95, 90, 100)
-	for i = 0, Grid.Columns do
-		part(base, "GridLine", Vector3.new(0.15, 0.05, depth), cf * CFrame.new(-width / 2 + i * CELL, 0.03, 0), lineColor).CanQuery = false
-	end
-	for i = 0, Grid.Rows do
-		part(base, "GridLine", Vector3.new(width, 0.05, 0.15), cf * CFrame.new(0, 0.03, -depth / 2 + i * CELL), lineColor).CanQuery = false
+	-- Plot frame art (Art.Plot.Frame: pivot = anchor on the floor top): ground slab with path lines, border
+	-- wall, gate, torches, banners, trees and a front walkway. Its slab top sits at y = -0.12 so no visible
+	-- surface is coplanar with a room floor (-0.05 / 0), a grid line or the lobby pad beneath it.
+	local frameArt = art("Plot", "Frame")
+	if frameArt and frameArt:IsA("Model") then
+		local frame = frameArt:Clone()
+		frame.Name = "Frame"
+		frame:PivotTo(cf)
+		for _, d in frame:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanTouch = false
+			end
+		end
+		frame.Parent = base
+	else
+		-- Fallback graybox: Grid (z -12..12) plus a 10-stud walkway and margins. Slab top at -0.12.
+		local slab = part(base, "Floor", Vector3.new(width + 4, 1, depth + 24), cf * CFrame.new(0, -0.62, 5), Color3.fromRGB(70, 66, 74), Enum.Material.Slate)
+		slab.CanCollide = true
+		local lineColor = Color3.fromRGB(95, 90, 100)
+		for i = 0, Grid.Columns do
+			part(base, "GridLine", Vector3.new(0.15, 0.05, depth), cf * CFrame.new(-width / 2 + i * CELL, 0.08, 0), lineColor).CanQuery = false
+		end
+		for i = 0, Grid.Rows do
+			part(base, "GridLine", Vector3.new(width, 0.05, 0.15), cf * CFrame.new(0, 0.08, -depth / 2 + i * CELL), lineColor).CanQuery = false
+		end
 	end
 
 	local entranceCf = cf * CFrame.new(PlotGeometry.CellLocal(Grid.EntranceCell.Column, Grid.EntranceCell.Row))
@@ -211,25 +245,36 @@ local function buildBase(plot)
 
 	-- Owner sign on a post in front of the plot.
 	part(base, "SignPost", Vector3.new(0.4, 3, 0.4), cf * CFrame.new(0, 1.5, 17), Color3.fromRGB(90, 70, 50)).CanQuery = false
-	local anchor = part(base, "Sign", Vector3.new(0.2, 0.2, 0.2), cf * CFrame.new(0, 3.3, 17), Color3.fromRGB(90, 70, 50))
+	local anchor = part(base, "Sign", Vector3.new(0.2, 0.2, 0.2), cf * CFrame.new(0, 4.1, 17), Color3.fromRGB(90, 70, 50))
 	anchor.Transparency = 1
 	anchor.CanQuery = false
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(6, 1) -- studs, so the sign does not grow with the camera or overlap from above
+	gui.Size = UDim2.fromScale(8, 3.2) -- studs, so the sign does not grow with the camera or overlap from above
 	gui.MaxDistance = 60
 	gui.LightInfluence = 0
 	gui.Adornee = anchor
 	gui.Parent = anchor
+	-- The board is a AI design assistant sprite (SignBoardFree / SignBoardOwned, 9-sliced) with the text on top.
+	local board = Instance.new("ImageLabel")
+	board.Name = "Board"
+	board.Size = UDim2.fromScale(1, 1)
+	board.BackgroundTransparency = 1
+	board.ScaleType = Enum.ScaleType.Slice
+	board.SliceScale = 0.35
+	board.Parent = gui
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundColor3 = Color3.fromRGB(35, 30, 40)
-	label.BackgroundTransparency = 0.25
+	label.Size = UDim2.new(1, -56, 1, -50)
+	label.Position = UDim2.fromOffset(28, 25)
+	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Font = Enum.Font.GothamBold
+	label.TextStrokeColor3 = Color3.fromRGB(40, 20, 10)
+	label.TextStrokeTransparency = 0.2
+	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
-	label.Text = "Free plot"
-	label.Parent = gui
+	label.Parent = board
+	plot.SignBoard = board
 	plot.Sign = label
+	setSign(plot, "Free plot", false)
 	base.Parent = plot.Model
 end
 
@@ -265,7 +310,7 @@ local function resetPlot(plot)
 	for _, name in VISITOR_ATTRS do
 		m:SetAttribute(name, nil)
 	end
-	plot.Sign.Text = "Free plot"
+	setSign(plot, "Free plot", false)
 	plot.Owner = nil
 end
 
@@ -298,17 +343,19 @@ function PlotService.Owned()
 	return out
 end
 
--- Level, Rarity and defender health attributes (rarity and Stout Defenders
--- included, Monster Den boost not); defenders reset to full if `resetHealth`.
+-- Level, Rarity (the room definition's) and defender health attributes (level
+-- and Stout Defenders included, Monster Den boost not; first unit); defenders
+-- reset to full if `resetHealth`.
 local function setLevelAttrs(model: Instance, instance, profile, resetHealth: boolean)
 	model:SetAttribute("Level", instance.Level)
-	model:SetAttribute("Rarity", instance.Rarity or "Common")
-	local health =
-		EncounterSim.DefenderHealth(instance.Id, instance.Level, instance.Rarity, Progression.DefenderHealthBonus(profile))
+	model:SetAttribute("Rarity", Rooms.Rarity(instance.Id))
+	model:SetAttribute("Modifier", instance.Modifier or "")
+	local health = EncounterSim.DefenderHealth(instance.Id, instance.Level, Progression.DefenderHealthBonus(profile))
 	if health then
 		model:SetAttribute("DefenderMaxHealth", health)
 		if resetHealth then
 			model:SetAttribute("DefenderHealth", health)
+			model:SetAttribute("DefenderUnit", 1)
 		end
 	end
 end
@@ -330,7 +377,9 @@ function PlotService.RefreshRoomAttrs(player: Player)
 	end
 end
 
--- Rebuilds the room models and the Route attribute from profile.Layout.
+-- Rebuilds the room models and the Route attribute from profile.Layout. Every
+-- placed room gets a model; RouteIndex is its 1-based place on the route, or 0
+-- with OnRoute = false for an idle (off-route) room.
 function PlotService.Render(player: Player)
 	local plot = byPlayer[player]
 	local profile = ProfileService.Get(player)
@@ -364,6 +413,7 @@ function PlotService.Render(player: Player)
 			model:SetAttribute("RoomId", roomId)
 			model:SetAttribute("InstanceId", instanceId)
 			model:SetAttribute("RouteIndex", order[key] or 0)
+			model:SetAttribute("OnRoute", order[key] ~= nil)
 			setLevelAttrs(model, instance, profile, true)
 			model.Parent = plot.Model.Rooms
 		end
@@ -382,7 +432,7 @@ local function assign(player: Player)
 			byPlayer[player] = plot
 			plot.Model:SetAttribute("OwnerUserId", player.UserId)
 			plot.Model:SetAttribute("State", "Idle")
-			plot.Sign.Text = player.DisplayName .. "'s Dungeon"
+			setSign(plot, player.DisplayName .. "'s Dungeon", true)
 			PlotService.Render(player)
 			teleport(player)
 			return
