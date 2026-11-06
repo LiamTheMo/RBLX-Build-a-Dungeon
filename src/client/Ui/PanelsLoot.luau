@@ -340,18 +340,20 @@ function L.Build(scroll: ScrollingFrame, state: any)
 	P.Section(scroll, "Chests", nxt())
 	local cols = P.Columns(scroll)
 	local chestGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 330), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 360), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
 	for order, boxType in catalog.Loot.BoxTypes do
 		local count = (state.Boxes or {})[boxType] or 0
 		local card = Kit.Panel(chestGrid, { LayoutOrder = order, Pad = Vector2.new(4, 4) })
 		make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
-		Kit.Icon(card, if boxType == "Rare" then "RareBox" else "Box", UDim2.fromOffset(62, 62)).LayoutOrder = 1
-		local name = Kit.Label(card, string.format("%s  x%d", if boxType == "Rare" then "Royal Chest" else "Dungeon Chest", count), 17, Theme.TextPrimary, true)
+		Kit.Icon(card, if boxType == "Crystal" then "CrystalBox" elseif boxType == "Rare" then "RareBox" else "Box", UDim2.fromOffset(62, 62)).LayoutOrder = 1
+		local name = Kit.Label(card, string.format("%s  x%d", if boxType == "Crystal" then "Crystal Chest" elseif boxType == "Rare" then "Royal Chest" else "Dungeon Chest", count), 17, Theme.TextPrimary, true)
 		name.Size, name.LayoutOrder, name.TextScaled = UDim2.new(1, 0, 0, 25), 2, true
 		make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 17 }, name)
 		local odds = (state.BoxOdds or {})[boxType]
 		if odds then
 			local rf = P.ChipFlow(card, 3)
+			rf.AutomaticSize, rf.Size = Enum.AutomaticSize.None, UDim2.new(1, 0, 0, 190)
+			rf:FindFirstChildOfClass("UIListLayout").Padding = UDim.new(0, 2)
 			for i, e in odds.Rarities do
 				local lines = { e.Id .. " - " .. P.Pct(e.Chance) }
 				for _, room in odds.Rooms do

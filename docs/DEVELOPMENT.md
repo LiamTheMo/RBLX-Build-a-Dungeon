@@ -94,3 +94,5 @@ Add a spec for every new rules module. Gameplay that touches Instances, remotes 
 The test place is published from Studio (**File → Publish to Roblox**) after syncing `main`. Running servers keep the old version until they restart, so test in a new server. Keep the test place private until a phase's playtest calls for outside testers.
 
 Royal room icon sources and upload records are in `Assets/BuildADungeon/ui/sprites/royal_rooms_v1/README.md`; chest and blueprint sources are in `ui/sprites/loot_v2/README.md`. The room world models reuse existing game art pending bespoke models.
+
+Crystal Chest art is in `Assets/BuildADungeon/ui/sprites/crystal_chest/crystal_chest.png`. Asset 100791228398008 was uploaded but is not accessible to the experience; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).

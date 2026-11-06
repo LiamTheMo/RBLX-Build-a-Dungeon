@@ -228,3 +228,9 @@ The Dungeon Chest retains its existing rooms across all rarities. The Royal Ches
 Vault speed bonus is `25 * log10(1 + vaultedCoins / 100) * exchangeRate` percent. Empty vaults give no bonus, and additional coins have diminishing returns. This is an initial balance and requires playtesting. Global event commands are stored temporarily and polled by servers, including servers joining during an event; propagation normally takes up to 15 seconds and can be delayed by service failures.
 
 Profile schema v6 adds new room IDs. Older servers must not write profiles after this release; they reject v6 data. Rollbacks need a compatible server build to preserve those IDs.
+
+## Crystal chest and compact collection (owner-requested 2026-11-06)
+
+A Crystal Chest is awarded in addition to the normal level reward at every tenth keeper level, without retroactive awards. It draws from both existing chest pools, with tier weights Rare 55%, Epic 28%, Legendary 12%, Mythic 4% and Secret 1%. Room weights, shared pity, event bonuses and blueprint access follow the existing rules. Excess chests convert to 600 coins. Profile schema v7 retains the new chest count and prevents older servers from saving newer profiles. These values are starting assumptions for playtesting.
+
+The collection uses compact room cards, keeping discovery, ownership, source and stats visible; visitor details remain in the collection. Chest rarity controls keep their touch targets, and the Keeper panel uses three upgrade cards per row when space permits.

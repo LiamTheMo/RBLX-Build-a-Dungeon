@@ -739,7 +739,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		local row = opts.IconLayout == "Row"
 		-- Square icon: as tall as the fraction of the button, never wider than the button.
 		icon = Kit.Icon(b, opts.Icon, UDim2.new(1, 0, if row then 0.6 else (opts.IconScale or 0.5), 0), style[2])
-		make("UIAspectRatioConstraint", { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width }, icon)
+		make("UIAspectRatioConstraint", { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Height }, icon)
 		local centred = not row and baseText == ""
 		icon.AnchorPoint = if row then Vector2.new(0, 0.5) elseif centred then Vector2.new(0.5, 0.5) else Vector2.new(0.5, 0)
 		icon.Position = if row then UDim2.new(0, 14, 0.5, 0) elseif centred then UDim2.fromScale(0.5, 0.5) else UDim2.new(0.5, 0, 0.07, 0)

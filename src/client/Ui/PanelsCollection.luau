@@ -19,8 +19,9 @@ local C = {}
 -- Left badge: the room image / portrait (in the best owned tier's card frame) when discovered,
 -- a "?" silhouette otherwise. `image` = { Room = id, Kind = kind } | { Portrait = id } | nil.
 -- Returns the text column.
-local function entry(parent: Instance, order: number, known: boolean, image: { [string]: any }?, rarity: string?): Frame
+local function entry(parent: Instance, order: number, known: boolean, image: { [string]: any }?, rarity: string?, compact: boolean?): Frame
 	local card = P.Card(parent, order)
+	if compact then card.AutomaticSize = Enum.AutomaticSize.None end
 	card:FindFirstChildOfClass("UIListLayout"):Destroy()
 	local badge = Kit.Panel(card, { BackgroundColor3 = if known then Theme.BgRaised else Theme.BgDeep, Size = UDim2.fromOffset(64, 64), Rarity = if known then rarity else nil, Pad = 0 })
 	if known and image then
@@ -60,6 +61,8 @@ local function roomHint(def: any): string
 		return (if lvl > 1 then string.format("Shop Lv%d", lvl) else "Shop") .. ", box, blueprint"
 	elseif def.Source == "Tutorial" then
 		return "Tutorial"
+	elseif def.Source == "Loot" then
+		return "Chest, blueprint"
 	end
 	return "Starter"
 end
@@ -111,6 +114,9 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 	P.IconLine(scroll, "Trophy", string.format("%d/%d", seen, total), nxt(), Theme.Gold)
 
 	P.Section(scroll, "Rooms", nxt())
+	local roomCols = if P.Columns(scroll) == 3 then 2 else 1
+	local roomGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / roomCols, -8 * (roomCols - 1) / roomCols - 1, 0, 136), SortOrder = Enum.SortOrder.LayoutOrder }, roomGrid)
 	for _, id in roomIds do
 		local def = catalog.Rooms[id]
 		local known = found[id] == true
@@ -121,7 +127,7 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 				break
 			end
 		end
-		local col = entry(scroll, nxt(), known, { Room = id, Kind = def.Kind }, def.Rarity or best)
+		local col = entry(roomGrid, nxt(), known, { Room = id, Kind = def.Kind }, def.Rarity or best, true)
 		if known then
 			P.Text(col, def.DisplayName, Theme.TextSize.Heading, Theme.TextPrimary, true, 1)
 			local kindLine = P.IconLine(col, P.KindIcon[def.Kind] or "Defender", roomHint(def), 2, Theme.Gold)
@@ -212,7 +218,7 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 	local coins = state.Coins or 0
 	local cols = P.Columns(scroll)
 	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 150), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 150), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 	for order, def in catalog.Permanent do
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0

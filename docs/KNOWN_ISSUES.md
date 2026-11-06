@@ -70,3 +70,8 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 - **Release validation pending:** The new Royal room icons and chest art require moderation, rights and in-game checks. Royal rooms reuse existing 3D room models and tinted defender models as placeholders. Verify visual differentiation, balance, mobile layout, badge rendering and animated Secret UI in Studio.
 - **Global events:** Cross-server propagation and service failure recovery require testing in a published private environment with multiple servers. Memory store requests may fail or be delayed; the panel reports write failures and servers retry polling.
 - **Schema v6:** Take a profile snapshot before deployment and test migration, concurrent servers and rollback. Older server code cannot safely load v6 profiles; a rollback needs a compatible build.
+
+## Crystal chest and collection pass (2026-11-06)
+
+- Crystal Chest art was generated for this game and uploaded as asset 100791228398008, but Studio reports the experience is not authorized to use it. A group-owned upload requires approval of `C:/Users/asus/Projects/Assets/BuildADungeon/ui/sprites/crystal_chest` in Studio Assistant MCP upload settings. Confirm asset access, moderation, appearance and rights before release.
+- Validate chest cards, centered admin icon, collection and keeper upgrade layout on desktop and mobile; check narrow widths, touch, discovery, long visitor details and chest opening. The Crystal Chest numbers are initial tuning assumptions. Profile schema v7 prevents older servers from loading newer profiles; plan rollout and server restarts.
