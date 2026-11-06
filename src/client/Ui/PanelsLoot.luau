@@ -340,7 +340,7 @@ function L.Build(scroll: ScrollingFrame, state: any)
 	P.Section(scroll, "Chests", nxt())
 	local cols = P.Columns(scroll)
 	local chestGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 360), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 360), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
 	for order, boxType in catalog.Loot.BoxTypes do
 		local count = (state.Boxes or {})[boxType] or 0
 		local card = Kit.Panel(chestGrid, { LayoutOrder = order, Pad = Vector2.new(4, 4) })
@@ -378,7 +378,7 @@ function L.Build(scroll: ScrollingFrame, state: any)
 
 	P.Section(scroll, "Blueprints", nxt())
 	local bpGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols, 0, 235), SortOrder = Enum.SortOrder.LayoutOrder }, bpGrid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 235), SortOrder = Enum.SortOrder.LayoutOrder }, bpGrid)
 	for order, id in catalog.RoomOrder do
 		local def = catalog.Rooms[id]
 		local cost = def and def.CraftCost
