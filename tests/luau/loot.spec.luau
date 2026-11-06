@@ -1,4 +1,5 @@
--- Loot rules: shown odds, rarity rolls with pity, perks and drop rates.
+-- Loot rules: shown odds (tier, then room inside the tier), rolls with pity,
+-- blueprint drops, craft and scrap costs by tier, and drop rates.
 
 local Server = game:GetService("ServerScriptService").Server
 local Balance = require(Server.Definitions.Balance)
@@ -22,22 +23,43 @@ local function chanceOf(list, id)
 	return 0
 end
 
-test("shown odds sum to 1 and match the tables", function()
+-- An rng that returns the given numbers in order (then repeats the last).
+local function seq(...)
+	local values, i = { ... }, 0
+	return {
+		NextNumber = function()
+			i = math.min(i + 1, #values)
+			return values[i]
+		end,
+	}
+end
+
+test("shown odds: tier chances and room chances inside each tier sum to 1", function()
 	for _, boxType in Loot.BoxTypes do
 		local odds = Loot.Odds(boxType)
-		expectNear(sum(odds.Rooms), 1, 1e-9, boxType .. " rooms")
-		expectNear(sum(odds.Rarities), 1, 1e-9, boxType .. " rarities")
+		expectNear(sum(odds.Rarities), 1, 1e-9, boxType .. " tiers")
+		expectNear(sum(odds.Rooms), 1, 1e-9, boxType .. " rooms overall")
+		for _, t in odds.Rarities do
+			expectNear(sum(odds.TierRooms[t.Id]), 1, 1e-9, boxType .. " rooms inside " .. t.Id)
+			for _, e in odds.TierRooms[t.Id] do
+				expectEq(Rooms.Rarity(e.Id), t.Id, e.Id .. " belongs to " .. t.Id)
+				expectNear(chanceOf(odds.Rooms, e.Id), t.Chance * e.Chance, 1e-12, e.Id .. " overall = tier * share")
+			end
+		end
 		expectEq(odds.PityAfter, 9, "pity shown")
 	end
 	local d = Loot.Odds("Dungeon")
 	expectNear(chanceOf(d.Rarities, "Common"), 0.60, 1e-9, "common 60%")
 	expectNear(chanceOf(d.Rarities, "Mythic"), 0.0028, 1e-9, "mythic 0.28%")
 	expectNear(chanceOf(d.Rarities, "Secret"), 0.0002, 1e-9, "secret 0.02%")
-	expectNear(chanceOf(d.Rooms, "SlimeNest"), 0.25, 1e-9, "slime 25%")
-	expectNear(chanceOf(d.Rooms, "RestlessCrypt"), 0.08, 1e-9, "crypt 8%")
-	expectEq(chanceOf(d.Rooms, "TreasureRoom"), 0, "never a treasure room")
+	expectNear(chanceOf(d.TierRooms.Common, "SlimeNest"), 1 / 3, 1e-9, "common rooms equally likely")
+	expectNear(chanceOf(d.Rooms, "SlimeNest"), 0.20, 1e-9, "slime 20% overall")
+	expectNear(chanceOf(d.TierRooms.Rare, "Treasury"), 0.5 / 3.5, 1e-9, "treasure weighs 0.5")
+	expectNear(chanceOf(d.TierRooms.Secret, "VoidGate"), 1 / 1.5, 1e-9, "void gate 2/3 of Secret")
+	expectEq(chanceOf(d.Rooms, "TreasureRoom"), 0, "never the starter Coin Cache")
 	local r = Loot.Odds("Rare")
 	expectEq(chanceOf(r.Rarities, "Common"), 0, "rare box has no Common")
+	expectEq(r.TierRooms.Common, nil, "no Common room list")
 	expectNear(chanceOf(r.Rarities, "Rare"), 0.32, 1e-9, "rare 32%")
 	expectEq(Loot.Odds("Gold"), nil, "unknown box")
 	for _, e in d.Rooms do
@@ -45,15 +67,32 @@ test("shown odds sum to 1 and match the tables", function()
 	end
 end)
 
-test("rolls are deterministic for a seed", function()
-	local a, b = Random.new(42), Random.new(42)
-	for _ = 1, 50 do
-		expectEq(Loot.RollRarity("Dungeon", 0, a), Loot.RollRarity("Dungeon", 0, b), "rarity")
-		expectEq(Loot.RollRoom(a), Loot.RollRoom(b), "room")
+test("every tier has rooms; every placeable room but the Coin Cache is in the pool", function()
+	for _, t in Balance.Rarities do
+		expect(#Loot.TierRooms(t.Id) > 0, t.Id .. " has rooms")
+	end
+	for _, id in Rooms.Order do
+		local def = Rooms.Get(id)
+		if def.Placeable and id ~= "TreasureRoom" then
+			expect(Loot.Craftable(id), id .. " in the loot pool")
+			expect(chanceOf(Loot.Odds("Dungeon").Rooms, id) > 0, id .. " reachable from a Dungeon Box")
+		end
 	end
 end)
 
-test("rarity frequencies roughly match the odds", function()
+test("rolls are deterministic for a seed and match the tier", function()
+	local a, b = Random.new(42), Random.new(42)
+	for _ = 1, 50 do
+		local ta, ra = Loot.RollBox("Dungeon", 0, a, 10)
+		local tb, rb = Loot.RollBox("Dungeon", 0, b, 10)
+		expectEq(ta, tb, "tier")
+		expectEq(ra, rb, "room")
+		expectEq(Rooms.Rarity(ra), ta, "room of the rolled tier")
+	end
+	expectEq(Loot.RollBox("Gold", 0, a), nil, "unknown box")
+end)
+
+test("tier frequencies roughly match the odds", function()
 	local rng, n, counts = Random.new(7), 20000, {}
 	for _ = 1, n do
 		local r = Loot.RollRarity("Dungeon", 0, rng)
@@ -63,6 +102,18 @@ test("rarity frequencies roughly match the odds", function()
 	expectNear(counts.Uncommon / n, 0.25, 0.015, "uncommon")
 	expectNear(counts.Rare / n, 0.10, 0.01, "rare")
 	expectNear((counts.Epic or 0) / n, 0.035, 0.006, "epic")
+end)
+
+test("room frequencies inside a tier match the shown shares", function()
+	local rng, n, counts = Random.new(17), 14000, {}
+	for _ = 1, n do
+		local id = Loot.RollRoom("Rare", rng, 50)
+		counts[id] = (counts[id] or 0) + 1
+	end
+	local shown = Loot.Odds("Dungeon", 0, 50).TierRooms.Rare
+	for _, e in shown do
+		expectNear((counts[e.Id] or 0) / n, e.Chance, 0.015, e.Id)
+	end
 end)
 
 test("pity: after 9 boxes below Rare the next is at least Rare, then resets", function()
@@ -88,40 +139,22 @@ test("pity: after 9 boxes below Rare the next is at least Rare, then resets", fu
 	expect(worst <= 9, "longest streak below Rare " .. worst)
 end)
 
-test("perks: count, size and distinct kinds follow the rarity", function()
-	local rng = Random.new(11)
-	expectEq(#Loot.RollPerks("Common", rng), 0, "Common has none")
-	for _ = 1, 100 do
-		local u = Loot.RollPerks("Uncommon", rng)
-		expectEq(#u, 1, "Uncommon one")
-		expectEq(u[1].Amount, Balance.Perks.Small[u[1].Kind], "small")
-		local r = Loot.RollPerks("Rare", rng)
-		expectEq(r[1].Amount, Balance.Perks.Medium[r[1].Kind], "medium")
-		local e = Loot.RollPerks("Epic", rng)
-		expectEq(#e, 2, "Epic two")
-		expect(e[1].Kind ~= e[2].Kind, "different kinds")
-		expectEq(e[2].Amount, Balance.Perks.Medium[e[2].Kind], "medium")
-		local g = Loot.RollPerks("Legendary", rng)
-		expectEq(#g, 2, "Legendary two")
-		expectEq(g[2].Amount, Balance.Perks.Large[g[2].Kind], "large")
-		for id, size in { Mythic = "Large", Secret = "Huge" } do
-			local m = Loot.RollPerks(id, rng)
-			expectEq(#m, 3, id .. " three")
-			local kinds = {}
-			for _, perk in m do
-				kinds[perk.Kind] = true
-				expectEq(perk.Amount, Balance.Perks[size][perk.Kind], id .. " size")
-			end
-			expectEq(#Balance.Perks.Kinds, 3, "three kinds exist")
-			expect(kinds.Coins and kinds.Loot and kinds.Xp, id .. " one of each kind")
-		end
+test("craft cost and scrap return come from the room's tier", function()
+	local expected = {
+		Common = { 5, 2 }, Uncommon = { 6, 3 }, Rare = { 8, 4 }, Epic = { 10, 5 },
+		Legendary = { 12, 6 }, Mythic = { 15, 8 }, Secret = { 20, 10 },
+	}
+	for _, t in Balance.Rarities do
+		expectEq(t.CraftCost, expected[t.Id][1], t.Id .. " craft")
+		expectEq(t.ScrapReturn, expected[t.Id][2], t.Id .. " scrap")
+		expect(t.ScrapReturn < t.CraftCost, t.Id .. " scrapping never pays for a craft")
 	end
-	expectEq(Loot.PerkAmount("Common", "Coins"), nil, "no common perk")
-	expectEq(Loot.PerkAmount("Mythic", "Loot"), 0.40, "large loot")
-	expectEq(Loot.PerkAmount("Secret", "Coins"), 0.30, "huge coins")
-	expectEq(Loot.PerkAmount("Secret", "Xp"), 0.60, "huge xp")
-	expectEq(Loot.PerkAmount("Rare", "Bogus"), nil, "unknown kind")
-	expectEq(Loot.PerkAmount("Order", "Coins"), nil, "not a rarity")
+	expectEq(Loot.CraftCost("SlimeNest"), 5, "common room")
+	expectEq(Loot.CraftCost("GoblinBarracks"), 10, "epic room")
+	expectEq(Loot.ScrapReturn("VoidGate"), 10, "secret room")
+	expectEq(Loot.ScrapReturn("Strongbox"), 3, "uncommon treasure")
+	expectEq(Loot.CraftCost("TreasureRoom"), nil, "coin cache not craftable")
+	expectEq(Loot.ScrapReturn("Entrance"), nil, "entrance")
 end)
 
 test("drop rates roughly match over many seeded rolls; loot bonus scales them", function()
@@ -134,7 +167,7 @@ test("drop rates roughly match over many seeded rolls; loot bonus scales them", 
 					boxType = d.Type
 				else
 					bp += 1
-					expect(Balance.Loot.BlueprintRooms[d.RoomId] ~= nil, "blueprint is a shop room")
+					expect(Loot.Craftable(d.RoomId), "blueprint is craftable")
 				end
 			end
 		end
@@ -156,33 +189,52 @@ test("drop rates roughly match over many seeded rolls; loot bonus scales them", 
 	expectEq(Loot.DropChances("Scout", 100).Box, 1, "chance capped at 1")
 end)
 
-test("only placeable non-treasure rooms are craftable", function()
+test("blueprint drops: tier by Dungeon weights, then a room of it", function()
+	local odds = Loot.BlueprintOdds(nil)
+	expectNear(sum(odds), 1, 1e-9, "sums to 1")
+	expectNear(chanceOf(odds, "GuardRoom"), 0.60 / 3, 1e-9, "common share")
+	expectNear(chanceOf(odds, "VoidGate"), 0.0002 * (1 / 1.5), 1e-12, "secret share")
+	local rng, n, rare = Random.new(23), 20000, 0
+	for _ = 1, n do
+		if Rooms.Rarity(Loot.RollBlueprint(rng, 50)) == "Rare" then
+			rare += 1
+		end
+	end
+	expectNear(rare / n, 0.10, 0.01, "rare blueprints ~10%")
+end)
+
+test("only rooms in the loot pool are craftable (never the Coin Cache)", function()
 	expect(Loot.Craftable("SlimeNest"), "slime")
 	expect(Loot.Craftable("RestlessCrypt"), "crypt")
-	expect(not Loot.Craftable("TreasureRoom"), "treasure")
+	expect(Loot.Craftable("VoidVault"), "rarer treasures are craftable")
+	expect(not Loot.Craftable("TreasureRoom"), "coin cache")
 	expect(not Loot.Craftable("Entrance"), "entrance")
 	expect(not Loot.Craftable("Hacked"), "unknown")
 end)
 
-test("odds honour pity and the shop level gates, and match the rolls", function()
+test("odds honour pity and the shop gates (Common/Uncommon only), and match the rolls", function()
 	local fresh = Loot.Odds("Dungeon", 0, 1)
-	expectEq(chanceOf(fresh.Rooms, "MushroomCavern"), 0, "gated at level 1")
-	expectEq(chanceOf(fresh.Rooms, "RestlessCrypt"), 0, "crypt gated")
+	expectEq(chanceOf(fresh.TierRooms.Uncommon, "BatRoost"), 0, "bat gated at level 1")
+	expectEq(chanceOf(fresh.TierRooms.Uncommon, "MushroomCavern"), 1, "lowest-gated Uncommon is the fallback")
+	expect(chanceOf(fresh.TierRooms.Rare, "RestlessCrypt") > 0, "Rare rooms are never gated")
 	expectNear(sum(fresh.Rooms), 1, 1e-9, "renormalised")
-	expectNear(chanceOf(fresh.Rooms, "SlimeNest"), 25 / 70, 1e-9, "slime share")
-	local l3 = Loot.Odds("Dungeon", 0, 3)
-	expect(chanceOf(l3.Rooms, "MushroomCavern") > 0, "unlocked at 3")
-	expectEq(chanceOf(l3.Rooms, "MonsterDen"), 0, "den still gated")
-	expect(chanceOf(Loot.Odds("Dungeon", 0, 8).Rooms, "RestlessCrypt") > 0, "crypt at 8")
+	local l4 = Loot.Odds("Dungeon", 0, 4)
+	expectNear(chanceOf(l4.TierRooms.Uncommon, "BatRoost"), 0.5, 1e-9, "bat at 4 (with the mushroom)")
+	expectEq(chanceOf(l4.TierRooms.Uncommon, "Strongbox"), 0, "strongbox still gated")
+	local l6 = Loot.Odds("Dungeon", 0, 6)
+	expectNear(chanceOf(l6.TierRooms.Uncommon, "Strongbox"), 0.5 / 3.5, 1e-9, "strongbox at 6")
 	local pity = Loot.Odds("Dungeon", 9, 1)
 	expectEq(chanceOf(pity.Rarities, "Common"), 0, "pity removes Common")
 	expectEq(chanceOf(pity.Rarities, "Uncommon"), 0, "pity removes Uncommon")
 	expectNear(sum(pity.Rarities), 1, 1e-9, "pity renormalised")
-	-- Rolls use the same list: a scripted roll of ~1 lands in the last shown entry.
-	local top = { NextNumber = function() return 0.999999 end }
+	-- Rolls use the same lists: a scripted roll of ~1 lands in the last shown entry.
+	local top = seq(0.999999)
 	local last = pity.Rarities[#pity.Rarities].Id
 	expectEq(Loot.RollRarity("Dungeon", 9, top), last, "roll matches odds")
-	expectEq(Loot.RollRoom(top, 1), "GuardRoom", "last gated room")
-	expectEq(Loot.RollBlueprint(top, 1), "GuardRoom", "blueprint gated at 1")
-	expectEq(Loot.RollBlueprint(top, 8), "RestlessCrypt", "blueprint at 8")
+	expectEq(Loot.RollRoom("Common", top, 1), "GuardRoom", "last common room")
+	expectEq(Loot.RollRoom("Uncommon", top, 1), "MushroomCavern", "uncommon gated at 1")
+	expectEq(Loot.RollRoom("Uncommon", top, 6), "Strongbox", "uncommon at 6")
+	expectEq(Loot.RollBlueprint(seq(0, 0.999999), 1), "GuardRoom", "common blueprint")
+	expectEq(Loot.RollBlueprint(seq(0.7, 0), 1), "MushroomCavern", "uncommon blueprint gated at 1")
+	expectEq(Loot.RollBlueprint(seq(0.7, 0.999999), 5), "BatRoost", "uncommon blueprint at 5: last unlocked")
 end)

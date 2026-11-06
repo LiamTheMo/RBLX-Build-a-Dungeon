@@ -5,6 +5,7 @@
 local Rooms = require(script.Parent.Parent.Definitions.Rooms)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local Rewards = require(script.Parent.Parent.Rules.Rewards)
+local EventService = require(script.Parent.EventService)
 local ProfileService = require(script.Parent.ProfileService)
 
 local LootService = {}
@@ -41,9 +42,10 @@ function LootService.Init()
 	Net.Handle("OpenBox", function(...)
 		return oneString(...) and BOX_TYPES[(...)] == true
 	end, function(player, boxType)
-		local ok, result = apply(player, Rewards.OpenBox, boxType, LootService.Rng)
+		local ok, result = apply(player, Rewards.OpenBox, boxType, LootService.Rng, EventService.ActiveId())
 		if ok then
-			Net.Fire("Notice", player, { Text = `You found a {result.Rarity} {name(result.RoomId)}!`, Kind = "Good" })
+			local mod = if result.Modifier then `{result.Modifier} ` else ""
+			Net.Fire("Notice", player, { Text = `You found a {mod}{result.Rarity} {name(result.RoomId)}!`, Kind = "Good" })
 		end
 		return ok, result
 	end)

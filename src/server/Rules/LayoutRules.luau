@@ -1,6 +1,7 @@
 --!strict
 -- Server-side check of a client-submitted layout (cellKey -> room instance id)
--- against the player's profile, then the shared route rules.
+-- against the player's profile, then the route rules (Route.Build). Any shape is
+-- accepted; rooms the route does not use are idle (offRouteCells).
 
 local Definitions = script.Parent.Parent.Definitions
 local Grid = require(Definitions.Grid)
@@ -10,8 +11,9 @@ local MAX_CELLS = Grid.Columns * Grid.Rows - 1 -- every cell but the entrance
 
 local LayoutRules = {}
 
--- Returns (true, routeCells, cells) with cells = cellKey -> roomId, or (false, reason, cellKey?).
-function LayoutRules.Validate(profile: any, layout: any): (boolean, any, any)
+-- Returns (true, routeCells, cells, offRouteCells) with cells = cellKey -> roomId
+-- (every placed room, on the route or not), or (false, reason, cellKey?).
+function LayoutRules.Validate(profile: any, layout: any): (boolean, any, any, any)
 	if type(layout) ~= "table" then
 		return false, "BadArgs", nil
 	end
@@ -43,11 +45,11 @@ function LayoutRules.Validate(profile: any, layout: any): (boolean, any, any)
 		cells[key] = owned.Id
 	end
 
-	local ok, routeOrReason, offender = Route.Build(cells)
+	local ok, routeOrReason, offRouteOrKey = Route.Build(cells)
 	if not ok then
-		return false, routeOrReason, offender
+		return false, routeOrReason, offRouteOrKey
 	end
-	return true, routeOrReason, cells
+	return true, routeOrReason, cells, offRouteOrKey
 end
 
 return LayoutRules

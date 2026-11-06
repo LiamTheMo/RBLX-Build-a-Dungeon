@@ -6,7 +6,7 @@
 
 Build a dungeon that attracts NPC adventurers, defeats them and earns treasure. Arrange collectible rooms, monsters and traps into combinations, then reinvest rewards to grow the dungeon. The player is the dungeon keeper: they build and manage rather than personally running through rooms or controlling tiny troops.
 
-The experience is playful and mostly relaxing. Players may invite stronger visitors or leave treasure unbanked for better rewards. Failure causes a recoverable setback; it never destroys owned rooms, monsters, or permanent progress. Every dungeon should be satisfying to watch and feel personal enough to show friends.
+The experience is playful and mostly relaxing. Players may raise the threat level for tougher, better-paying visitors or keep part of their coins in the vault for faster visitors and rarer finds. Failure causes a recoverable setback; it never destroys owned rooms, monsters, or permanent progress. Every dungeon should be satisfying to watch and feel personal enough to show friends.
 
 ### Pillars
 
@@ -22,9 +22,9 @@ No direct dungeon-crawler combat or player-controlled troop system in the core l
 
 ## Core loop and first session
 
-**Place rooms and defenses → attract NPC adventurers → watch encounters → collect and bank rewards → acquire and improve dungeon pieces → rearrange and invite stronger visitors.**
+**Place rooms and defenses → attract NPC adventurers → watch encounters → collect rewards → acquire and improve dungeon pieces → rearrange and raise the threat level.**
 
-A new player spawns at a plot with an entrance and a slime nest. A practice adventurer arrives, fights the slime and drops coins if defeated; without a treasure room, rewards go straight to banked coins. The tutorial guides the player to place a free spike hall after the slime. The next visitor demonstrates that a slowed adventurer stays on spikes longer. The tutorial then offers the treasure room as an optional upgrade in risk and reward: more frequent visitors and a growing vault bonus, at the cost of possible theft. The player earns enough for a guaranteed basic room, then learns that a stronger challenger is optional.
+A new player spawns at a plot with an entrance and a slime nest. A practice adventurer arrives, fights the slime and drops coins if defeated; without a treasure room, rewards go straight to coins. The tutorial guides the player to place a free spike hall after the slime. The next visitor demonstrates that a slowed adventurer stays on spikes longer. The tutorial then offers the treasure room as an optional upgrade in risk and reward: choose a share of coins to keep in the vault for more frequent visitors and rarer variants, at the cost of possible theft. The player earns enough for a guaranteed basic room, then unlocks higher threat levels as their keeper level grows.
 
 Aim for the first encounter within roughly 15 seconds; validate with playtests. Onboarding should recover from unexpected actions, be skippable on later visits, and explain why encounters succeed or fail.
 
@@ -32,24 +32,45 @@ Over longer sessions, players unlock rooms, develop layouts, pursue collections,
 
 ## Building
 
-Each player owns an isolated plot. Start with a 5 × 4 grid as a tunable prototype and a fixed entrance. The dungeon is a miniature diorama: each room is a small open square about the height of a player's avatar, and scaled-down NPC adventurers walk through it. A room occupies one cell and has a doorway on all four sides, so orthogonally adjacent rooms always connect and no rotation is needed. The server computes traversable connections; the MVP supports one unambiguous path with no loops or branches. A valid layout is therefore one chain that starts at the entrance, where each room touches only the rooms before and after it on the route. The route ends at its last room. The **treasure room is optional**: a player may place at most one, and when placed it must be the last room on the route. Players can make temporarily disconnected edits in a draft layout between encounters; the server commits the draft only when it has a valid route. Invalid commits show a clear reason, and cancelling restores the last valid layout. Visitors pause during editing, so a player can rearrange a complete route without trapping themselves.
+Each player owns an isolated plot. Start with a 5 × 4 grid as a tunable prototype and a fixed entrance. The dungeon is a miniature diorama: each room is a small open square about the height of a player's avatar, and scaled-down NPC adventurers walk through it. A room occupies one cell and has a doorway on all four sides, so orthogonally adjacent rooms always connect and no rotation is needed. **Rooms may be placed in any cell except the entrance** (owner-approved 2026-11-05); a layout is never refused for its shape, so branches, loops and disconnected rooms are all allowed. The server still checks ownership, each room instance placed once, grid bounds and room limits (at most one treasure room). The server computes the visitors' **route**: the longest simple path (most rooms) through orthogonally adjacent rooms, starting at a room next to the entrance. The **treasure room is optional** (at most one). If it is placed and connected, the route is the longest path that ends at the treasure room. If it is not connected, the route is the longest path and the treasure room is off the route: nothing can be stolen and the vault allocation has no effect. Equal-length routes are decided by cell order, so the preview and the committed dungeon always show the same route. Rooms that are not on the route are **idle**: they stay placed and visible but do not fight and give no perks, modifiers or vault effects. A Monster Den only boosts defenders next to it on the route. The build preview marks the route and the idle rooms. Invalid commits show a clear reason, and cancelling restores the last committed layout. Visitors pause during editing, so a player can rearrange a complete route without trapping themselves.
 
 An angled overview camera makes the dungeon readable. In build mode, players select an inventory piece, preview its position and connections, then place, move or remove it. Rooms are not rotated in the MVP. A placed instance returns to inventory when removed. No instance can be placed twice.
 
-### Initial room roster
+### Room roster (item model owner-approved 2026-11-05)
 
-| Room | Function | Availability |
-| --- | --- | --- |
-| Entrance | Fixed starting point for visitors | Free, permanent |
-| Slime Nest | Defender attacks and briefly slows visitors | Starter |
-| Spike Hall | Periodic damage while a visitor stands on the active trap | Free tutorial piece; basic shop |
-| Treasure Room | Optional destination and unbanked vault: more frequent visitors and a vault bonus, but visitors who reach it steal | Free starter piece, optional, at most one |
-| Guard Room | Reliable single-target defense with a distinct attack cadence | Guaranteed coin purchase, MVP |
-| Monster Den | Support room, no monster of its own: each Defender room next to it on the route gets +20% damage and health (once per defender, however many Dens touch it). Not upgradable | Shop, 250 coins (Phase 7) |
-| Mushroom Cavern | A visitor entering becomes Spored for 5 s and takes +50% trap damage. Place before spikes. Not upgradable | Shop, 200 coins (Phase 7) |
-| Restless Crypt | Skeleton defender (60 health, 8 damage per 1.0 s) that rises once at 50% health the first time it is knocked out | Shop, 300 coins (Phase 7) |
+Every room type has **one fixed rarity**. A room's stats, perks and ability come from its type; an owned room only records its level (and an optional event modifier). Common and Uncommon rooms are sold in the shop for coins (with keeper-level gates); Rare and rarer rooms come only from boxes and blueprints. Only **one treasure room** (of any tier) can be placed. Numbers are starting values in `Balance.luau` ([PHASE0.md](PHASE0.md)).
 
-Phase 7 visitors (automatic, after the tutorial is done and 8 wins): **Scout** (50 health, fast, Sure-footed: immune to slows; reward 25, steals 10%) and **Cleric** (70 health, Mender: heals 4 HP/s while walking, not while duelling; reward 30, steals 10%). The automatic visitor follows a fixed Novice-heavy rotation and the next one is shown with its traits before it enters. A collection index records the rooms owned and visitors met.
+| Room | Tier | Role | Function | Availability |
+| --- | --- | --- | --- | --- |
+| Entrance | — | Fixed | Where visitors arrive | Permanent |
+| Slime Nest | Common | Defender | 40 HP, 6 dmg / 1.0 s; each hit slows 75% for 6 s | Starter |
+| Spike Hall | Common | Trap | 15 dmg every 1.2 s after a warning flash | Tutorial grant |
+| Guard Room | Common | Defender | 80 HP, 12 dmg / 1.2 s | Shop 100 |
+| Coin Cache (id `TreasureRoom`) | Common | Treasure | Vault exchange ×1.0 | Starter, optional |
+| Mushroom Cavern | Uncommon | Trap | Spored 5 s: +50% trap damage | Shop 200, level 3 |
+| Bat Roost | Uncommon | Defender | 60 HP, 6 dmg / 0.4 s | Shop 220, level 4 |
+| Arrow Gallery | Uncommon | Trap | 8 dmg volley every 0.8 s, anywhere in the room | Shop 250, level 5 |
+| Strongbox | Uncommon | Treasure | Vault exchange ×1.15 | Shop 600, level 6 |
+| Monster Den | Rare | Support | Adjacent route defenders +20% damage and health | Loot |
+| Restless Crypt | Rare | Defender | 60 HP, 8 dmg / 1.0 s; rises once at 50% | Loot |
+| Flame Vent | Rare | Trap | 10 dmg every 1.5 s, and Burn (5 dmg/s for 3 s) | Loot |
+| Treasury | Rare | Treasure | Vault exchange ×1.3 | Loot |
+| Frost Chamber | Epic | Trap (zone) | Chilled here and in the next room: 40% slower, 3 dmg/s | Loot |
+| Goblin Barracks | Epic | Defender | Two goblins in turn, 50 HP / 9 dmg each | Loot |
+| Mimic Room | Epic | Defender | Ambush first bite 40, then 70 HP / 10 dmg; looks like a chest | Loot |
+| Royal Vault | Epic | Treasure | Vault exchange ×1.6 | Loot |
+| Golem Forge | Legendary | Defender | Tank: 220 HP, 18 dmg / 1.6 s | Loot |
+| Lich Sanctum | Legendary | Defender | Summons a skeleton (40 HP / 8) that fights first, then the lich (110 HP / 15) | Loot |
+| Dragon Hoard | Legendary | Treasure | Vault exchange ×2.0, +25% rare-variant chance | Loot |
+| Dragon Lair | Mythic | Defender | 300 HP; breath 30 dmg every 2 s + Burn | Loot |
+| Phoenix Nest | Mythic | Defender | 150 HP / 16 dmg; once per encounter revives the first route defender knocked out, at full health (itself included) | Loot |
+| Celestial Coffer | Mythic | Treasure | Vault exchange ×2.6, +10% coins | Loot |
+| Void Gate | Secret | Trap (zone) | 10 dmg/s inside; once per encounter sends the visitor back to the entrance, keeping its damage | Loot |
+| Void Vault | Secret | Treasure | Vault exchange ×3.5, thieves take half | Loot |
+
+**Built-in perks** (coins, loot chance or XP; perks of rooms on the route add up, capped): Rare rooms one kind +5%, Epic one kind +10%, Legendary two kinds +10%, Mythic and Secret all three (+10% / +15%). Common and Uncommon rooms have none. **Statuses:** Burn ticks damage and stops Mender healing; slows don't stack (the strongest applies) and Sure-footed visitors ignore them but still take chill damage; Spored raises trap strikes and zone damage, not Burn.
+
+Phase 7 visitors: **Scout** (50 health, fast, Sure-footed: immune to slows; 22–32 coins, steals 10%) and **Cleric** (70 health, Mender: heals 4 HP/s while walking, not while duelling; 26–36 coins, steals 10%). Since 2026-11-05 visitors come from the active threat level's roster (see "Threat levels, variants and the treasure vault"); the next one is shown with its traits before it enters. A collection index records the rooms owned and visitors met.
 
 Each room has a role, visible state, cost and upgrade cap. Upgrades should preserve the room's identity. A common room must remain useful in combinations even after rare pieces appear.
 
@@ -57,39 +78,38 @@ For MVP, defenders belong to their rooms and recover automatically between encou
 
 ## Visitors and encounters
 
-NPC adventurers automatically arrive at an understandable interval when a valid dungeon is ready; a placed treasure room shortens that interval. Only one visitor per plot is active in the MVP. The visitor follows the server-computed path, encounters defenses and either is defeated or reaches the end of the route. Without a treasure room, a visitor who reaches the end leaves with nothing and the player earns nothing from that visit.
+NPC adventurers automatically arrive at an understandable interval when a valid dungeon is ready; a treasure room on the route shortens that interval. Only one visitor per plot is active in the MVP. The visitor follows the server-computed path, encounters defenses and either is defeated or reaches the end of the route. Without a treasure room, a visitor who reaches the end leaves with nothing and the player earns nothing from that visit.
 
 - **Novice:** Low health and modest reward; the default safe visitor.
-- **Armored challenger:** Tougher, higher reward and higher potential vault loss; explicitly invited after the tutorial.
+- **Armored challenger:** Tougher, higher reward and higher potential vault loss; a regular visitor from threat level 4.
 
 Later visitors may resist poison, avoid traps or heal allies. Their traits and potential rewards should be visible before they enter. Strong visitors test a layout rather than relying on surprise punishment.
 
-On victory, the server adds the advertised reward once: to unbanked vault gold when a treasure room is placed, otherwise straight to banked coins. If a visitor reaches the treasure room, it steals the advertised percentage of the *current unbanked balance*; banked coins and owned items are never affected. If the vault is empty, nothing is lost. Defenders recover for the next visit. A disconnected or interrupted encounter is cancelled without reward or robbery. Unique encounter IDs and server-side state prevent duplicate payouts.
+On victory, the server adds the reward once, straight to coins: a whole number rolled in the visitor's coin range, times the threat, variant, coin-bonus and event multipliers. If a visitor reaches the treasure room, it steals its percentage of the *vaulted coins* (the share the player chose); unvaulted coins and owned items are never affected. With a 0% share, nothing is lost. Defenders recover for the next visit. A disconnected or interrupted encounter is cancelled without reward or robbery. Unique encounter IDs and server-side state prevent duplicate payouts.
 
 ## Economy and risk
 
-- **Banked coins:** Persistent, safe currency for guaranteed rooms and upgrades.
-- **Vault gold:** Persistent but exposed to NPC robbery. It only accumulates while a treasure room is placed. The player can bank it through an explicit action.
+- **Coins:** Persistent currency for guaranteed rooms and upgrades. Every reward goes here.
+- **Vault share (since 2026-11-05):** while a treasure room is placed, the player chooses what percentage of their coins is vaulted (0–100%). Vaulted coins are exposed to NPC robbery; the rest is safe.
 
-The treasure room is the optional risk. Without one, every reward is banked immediately and nothing can be stolen. With one, visitors arrive more often and stored gold raises win rewards, but a visitor who reaches it steals part of the unbanked vault.
+The treasure room is the optional risk. Without one, or with a 0% share, nothing can be stolen. With a share, visitors arrive more often and rare variants are more likely, but a visitor who reaches the treasure room steals part of the vaulted coins.
 - **Materials:** Optional later resource from specific visitors; add only after the coin loop works.
 
-Leaving gold in the vault increases future win rewards by a capped amount. Initial test rule: +1% per 100 unbanked coins, capped at +20%. Show the current bonus and robbery risk. Players who bank immediately must still make worthwhile progress. Stored gold does not generate passive interest. Coin pickups are visual feedback; the server adds rewards automatically, so players are not forced to click every coin.
+The exchange (initial test rule): spawn-rate bonus % = vault share × rate, with rate = 1.0 × the placed treasure room's exchange (Coin Cache ×1.0 up to Void Vault ×3.5) × (1 + 10% per level above 1), +5% per Deep Vault level. The visitor interval is divided by (1 + bonus/100), never below 5 s, and rare-variant chances are multiplied by (1 + 0.5 × bonus/100). Show the current bonus and robbery risk. Players who vault nothing must still make worthwhile progress. Stored gold does not generate passive interest. Coin pickups are visual feedback; the server adds rewards automatically, so players are not forced to click every coin.
 
 ### Initial tuning hypotheses
 
 | Action | Starting value |
 | --- | ---: |
-| Novice win | 20 vault gold |
-| Novice theft | 10% of vault |
-| Challenger win | 50 vault gold |
-| Challenger theft | 25% of vault |
-| Guard Room | 100 banked coins |
-| First upgrade | 60 banked coins |
-| Automatic visitor interval | 30 seconds after the previous encounter |
-| Interval with a treasure room | 20 seconds after the previous encounter |
+| Novice win | 18–26 coins |
+| Novice theft | 10% of vaulted coins |
+| Challenger win | 45–65 coins |
+| Challenger theft | 25% of vaulted coins |
+| Guard Room | 100 coins |
+| First upgrade | 60 coins |
+| Automatic visitor interval | 30 seconds after the previous encounter, divided by (1 + vault bonus/100), at least 5 s |
 
-These are placeholders. Test time to first purchase and the value of safe versus risky play. Serialize banking, purchases and encounter resolution per player so simultaneous requests cannot duplicate or lose currency. Offline earnings are out of MVP and need their own cap and economy review.
+These are placeholders. Test time to first purchase and the value of safe versus risky play. Serialize vault changes, purchases and encounter resolution per player so simultaneous requests cannot duplicate or lose currency. Offline earnings are out of MVP and need their own cap and economy review.
 
 ## Collection and rarity
 
@@ -102,23 +122,36 @@ Tiers (lowest to highest): Common, Uncommon, Rare, Epic, Legendary, Mythic, Secr
 All of this is earned through play. Boxes and blueprints are never sold for Robux. Every box shows its real odds before it is opened.
 
 - **Drops:** a defeated adventurer may drop a **Dungeon Box** and/or a **Blueprint**. Stronger visitors drop more often. The base chance is multiplied by the player's loot bonus.
-- **Boxes:** opening a Dungeon Box gives one random room instance (any shop room, weighted toward common roles) with a rolled **rarity**. A **Rare Box** (from level-ups and challengers) shifts the rarity odds upward. **Pity:** a box that would be the 10th in a row without Rare or better is guaranteed to be at least Rare.
-- **Blueprints:** each blueprint belongs to one room type. 5 blueprints of a type craft that room at Common rarity. This is the guaranteed, non-random route to every room. Scrapping an unwanted room returns 2 of its blueprints (duplicate conversion).
-- **Rarity variants (7 tiers, owner-approved 2026-11-05):** Common, Uncommon, Rare, Epic, Legendary, Mythic, Secret. Rarer rooms have higher stats (×1.00 / 1.10 / 1.25 / 1.40 / 1.60 / 1.85 / 2.20), a higher upgrade cap (3 / 4 / 5 / 6 / 7 / 8 / 10), and perks: extra **coins**, extra **loot chance** or extra **XP**, always different kinds. Uncommon and Rare get one perk, Epic and Legendary two, Mythic and Secret three (one of each kind). Secret is about 1 in 5,000 Dungeon Boxes and has a shimmering prismatic edge. Perk bonuses from all placed rooms add up, with a cap. Rarity signals discovery: a well-arranged Common layout must stay viable.
-- **Room upgrades:** every placeable room can be upgraded with coins up to its rarity's cap. Defenders and traps hit harder and last longer. The Monster Den's boost grows. The Treasure Room raises its vault-bonus cap.
+- **Boxes (item model of 2026-11-05):** opening a box first rolls a **tier** with the tier odds (and pity), then a **room of that tier** (equal weights per room; rarer treasure rooms count half, and the starter Coin Cache never drops). Common and Uncommon rooms follow the shop level gates; rarer rooms are never gated. The box shows both the tier chances and the room chances inside each tier, exactly as rolled. A **Rare Box** (from level-ups and challengers) shifts the tier odds upward. **Pity:** a box that would be the 10th in a row without Rare or better is guaranteed to be at least Rare.
+- **Blueprints:** each blueprint belongs to one room type; a blueprint drop picks a tier with the Dungeon Box odds, then a room. Crafting cost depends on the room's tier: Common 5, Uncommon 6, Rare 8, Epic 10, Legendary 12, Mythic 15, Secret 20. This is the guaranteed, non-random route to every room. Scrapping an unwanted room returns 2 / 3 / 4 / 5 / 6 / 8 / 10 blueprints by tier (duplicate conversion).
+- **Rarity (7 tiers):** Common, Uncommon, Rare, Epic, Legendary, Mythic, Secret. A room's tier is fixed by its type (see "Room roster"). Higher tiers have stronger mechanics, a higher upgrade cap (3 / 4 / 5 / 6 / 7 / 8 / 10) and built-in perks (Rare and up). Secret is about 1 in 5,000 Dungeon Boxes and has a shimmering prismatic edge. Rarity signals discovery: a well-arranged Common layout must stay viable.
+- **Room upgrades:** every placeable room can be upgraded with coins up to its tier's cap. Defenders and traps hit harder and last longer (+25% per level). The Monster Den's boost grows. Treasure rooms raise their vault exchange rate (+10% per level).
 - **XP and keeper level:** every defeated adventurer gives XP. Levels unlock the rarer shop rooms and give a box at each level-up (a Rare Box every 5 levels).
-- **Permanent upgrades:** account-wide keeper upgrades bought with banked coins, at rising costs: Golden Touch (more coins), Lucky Charm (more loot), Scholar (more XP), Stout Defenders (defender health), Lure (shorter visitor interval) and Deep Vault (higher vault-bonus cap). They never reset.
+- **Permanent upgrades:** account-wide keeper upgrades bought with coins, at rising costs: Golden Touch (more coins), Lucky Charm (more loot), Scholar (more XP), Stout Defenders (defender health), Lure (shorter visitor interval) and Deep Vault (+5% vault exchange rate per level). They never reset.
 
 Starting numbers live in `Balance.luau` and are listed in [PHASE0.md](PHASE0.md); they are hypotheses to tune in playtests. The non-random routes (shop purchases, blueprint crafting) keep every functional room reachable without luck.
 
+## Threat levels, variants and the treasure vault (owner-approved 2026-11-05)
+
+- **Threat levels:** attackers the keeper unlocks for better loot. Threat 1–6 unlock at keeper levels 1, 4, 8, 13, 19 and 26; the player chooses the active level (not during an encounter). Per level above 1: visitor health and damage +35%, coins +50%, XP +40%, drop chances +25%. Each level has its own visitor roster: T1 Novices, T2 adds Scouts, T3 Clerics, T4 and up the Armored Challenger as a regular visitor, with higher levels weighted toward tougher visitors. This replaces the challenger invite.
+- **Rare variants**, rolled when a visitor spawns: Elite 5% (×1.5 health, ×2 coins, ×2 drop chances), Shiny 1% (×1.2 health, ×3 coins, guaranteed Dungeon Box), Gilded 0.2% (×2 health, ×10 coins, guaranteed Rare Box). The vault bonus and events raise these chances.
+- **Coin ranges:** each visitor pays a range (Practice 8–12, Novice 18–26, Scout 22–32, Cleric 26–36, Armored Challenger 45–65), rolled once per encounter on the server, then multiplied.
+- **Treasure vault:** see "Economy and risk". Bank and the separate vault balance are gone; existing vault gold was added to coins.
+- **Server events:** about every 35–50 minutes a random 10-minute event runs for everyone: Golden Hour (×2 coins), Lucky Stars (×2 drop chances), Rare Invasion (×3 variant chances), Blessed Boxes (Epic and rarer box weights ×2), Swarm (visitors twice as often, still at least 5 s apart). During an event a room from a box has a 25% chance of one modifier: Blazing (+15% damage), Lucky (+10% loot chance) or Golden (+10% coins).
+- **Drop tables:** every visitor shows its coin range, XP and the chance of every possible drop (each box and each blueprint room), plus the variant chances, at the player's current threat level, bonuses and event. Shown numbers are the ones rolled.
+- **Next goal:** the HUD can show the next threat level, the next level-gated shop room and the cheapest permanent upgrade. Level-ups still grant boxes.
+- **Admin tools:** listed developers and group staff (rank 254+) can start and stop events and grant coins, boxes, XP or every threat level through chat commands, for testing and live events. Every use is logged.
+
+All numbers are starting values in `Balance.luau` (see [PHASE0.md](PHASE0.md)), to tune in playtests.
+
 ## Interface and onboarding
 
-- **HUD:** banked coins, vault gold, current risk bonus, build access and next visitor status.
+- **HUD:** coins, vault share and vaulted coins, current vault bonus, threat level, active server event, build access, next visitor status and the next goal (next threat level, shop room or upgrade).
 - **Build mode:** room inventory, touch/mouse placement, preview, connection indicators, remove/move, and plain-language errors.
-- **Encounter panel:** visitor name, health, route, expected reward and vault risk; concise interaction feedback.
+- **Encounter panel:** visitor name and variant, health, route, coin range and vault risk; concise interaction feedback.
 - **Shop:** role, cost, ownership and confirmation for consequential purchases.
 - **Collection:** entries, source and owned count. Never imply odds that are not real.
-- **Tutorial:** contextual prompts for practice encounter, placement, banking and first purchase; recover if the player takes unexpected actions.
+- **Tutorial:** contextual prompts for practice encounter, placement, choosing a vault share and first purchase; recover if the player takes unexpected actions. The tutorial always uses threat level 1.
 - **Accessibility:** readable contrast, large touch targets, icons plus text, reduced camera motion/effects and adjustable audio. Test safe areas and small phones.
 
 ## Visual, animation and audio direction
@@ -138,22 +171,27 @@ The existing Rojo configuration maps `src/shared`, `src/server` and `src/client`
 - **Shared:** Versioned room/visitor definitions, balance data, grid rules and message contracts. The server still validates all requests.
 - **Server:** Plot assignment, ownership, inventory, placement and path validation, encounter state machine, combat, currency, shop and persistence.
 - **Client:** Camera, input, build preview, UI, animations and effects. The client requests actions; it cannot grant currency or decide results.
-- **Profile:** Schema version, banked coins, vault gold, stable inventory instance IDs, placements, upgrades, unlocks and onboarding state. Define defaults, migrations and repairs for invalid IDs, duplicate instances and broken layouts.
+- **Profile:** Schema version, coins, vault share, threat level, stable inventory instance IDs, placements, upgrades, unlocks and onboarding state. Define defaults, migrations and repairs for invalid IDs, duplicate instances and broken layouts.
 - **Persistence:** Server-side session ownership/locking strategy, retry/backoff, periodic and lifecycle saves, shutdown handling and published-place failure testing. A failed load is not a new profile: block progression and do not overwrite an inaccessible save with defaults. Document actual guarantees and limitations.
 - **Security:** Validate ownership, costs, grid bounds, connectivity, encounter state and remote argument types. Rate-limit requests; serialize transactions; make encounter resolution idempotent. Clean up NPCs and connections on exit.
 - **Performance:** Cap rooms and NPCs, clean up or pool effects, avoid per-frame simulation where possible, and profile multiple plots on representative mobile hardware.
 
 ## Milestones and success questions
 
-**Playable MVP:** Persistent plot, valid placement and rearrangement, automatic visitors, correct win/loss and vault behavior, banking, guaranteed purchases/upgrades, onboarding and reconnect persistence. Mouse and touch work. Placeholder art is acceptable.
+**Playable MVP:** Persistent plot, valid placement and rearrangement, automatic visitors, correct win/loss and vault behavior, guaranteed purchases/upgrades, onboarding and reconnect persistence. Mouse and touch work. Placeholder art is acceptable.
 
 **Full release:** MVP plus a tested content roster, modular art, animation, VFX, audio, responsive UI, accessibility, stable persistence, performance testing and an operations process. Scope follows actual capacity and playtest outcomes.
 
-Measure tutorial completion, time to first placement/purchase, layout edits, encounters, banking behavior, challenger participation, session length, returns and errors. Establish targets from an initial test instead of inventing success claims. Ask testers if they understand why they won or lost, what they want next, and whether rearranging helped.
+Measure tutorial completion, time to first placement/purchase, layout edits, encounters, vault-share behavior, threat-level choices, session length, returns and errors. Establish targets from an initial test instead of inventing success claims. Ask testers if they understand why they won or lost, what they want next, and whether rearranging helped.
 
 Open questions: Is watching encounters engaging between edits? Is vault risk understandable or stressful? How often should visitors arrive? Are rooms or upgrades more motivating? How many rooms can a server support? Does branching improve play enough to justify complexity? Do players feel forced to place a treasure room, or is safe play still worthwhile? Fix readability and the core loop before adding more content.
 
 ## Change log
+
+- **2026-11-05 (owner-approved, item model):** Each room type has one fixed rarity; room instances no longer roll a rarity, a stat multiplier or perks (perks are built into Rare and rarer rooms). Boxes roll a tier, then a room of that tier; odds show both. Blueprint costs and scrap returns depend on the tier. The shop sells only Common and Uncommon rooms; Monster Den and Restless Crypt became Rare (box/blueprint only), Mushroom Cavern Uncommon. A treasure line (Coin Cache, Strongbox, Treasury, Royal Vault, Dragon Hoard, Celestial Coffer, Void Vault) replaces the treasure room's rarity; only one treasure can be placed. New rooms: Arrow Gallery, Bat Roost, Flame Vent, Frost Chamber, Goblin Barracks, Mimic Room, Golem Forge, Lich Sanctum, Dragon Lair, Phoenix Nest, Void Gate. Profile schema v5 drops instance rarity and perks and clamps levels to the room's tier cap.
+
+- **2026-11-05 (owner-approved, free placement):** Rooms may be placed in any cell except the entrance; layouts are no longer refused for branches, loops, disconnected rooms or a treasure room that is not last. The server computes the route as the longest simple path from the entrance (ending at the treasure room when it is connected; ties broken by cell order). Rooms off the route are idle and give no perks or bonuses; an off-route treasure room has no vault effect and cannot be robbed. Saved layouts are no longer reset for their shape.
+- **2026-11-05 (owner-approved):** Threat levels T1–T6 (unlocked by keeper level, chosen by the player) replace the invited Armored Challenger and the fixed visitor rotation. Rare Elite/Shiny/Gilded variants. Coin ranges per visitor. The treasure vault allocation (a chosen share of coins at risk for faster visitors and rarer variants) replaces Bank, the vault balance and the vault reward bonus (profile schema v4 adds the vault balance to coins). Server events with room modifiers, admin chat commands, full drop tables and next-goal data.
 
 - **2026-11-05 (owner-approved):** 7 tiers, data-driven: Epic, Legendary and Secret added to Common, Uncommon, Rare and Mythic. Existing Mythic rooms keep their rarity; their max level rises to 8.
 - **2026-11-04 (Phase 7 systems depth):** Monster Den, Mushroom Cavern and Restless Crypt (shop rooms), Scout and Cleric visitors with traits, a deterministic automatic-visitor rotation, a `Discovered` collection index (profile schema v2). Numbers in `Balance.luau`; no loot boxes in this step.

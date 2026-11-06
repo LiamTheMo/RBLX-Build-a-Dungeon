@@ -8,7 +8,9 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local Ui = script.Parent.Parent.Ui
+local Badges = require(Ui.Badges)
 local Catalog = require(Ui.Catalog)
+local Kit = require(Ui.Kit)
 local Cells = require(Ui.Cells)
 local Doors = require(Ui.Doors)
 local Net = require(Ui.Net)
@@ -19,11 +21,27 @@ local Theme = require(Ui.Theme)
 
 local View = {}
 
-local DEFENDER_ART = { SlimeNest = "Slime", GuardRoom = "Guard", RestlessCrypt = "Skeleton" }
+-- Room id -> defender actors (one per unit), the attachment each stands at and flight/wing settings. Units step through
+-- in order (DefenderUnit): Goblin Barracks = 2 goblins, Lich Sanctum = summoned skeleton (SummonSpot) then the lich.
+local DEFENDER_ART = {
+	SlimeNest = { Actors = { "Slime" } },
+	GuardRoom = { Actors = { "Guard" } },
+	RestlessCrypt = { Actors = { "Skeleton" } },
+	BatRoost = { Actors = { "Bat" }, Flyer = { Rate = 14, Amp = 0.8, Lift = 1.1 } },
+	GoblinBarracks = { Actors = { "Goblin", "Goblin" }, Spots = { "DefenderSpot", "DefenderSpot2" }, StepIn = true },
+	MimicRoom = { Actors = { "Mimic" } },
+	GolemForge = { Actors = { "Golem" } },
+	LichSanctum = { Actors = { "Skeleton", "Lich" }, Spots = { "SummonSpot", "DefenderSpot" }, Summoned = 1 },
+	DragonLair = { Actors = { "Dragon" }, Wings = { Rate = 3.2, Amp = 0.3 } },
+	PhoenixNest = { Actors = { "Phoenix" }, Flyer = { Rate = 6, Amp = 0.55, Lift = 0.9 } },
+}
+local FIRE = Color3.fromRGB(255, 140, 40)
+local FROST = Color3.fromRGB(150, 215, 255)
+local VOID = Color3.fromRGB(170, 90, 255)
 local RARITY_COLOR = RarityColors.Accent
 local SPORE_GREEN = Color3.fromRGB(150, 220, 60)
 local BOX_COLOR = { Dungeon = Theme.Gold, Rare = Color3.fromRGB(90, 160, 255) }
-local JOINTS = { "Neck", "LeftShoulder", "RightShoulder", "LeftHip", "RightHip" }
+local JOINTS = { "Neck", "LeftShoulder", "RightShoulder", "LeftHip", "RightHip", "Lid", "Jaw", "Tail" }
 local MAX_SPEED = 8 -- studs/s the displayed visitor may chase the replicated progress
 local FX_CAP = 6
 local COIN_CAP = 30
@@ -145,7 +163,7 @@ local GRAYBOX = {
 }
 
 -- An actor wraps a character model with procedural animation state.
-local function newActor(name: string)
+local function newActor(name: string, opts: any?)
 	local model: Model
 	local template = characterTemplate(name)
 	if template then
@@ -166,7 +184,7 @@ local function newActor(name: string)
 	end
 	model.PrimaryPart.Anchored = true
 	model.Parent = fxFolder
-	local actor = { Model = model, Joints = {}, Phase = 0, Down = 0, Seed = math.random() * 6.28 }
+	local actor = { Model = model, Joints = {}, Phase = 0, Down = 0, Seed = math.random() * 6.28, Wings = opts and (opts.Flyer or opts.Wings), Lift = opts and opts.Flyer and opts.Flyer.Lift or 0 }
 	for _, j in JOINTS do
 		local m = model:FindFirstChild(j, true)
 		if m and m:IsA("Motor6D") then
@@ -199,14 +217,37 @@ local function swing(actor)
 	end
 end
 
--- Walk cycle and attack swing through Motor6D.Transform; returns the forward lunge.
+-- Walk cycle and attack swing through Motor6D.Transform; returns the forward lunge. Winged creatures flap their
+-- shoulders about Z (opposite signs) instead of swinging arms; Mimic lid, Dragon jaw/tail and Phoenix tail are driven too.
 local function animate(actor, dt: number, moving: boolean, speedScale: number): number
 	local j = actor.Joints
 	if actor.Highlight and actor.FlashUntil and os.clock() > actor.FlashUntil and not actor.KeepHighlight then
 		actor.Highlight.Enabled = false
 	end
 	local ls, rs, lh, rh = j.LeftShoulder, j.RightShoulder, j.LeftHip, j.RightHip
-	if moving then
+	local reduced = Settings.Reduced()
+	local winged = actor.Wings ~= nil
+	local swingW = 0
+	local lunge = 0
+	if actor.Swing then
+		local t = (os.clock() - actor.Swing) / 0.35
+		if t >= 1 then
+			actor.Swing = nil
+		else
+			swingW = math.sin(math.pi * t)
+			lunge = swingW * 0.6
+		end
+	end
+	if winged then
+		local w = actor.Wings
+		local a = math.sin(os.clock() * w.Rate * (if reduced then 0.5 else 1) + actor.Seed) * w.Amp * (if reduced then 0.3 else 1)
+		if ls then
+			ls.Transform = CFrame.Angles(0, 0, a)
+		end
+		if rs then
+			rs.Transform = CFrame.Angles(0, 0, -a)
+		end
+	elseif moving then
 		actor.Phase += dt * 8 * speedScale
 		local s = math.sin(actor.Phase)
 		if ls then
@@ -228,25 +269,29 @@ local function animate(actor, dt: number, moving: boolean, speedScale: number): 
 			end
 		end
 	end
-	local lunge = 0
-	if actor.Swing then
-		local t = (os.clock() - actor.Swing) / 0.35
-		if t >= 1 then
-			actor.Swing = nil
-		else
-			local w = math.sin(math.pi * t)
-			if rs then
-				rs.Transform = CFrame.Angles(-w * 2, 0, 0)
-			end
-			lunge = w * 0.6
-		end
+	if swingW > 0 and rs and not winged then
+		rs.Transform = CFrame.Angles(-swingW * 2, 0, 0)
+	end
+	-- Ambush / attack open the mimic lid and the dragon jaw; tails sway.
+	local open = swingW
+	if actor.OpenUntil and os.clock() < actor.OpenUntil then
+		open = math.max(open, math.clamp((actor.OpenUntil - os.clock()) / 0.6 + 0.4, 0, 1))
+	end
+	if j.Lid then
+		j.Lid.Transform = CFrame.Angles(-open * 1.1, 0, 0)
+	end
+	if j.Jaw then
+		j.Jaw.Transform = CFrame.Angles(open * 0.6, 0, 0)
+	end
+	if j.Tail then
+		j.Tail.Transform = CFrame.Angles(0, if reduced then 0 else math.sin(os.clock() * 2.2 + actor.Seed) * 0.3, 0)
 	end
 	return lunge
 end
 
 -- Effects (capped) -----------------------------------------------------------
 
-local function floatText(pos: Vector3, text: string, color: Color3)
+local function floatText(pos: Vector3, text: string, color: Color3, icon: string?, burst: boolean?)
 	if fxText >= FX_CAP then
 		return
 	end
@@ -259,9 +304,18 @@ local function floatText(pos: Vector3, text: string, color: Color3)
 		Size = Vector3.new(0.2, 0.2, 0.2),
 		Position = pos,
 	}, fxFolder)
-	local gui = make("BillboardGui", { Size = UDim2.fromOffset(140, 36), AlwaysOnTop = true, MaxDistance = 150 }, anchorPart)
+	local gui = make("BillboardGui", { Size = UDim2.fromOffset(170, 40), AlwaysOnTop = true, MaxDistance = 150 }, anchorPart)
+	local plate, iconImg
+	if burst then -- HitBurst plate behind damage numbers
+		plate = Kit.Sprite(gui, "World.HitBurst", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(96, 96), ImageTransparency = 0.1, ZIndex = 1 })
+	end
+	if icon then -- CoinFloat / XpFloat next to the amount
+		iconImg = Kit.Icon(gui, icon, UDim2.fromOffset(32, 32))
+		iconImg.AnchorPoint, iconImg.Position, iconImg.ZIndex = Vector2.new(1, 0.5), UDim2.new(0.5, -(#text * 6.5), 0.5, 0), 2
+	end
 	local label = make("TextLabel", {
 		BackgroundTransparency = 1,
+		ZIndex = 3,
 		Size = UDim2.fromScale(1, 1),
 		Text = text,
 		TextColor3 = color,
@@ -275,7 +329,14 @@ local function floatText(pos: Vector3, text: string, color: Color3)
 	if not reduced then
 		TweenService:Create(anchorPart, info, { Position = pos + Vector3.new(0, 3, 0) }):Play()
 	end
-	TweenService:Create(label, TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 0, false, info.Time - 0.5), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	local fade = TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 0, false, info.Time - 0.5)
+	TweenService:Create(label, fade, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+	if plate then
+		TweenService:Create(plate, fade, { ImageTransparency = 1 }):Play()
+	end
+	if iconImg then
+		TweenService:Create(iconImg, fade, { ImageTransparency = 1 }):Play()
+	end
 	task.delay(info.Time + 0.05, function()
 		anchorPart:Destroy()
 		fxText -= 1
@@ -322,16 +383,10 @@ local function coinBurst(pos: Vector3)
 			end)
 			coin, mover, fade = m, cv, false
 		else
-			local p = make("Part", {
-				Anchored = true,
-				CanCollide = false,
-				CanQuery = false,
-				Shape = Enum.PartType.Cylinder,
-				Size = Vector3.new(0.12, 0.6, 0.6),
-				Color = Theme.Gold,
-				Material = Enum.Material.Neon,
-				CFrame = start,
-			}, fxFolder)
+			-- No coin art: a CoinFloat sprite on an invisible anchor.
+			local p = make("Part", { Anchored = true, CanCollide = false, CanQuery = false, Transparency = 1, Size = Vector3.one * 0.2, CFrame = start }, fxFolder)
+			local bb = make("BillboardGui", { Size = UDim2.fromOffset(34, 34), AlwaysOnTop = true, MaxDistance = 150 }, p)
+			Kit.Icon(bb, "CoinFloat", UDim2.fromScale(1, 1))
 			coin, mover, fade = p, p, true
 		end
 		local function at(v: Vector3): any
@@ -340,9 +395,6 @@ local function coinBurst(pos: Vector3)
 		local spread = Vector3.new(math.random() * 5 - 2.5, 0, math.random() * 5 - 2.5)
 		local up = TweenService:Create(mover, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), at(pos + Vector3.new(0, 3.5, 0) + spread * 0.5))
 		local downGoal = at(pos + Vector3.new(0, 0.3, 0) + spread)
-		if fade then
-			downGoal.Transparency = 1
-		end
 		local down = TweenService:Create(mover, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), downGoal)
 		up.Completed:Once(function()
 			down:Play()
@@ -370,6 +422,7 @@ local function puff(pos: Vector3, color: Color3, count: number, speed: number, l
 	local e = make("ParticleEmitter", {
 		Enabled = false,
 		Color = ColorSequence.new(color),
+		Texture = (Kit.Spec("World.VfxPuff") or {}).Id or "",
 		Lifetime = NumberRange.new(life * 0.6, life),
 		Speed = NumberRange.new(speed * 0.5, speed),
 		SpreadAngle = Vector2.new(180, 180),
@@ -382,7 +435,7 @@ local function puff(pos: Vector3, color: Color3, count: number, speed: number, l
 end
 
 -- Pulse every part with this name in a room model (art), or flash a temporary ring when the art has none.
-local function pulseRoom(model: Model, partName: string, color: Color3, diameter: number)
+local function pulseRoom(model: Model, partName: string, color: Color3, diameter: number, scale: number?)
 	local found = false
 	for _, part in model:GetDescendants() do
 		if part.Name == partName and part:IsA("BasePart") then
@@ -390,7 +443,7 @@ local function pulseRoom(model: Model, partName: string, color: Color3, diameter
 			if not pulsing[part] and not Settings.Reduced() then
 				pulsing[part] = true
 				local size = part.Size
-				local t = TweenService:Create(part, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), { Size = size * 1.25 })
+				local t = TweenService:Create(part, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true), { Size = size * (scale or 1.25) })
 				t.Completed:Once(function()
 					part.Size = size
 					pulsing[part] = nil
@@ -406,22 +459,23 @@ local function pulseRoom(model: Model, partName: string, color: Color3, diameter
 		return
 	end
 	fxRings += 1
+	-- No pulse part in the art: a VfxRing sprite on a flat invisible part that grows and fades.
 	local ring = make("Part", {
 		Anchored = true,
 		CanCollide = false,
 		CanQuery = false,
-		Shape = Enum.PartType.Cylinder,
-		Material = Enum.Material.Neon,
-		Color = color,
-		Transparency = 0.4,
-		Size = Vector3.new(0.1, diameter * 0.6, diameter * 0.6),
-		CFrame = model:GetPivot() * CFrame.new(0, 0.2, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Transparency = 1,
+		Size = Vector3.new(diameter * 0.6, 0.05, diameter * 0.6),
+		CFrame = model:GetPivot() * CFrame.new(0, 0.25, 0),
 	}, fxFolder)
+	local sg = make("SurfaceGui", { Face = Enum.NormalId.Top, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 30, LightInfluence = 0, Adornee = ring }, ring)
+	local ringImg = Kit.Sprite(sg, "World.VfxRing", { Size = UDim2.fromScale(1, 1), ImageColor3 = color, ImageTransparency = 0.2, ScaleType = Enum.ScaleType.Stretch })
 	local info = TweenInfo.new(if Settings.Reduced() then 0.01 else 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	local goal = { Transparency = 1 }
-	if not Settings.Reduced() then
-		goal.Size = Vector3.new(0.1, diameter, diameter)
+	local goal = { Size = Vector3.new(diameter, 0.05, diameter) }
+	if Settings.Reduced() then
+		goal = { Size = ring.Size }
 	end
+	TweenService:Create(ringImg, info, { ImageTransparency = 1 }):Play()
 	local t = TweenService:Create(ring, info, goal)
 	t.Completed:Once(function()
 		ring:Destroy()
@@ -438,17 +492,22 @@ local function dropPill(pos: Vector3, text: string, color: Color3, delay: number
 	fxDrops += 1
 	local reduced = Settings.Reduced()
 	local anchor = tempPart(pos, delay + 2.2)
-	local gui = make("BillboardGui", { Size = UDim2.fromOffset(190, 32), AlwaysOnTop = true, MaxDistance = 150, Enabled = false }, anchor)
-	local pill = make("TextLabel", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Theme.BgDeep,
+	local gui = make("BillboardGui", { Size = UDim2.fromOffset(200, 40), AlwaysOnTop = true, MaxDistance = 150, Enabled = false }, anchor)
+	local pill = Kit.Sprite(gui, "Controls.DropPill", { Size = UDim2.fromScale(1, 1), ImageColor3 = color:Lerp(Color3.new(1, 1, 1), 0.35) })
+	local pillText = make("TextLabel", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -36, 1, 0),
+		Position = UDim2.fromOffset(18, 0),
 		Text = text,
 		TextColor3 = Theme.TextPrimary,
+		TextStrokeColor3 = Theme.Stroke,
+		TextStrokeTransparency = 0.3,
 		TextSize = 16,
+		TextScaled = true,
+		ZIndex = 2,
 		FontFace = Theme.HeadingFont,
-	}, gui)
-	make("UICorner", { CornerRadius = UDim.new(1, 0) }, pill)
-	local stroke = make("UIStroke", { Color = color, Thickness = 3 }, pill)
+	}, pill)
+	make("UITextSizeConstraint", { MinTextSize = 9, MaxTextSize = 16 }, pillText)
 	task.delay(delay, function()
 		if not anchor.Parent then
 			fxDrops -= 1
@@ -459,13 +518,58 @@ local function dropPill(pos: Vector3, text: string, color: Color3, delay: number
 			TweenService:Create(anchor, TweenInfo.new(1.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = pos + Vector3.new(0, 2.5, 0) }):Play()
 		end
 		task.delay(1.6, function()
-			TweenService:Create(pill, TweenInfo.new(0.4), { BackgroundTransparency = 1, TextTransparency = 1 }):Play()
-			TweenService:Create(stroke, TweenInfo.new(0.4), { Transparency = 1 }):Play()
+			TweenService:Create(pill, TweenInfo.new(0.4), { ImageTransparency = 1 }):Play()
+			TweenService:Create(pillText, TweenInfo.new(0.4), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
 			task.delay(0.45, function()
 				fxDrops -= 1
 				anchor:Destroy()
 			end)
 		end)
+	end)
+end
+
+-- Local axis (unit vector) of a part's thinnest (thin = true) or longest extent.
+local function partAxis(part: BasePart, thin: boolean): Vector3
+	local sz = part.Size
+	local axes = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+	local best, bestV = 1, if thin then math.huge else -1
+	for i, v in { sz.X, sz.Y, sz.Z } do
+		if (thin and v < bestV) or (not thin and v > bestV) then
+			best, bestV = i, v
+		end
+	end
+	return axes[best]
+end
+
+-- Breath / flame cone: a one-shot emitter on a temp part at `from`, aimed at `to` (capped).
+local fxBreath = 0
+local function breath(from: Vector3, to: Vector3, color0: Color3, color1: Color3)
+	if fxBreath >= 3 then
+		return
+	end
+	fxBreath += 1
+	local dir = to - from
+	if dir.Magnitude < 0.1 then
+		dir = Vector3.zAxis
+	end
+	local p = tempPart(from, 1.2)
+	p.CFrame = CFrame.lookAt(from, from + dir)
+	local e = make("ParticleEmitter", {
+		Enabled = false,
+		Color = ColorSequence.new(color0, color1),
+		Texture = (Kit.Spec("World.VfxPuff") or {}).Id or "",
+		Lifetime = NumberRange.new(0.35, 0.6),
+		Speed = NumberRange.new(14, 20),
+		SpreadAngle = Vector2.new(10, 10),
+		EmissionDirection = Enum.NormalId.Front,
+		Rate = 0,
+		LightEmission = 1,
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1.6) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) }),
+	}, p)
+	e:Emit(if Settings.Reduced() then 10 else 36)
+	task.delay(1.2, function()
+		fxBreath -= 1
 	end)
 end
 
@@ -525,7 +629,9 @@ local function destroyVisitor(view)
 end
 
 local function destroyDefender(def)
-	def.Actor.Model:Destroy()
+	for _, a in def.Actors do
+		a.Model:Destroy()
+	end
 end
 
 local function destroyTrap(trap)
@@ -536,24 +642,49 @@ end
 
 local function newVisitor(view, id: string)
 	local actor = newActor(id)
+	local variant = view.Plot:GetAttribute("VisitorVariant")
+	variant = if type(variant) == "string" and Badges.VariantTint[variant] then variant else ""
 	local gui = make("BillboardGui", {
 		Adornee = actor.Model.PrimaryPart,
-		Size = UDim2.fromOffset(64, 10),
-		StudsOffset = Vector3.new(0, 3, 0),
+		Size = UDim2.fromOffset(120, if variant ~= "" then 56 else 10),
+		StudsOffset = Vector3.new(0, if variant ~= "" then 3.6 else 3, 0),
 		MaxDistance = 150,
 	}, actor.Model)
-	local bg = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0 }, gui)
-	local fill = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Theme.Success, BorderSizePixel = 0 }, bg)
-	for _, f in { bg, fill } do
-		make("UICorner", { CornerRadius = UDim.new(1, 0) }, f)
+	make("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 2) }, gui)
+	if variant ~= "" then
+		-- Rare variant: nameplate above the health bar and a tint (sparkles for Shiny and Gilded).
+		local plate = Badges.Variant(gui, variant, 42)
+		if plate then
+			plate.LayoutOrder = 1
+		end
+		actor.Variant = variant
+		if variant ~= "Elite" and actor.Model.PrimaryPart then
+			make("ParticleEmitter", {
+				Enabled = not Settings.Reduced(),
+				Color = ColorSequence.new(Badges.VariantTint[variant]),
+				Texture = (Kit.Spec("World.VfxSparkle") or {}).Id or "",
+				Rate = 7,
+				Lifetime = NumberRange.new(0.8, 1.3),
+				Speed = NumberRange.new(0.5, 1.5),
+				SpreadAngle = Vector2.new(180, 180),
+				LightEmission = 0.7,
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.45), NumberSequenceKeypoint.new(1, 0) }),
+			}, actor.Model.PrimaryPart)
+		end
 	end
+	-- Overhead health: Bars.Track with the Bars.Fill sprite clipped inside (Fill tinted by remaining health).
+	gui.Size = UDim2.fromOffset(120, if variant ~= "" then 62 else 16)
+	local bg = Kit.Sprite(gui, "Bars.Track", { Size = UDim2.fromOffset(80, 14), LayoutOrder = 2 })
+	local clipF = make("Frame", { Name = "Clip", BackgroundTransparency = 1, Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6), ClipsDescendants = true }, bg)
+	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ImageColor3 = Theme.Success, Image = "" }, clipF)
+	Kit.SkinByHeight(fill, Kit.Spec("Bars.Fill"))
 	actor.HealthFill = fill
 	view.Visitor, view.VisitorId = actor, id
 	view.Chase = nil
 end
 
 -- Frame bars of shimmer-tier rooms: hue-cycled each frame (see Heartbeat below).
-local shimmerBars: { BasePart } = {}
+local shimmerBars: { any } = {} -- BaseParts (trim) and ImageLabels (floor ring sprite)
 
 local function clearDeco(view, m: Instance)
 	local d = view.Deco[m]
@@ -590,39 +721,45 @@ local function applyRarity(view, m: Model)
 	end
 	local folder = make("Folder", { Name = "Rarity" }, fxFolder)
 	local cf, half = m:GetPivot(), 2.9
-	local front
-	for _, side in { { 0, half, 5.8, 0.12 }, { 0, -half, 5.8, 0.12 }, { half, 0, 0.12, 5.8 }, { -half, 0, 0.12, 5.8 } } do
-		local bar = make("Part", {
-			Anchored = true,
-			CanCollide = false,
-			CanQuery = false,
-			CanTouch = false,
-			Material = Enum.Material.Neon,
-			Color = color,
-			Transparency = 0.45,
-			Size = Vector3.new(side[3], 0.12, side[4]),
-			CFrame = cf * CFrame.new(side[1], 0.15, side[2]),
-		}, folder)
-		front = front or bar
-		if RarityColors.Shimmer[rarity] then
-			table.insert(shimmerBars, bar)
-		end
+	-- Floor mark: one flat invisible part carrying a VfxRing sprite in the tier colour (shimmer tiers cycle its hue).
+	local front = make("Part", {
+		Name = "RarityMark",
+		Anchored = true,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		CastShadow = false,
+		Transparency = 1,
+		Size = Vector3.new(half * 2, 0.05, half * 2),
+		CFrame = cf * CFrame.new(0, 0.15, 0),
+	}, folder)
+	local sg = make("SurfaceGui", { Face = Enum.NormalId.Top, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 30, LightInfluence = 0, Adornee = front }, front)
+	local markImg = Kit.Sprite(sg, "World.VfxRing", { Size = UDim2.fromScale(1, 1), ImageColor3 = color, ImageTransparency = 0.25, ScaleType = Enum.ScaleType.Stretch })
+	if RarityColors.Shimmer[rarity] then
+		table.insert(shimmerBars, markImg)
 	end
-	-- Hidden beyond 45 studs (it rendered as a black capsule from high camera distances).
-	local badge = make("BillboardGui", { Adornee = front, Size = UDim2.fromOffset(96, 24), StudsOffset = Vector3.new(0, 1.6, 0), MaxDistance = 45, LightInfluence = 0, AlwaysOnTop = false }, folder)
-	local pill = make("TextLabel", {
+	-- Overhead badge: the tier's RarityBadge sprite with its name. Hidden beyond 45 studs.
+	local badge = make("BillboardGui", { Adornee = front, Size = UDim2.fromOffset(104, 30), StudsOffset = Vector3.new(0, 1.6, half), MaxDistance = 45, LightInfluence = 0, AlwaysOnTop = false }, folder)
+	local badgeSpec = Kit.Spec("Controls.RarityBadge." .. tostring(rarity)) and ("Controls.RarityBadge." .. tostring(rarity))
+	local pill = Kit.Sprite(badge, badgeSpec or "Controls.RarityBadge.Common", { Size = UDim2.fromScale(1, 1) })
+	make("TextLabel", {
+		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Theme.BgDeep,
 		Text = string.upper(rarity),
-		TextColor3 = color,
+		TextColor3 = Theme.TextPrimary,
+		TextStrokeColor3 = Theme.Stroke,
+		TextStrokeTransparency = 0.3,
 		TextSize = 14,
+		TextScaled = true,
 		FontFace = Theme.HeadingFont,
-	}, badge)
-	make("UICorner", { CornerRadius = UDim.new(1, 0) }, pill)
-	make("UIStroke", { Color = color, Thickness = 2 }, pill)
+		ZIndex = 2,
+	}, pill)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }, pill:FindFirstChildOfClass("TextLabel"))
+	make("UITextSizeConstraint", { MinTextSize = 8, MaxTextSize = 14 }, pill:FindFirstChildOfClass("TextLabel"))
 	local sparkles = RarityColors.Sparkle[rarity]
 	local sparkle = make("ParticleEmitter", {
 		Enabled = sparkles and not Settings.Reduced(),
+		Texture = (Kit.Spec("World.VfxSparkle") or {}).Id or "",
 		Color = ColorSequence.new(color),
 		Rate = 4,
 		Lifetime = NumberRange.new(1, 1.6),
@@ -637,6 +774,46 @@ local function applyRarity(view, m: Model)
 	view.Deco[m] = { Folder = folder, Rarity = rarity, Sparkles = sparkles, Sparkle = sparkle, Trim = trim }
 end
 
+-- Room modifier badge and off-route dimming (rooms may sit in any cell; off-route ones never see visitors).
+local function applyMarks(view, m: Model)
+	local mod = m:GetAttribute("Modifier")
+	mod = if type(mod) == "string" and Badges.ModifierColor[mod] then mod else ""
+	local off = m:GetAttribute("OnRoute") == false
+	local sig = mod .. (if off then "!" else "")
+	local rec = view.Marks[m]
+	if not rec or rec.Sig ~= sig or not rec.Gui.Parent then
+		if rec then
+			rec.Gui:Destroy()
+			view.Marks[m] = nil
+			rec = nil
+		end
+		local adornee = m:FindFirstChildWhichIsA("BasePart", true)
+		if adornee and sig ~= "" then
+			local gui = make("BillboardGui", { Name = "RoomMarks", Adornee = adornee, Size = UDim2.fromOffset(76, 34), StudsOffset = Vector3.new(0, 4.6, 0), MaxDistance = 90, LightInfluence = 0 }, m)
+			make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4) }, gui)
+			if mod ~= "" then
+				Badges.Modifier(gui, mod, 32)
+			end
+			if off then
+				local tag = Kit.Icon(gui, "Map", UDim2.fromOffset(32, 32))
+				tag.ImageTransparency = 0.1
+				local x = Kit.Icon(tag, "Cross", UDim2.fromScale(0.55, 0.55))
+				x.AnchorPoint, x.Position = Vector2.new(1, 1), UDim2.fromScale(1, 1)
+			end
+			rec = { Sig = sig, Gui = gui }
+			view.Marks[m] = rec
+		end
+	end
+	if view.Plot:GetAttribute("State") ~= "Building" then
+		local dim = if off then 0.5 else 0
+		for _, d in m:GetDescendants() do
+			if d:IsA("BasePart") and d.Name ~= "Pivot" then
+				d.LocalTransparencyModifier = dim
+			end
+		end
+	end
+end
+
 local function roomAt(view, index: number): Model?
 	local rooms = view.Plot:FindFirstChild("Rooms")
 	for _, m in if rooms then rooms:GetChildren() else {} do
@@ -645,6 +822,86 @@ local function roomAt(view, index: number): Model?
 		end
 	end
 	return nil
+end
+
+-- Animated room art (client only). Spinners rotate about their thin axis; Stars twinkle; Arrows fly across on Trap
+-- events; Flames burst on strikes. Parts are found by name in the art, so a room without them simply does nothing.
+local ROOM_ANIM = { ArrowGallery = true, FlameVent = true, FrostChamber = true, VoidGate = true, VoidVault = true, CelestialCoffer = true }
+local SPINNERS = {
+	VoidGate = { PortalRing = 1.3, PortalRune = -0.8 },
+	VoidVault = { Swirl = 2.2, SwirlArms = -1.4 },
+	CelestialCoffer = { MagicCircle = 0.6 },
+}
+
+local function buildAnim(m: Model, roomId: string)
+	local an: any = { Model = m, Id = roomId, Spin = {}, Stars = {}, Arrows = {}, Flames = {}, Angle = 0 }
+	local center = m:GetPivot().Position
+	for _, d in m:GetDescendants() do
+		if d:IsA("BasePart") then
+			local speed = SPINNERS[roomId] and SPINNERS[roomId][d.Name]
+			if speed then
+				table.insert(an.Spin, { Part = d, Rest = d.CFrame, Axis = partAxis(d, true), Speed = speed })
+			elseif roomId == "CelestialCoffer" and d.Name == "Star" then
+				table.insert(an.Stars, { Part = d, Size = d.Size, Phase = #an.Stars * 1.7 })
+			elseif roomId == "ArrowGallery" and d.Name == "Arrow" then
+				local rest = d.CFrame
+				local dir = Vector3.new(center.X - rest.Position.X, 0, center.Z - rest.Position.Z)
+				if dir.Magnitude < 0.5 then
+					dir = rest.LookVector
+				end
+				dir = dir.Unit
+				local axis = rest:VectorToWorldSpace(partAxis(d, false))
+				if axis:Dot(dir) < 0 then
+					axis = -axis
+				end
+				local cross = axis:Cross(dir)
+				local fly = rest
+				if cross.Magnitude > 1e-3 then
+					fly = CFrame.fromAxisAngle(cross.Unit, math.acos(math.clamp(axis:Dot(dir), -1, 1))) * rest.Rotation + rest.Position
+				end
+				table.insert(an.Arrows, { Part = d, Rest = rest, Fly = fly, Dir = dir, Delay = #an.Arrows * 0.07 })
+			elseif roomId == "FlameVent" and (d.Name == "Flame" or d.Name == "FlameCore") then
+				table.insert(an.Flames, { Part = d, Size = d.Size })
+			end
+		end
+	end
+	return an
+end
+
+-- Opens the lid of a room's chest (treasure rooms, on Robbed) about its back edge, then closes it again.
+local function openChest(m: Model)
+	local lid = m:FindFirstChild("Lid", true)
+	local lock = m:FindFirstChild("Lock", true)
+	if not (lid and lid:IsA("BasePart")) or Settings.Reduced() or pulsing[lid] then
+		return
+	end
+	pulsing[lid] = true
+	local rest = lid.CFrame
+	local sz = lid.Size
+	local front = Vector3.new(0, 0, 1)
+	if lock and lock:IsA("BasePart") then
+		local lp = rest:PointToObjectSpace(lock.Position)
+		front = if math.abs(lp.X) > math.abs(lp.Z) then Vector3.new(math.sign(lp.X), 0, 0) else Vector3.new(0, 0, math.sign(lp.Z))
+	end
+	local hinge = rest * CFrame.new(-front.X * sz.X / 2, -sz.Y / 2, -front.Z * sz.Z / 2)
+	local function pose(a: number)
+		local rot = if front.Z ~= 0 then CFrame.Angles(-front.Z * a, 0, 0) else CFrame.Angles(0, 0, front.X * a)
+		lid.CFrame = hinge * rot * hinge:Inverse() * rest
+	end
+	local t0 = os.clock()
+	local conn
+	conn = RunService.Heartbeat:Connect(function()
+		local t = os.clock() - t0
+		if t > 2.6 or not lid.Parent then
+			conn:Disconnect()
+			if lid.Parent then
+				lid.CFrame = rest
+			end
+			pulsing[lid] = nil
+			return
+		end
+		pose(1.2 * math.clamp(math.min(t / 0.25, (2.6 - t) / 0.5), 0, 1))
+	end)
 end
 
 -- Rescan Rooms: defender actors, trap parts and doorways.
@@ -664,9 +921,19 @@ local function refreshRooms(view)
 				return occupied[k] == true
 			end)
 			applyRarity(view, m)
-			if DEFENDER_ART[roomId] and not view.Defenders[m] then
-				view.Defenders[m] = { Actor = newActor(DEFENDER_ART[roomId]), Model = m }
-			elseif roomId == "SpikeHall" and not view.Traps[m] then
+			applyMarks(view, m)
+			local dcfg = DEFENDER_ART[roomId]
+			if dcfg and not view.Defenders[m] then
+				local actors = {}
+				for i, name in dcfg.Actors do
+					actors[i] = newActor(name, dcfg)
+				end
+				view.Defenders[m] = { Actors = actors, Actor = actors[1], Model = m, Cfg = dcfg }
+			end
+			if ROOM_ANIM[roomId] and not view.Anims[m] then
+				view.Anims[m] = buildAnim(m, roomId)
+			end
+			if roomId == "SpikeHall" and not view.Traps[m] then
 				local parts = {}
 				for _, d in m:GetDescendants() do
 					if d.Name == "Spike" and d:IsA("BasePart") then
@@ -716,6 +983,11 @@ local function refreshRooms(view)
 			view.Traps[m] = nil
 		end
 	end
+	for m in view.Anims do
+		if not seen[m] or not m.Parent then
+			view.Anims[m] = nil
+		end
+	end
 end
 
 local function defenderAt(view, index: number)
@@ -736,8 +1008,9 @@ local function trapAt(view, index: number)
 	return nil
 end
 
-local function spotCF(view, def, anchor: CFrame): CFrame
-	local spot = def.Model:FindFirstChild("DefenderSpot", true)
+local function spotCF(view, def, anchor: CFrame, i: number?): CFrame
+	local name = def.Cfg and def.Cfg.Spots and def.Cfg.Spots[i or 1] or "DefenderSpot"
+	local spot = def.Model:FindFirstChild(name, true)
 	local facing = anchor.Rotation * CFrame.Angles(0, math.pi, 0) -- toward the front, where visitors come from
 	if spot and spot:IsA("Attachment") then
 		return CFrame.new(spot.WorldPosition) * facing
@@ -781,6 +1054,21 @@ local function stepView(view, dt: number)
 		if math.abs(target - chase) > 3 * cellSize then
 			step = target - chase
 		end
+		-- Void Gate: the visitor SNAPS back to the entrance (no tween) with a portal flash at both ends.
+		if view.SnapUntil then
+			if os.clock() > view.SnapUntil then
+				view.SnapUntil = nil
+			elseif target < chase - 1 then
+				step = target - chase
+				view.SnapUntil = nil
+				local entrance = Cells.World(plot, Catalog.Current.Grid.EntranceKey)
+				local at = if entrance then entrance.Position + Vector3.new(0, 1.2, 0) else nil
+				if at then
+					puff(at, VOID, 22, 8, 0.9)
+				end
+				flash(v, VOID, 0.4)
+			end
+		end
 		view.Chase = chase + step
 		local lp, dir = sample(view.Path, view.Chase)
 		local worldPos = anchor:PointToWorldSpace(lp)
@@ -794,7 +1082,29 @@ local function stepView(view, dt: number)
 		local look = CFrame.lookAt(worldPos, worldPos + worldDir)
 		v.Model:PivotTo(look * CFrame.new(0, 0, -lunge))
 		view.VisitorPos = worldPos
-		local tint = if plot:GetAttribute("VisitorSpored") == true then SPORE_GREEN elseif slowed then Theme.Success else nil
+		local burning = plot:GetAttribute("VisitorBurning") == true
+		local chilled = plot:GetAttribute("VisitorChilled") == true
+		-- Status particles (flames while burning, frost motes while chilled).
+		for _, st in { { "BurnFx", burning, FIRE, 14, "VfxPuff", 0.9 }, { "ChillFx", chilled, FROST, 8, "VfxSparkle", 0.55 } } do
+			local fx = v[st[1]]
+			if not fx then
+				fx = make("ParticleEmitter", {
+					Enabled = false,
+					Color = ColorSequence.new(st[3]),
+					Texture = (Kit.Spec("World." .. st[5]) or {}).Id or "",
+					Lifetime = NumberRange.new(0.5, 0.9),
+					Speed = NumberRange.new(1, 2.5),
+					EmissionDirection = Enum.NormalId.Top,
+					SpreadAngle = Vector2.new(30, 30),
+					LightEmission = 0.9,
+					Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, st[6]), NumberSequenceKeypoint.new(1, 0) }),
+				}, v.Model.PrimaryPart)
+				v[st[1]] = fx
+			end
+			fx.Rate = if reduced then math.ceil(st[4] / 4) else st[4]
+			fx.Enabled = st[2]
+		end
+		local tint = if plot:GetAttribute("VisitorSpored") == true then SPORE_GREEN elseif burning then FIRE elseif chilled then FROST elseif slowed then Theme.Success else Badges.VariantTint[v.Variant or ""]
 		v.KeepHighlight = tint ~= nil
 		if tint and v.Highlight and not (v.FlashUntil and os.clock() < v.FlashUntil) then
 			v.Highlight.FillColor = tint
@@ -814,7 +1124,7 @@ local function stepView(view, dt: number)
 			v.HealFx = make("ParticleEmitter", {
 				Enabled = false,
 				Color = ColorSequence.new(Theme.Success),
-				Texture = "rbxasset://textures/particles/sparkles_main.dds",
+				Texture = (Kit.Spec("World.VfxSparkle") or {}).Id or "",
 				Lifetime = NumberRange.new(0.8, 1.2),
 				Speed = NumberRange.new(1, 2),
 				EmissionDirection = Enum.NormalId.Top,
@@ -831,40 +1141,66 @@ local function stepView(view, dt: number)
 		v.HealFx.Enabled = healing
 		local frac = math.clamp((plot:GetAttribute("VisitorHealth") or max) / max, 0, 1)
 		v.HealthFill.Size = UDim2.fromScale(frac, 1)
-		v.HealthFill.BackgroundColor3 = if frac < 0.3 then Theme.Danger else Theme.Success
+		v.HealthFill.ImageColor3 = if frac < 0.3 then Theme.Danger else Theme.Success
 	end
 
-	-- Defenders
+	-- Defenders: one actor per unit; the active unit (DefenderUnit) fights, finished units lie down, a Goblin
+	-- steps in from its own spot, the Lich's skeleton only exists once summoned.
 	for m, def in view.Defenders do
-		local a = def.Actor
+		local cfg = def.Cfg
 		local hp = m:GetAttribute("DefenderHealth")
-		local down = (hp ~= nil and hp <= 0) or (def.Forced and inEncounter)
+		local roomDown = (hp ~= nil and hp <= 0) or (def.Forced and inEncounter)
 		if not inEncounter then
 			def.Forced = false
+			def.UnitEvt = 1
+			def.SummonAt = nil
 		end
-		local goal = if down then 1 else 0
-		local rate = if a.RiseUntil and os.clock() < a.RiseUntil then 1.2 else 4 -- Rise stands up slowly
-		a.Down = if reduced then goal else a.Down + math.clamp(goal - a.Down, -dt * rate, dt * rate)
+		local attrUnit = m:GetAttribute("DefenderUnit")
+		local unit = math.clamp(math.max(if type(attrUnit) == "number" then attrUnit else 1, def.UnitEvt or 1), 1, #def.Actors)
+		def.Actor = def.Actors[unit]
 		-- DenBoost glow while the boosted defender is in the encounter.
 		local boosted = def.Boosted == true and inEncounter
 		if not inEncounter then
 			def.Boosted = false
 		end
-		a.KeepHighlight = boosted
-		if boosted and not a.Highlight then
-			flash(a, Theme.Warning, 0)
-		end
-		if a.Highlight then
-			if boosted and not (a.FlashUntil and os.clock() < a.FlashUntil) then
-				a.Highlight.FillColor, a.Highlight.FillTransparency, a.Highlight.Enabled = Theme.Warning, 0.7, true
-			elseif a.FlashUntil and os.clock() < a.FlashUntil then
-				a.Highlight.FillTransparency = 0.35
+		for i, a in def.Actors do
+			local hidden = cfg.Summoned == i and not (def.SummonAt and inEncounter)
+			if a.Hidden ~= hidden then
+				a.Hidden = hidden
+				a.Model.Parent = if hidden then nil else fxFolder
+			end
+			if not hidden then
+				local down = roomDown or i < unit
+				local goal = if down then 1 else 0
+				local rate = if a.RiseUntil and os.clock() < a.RiseUntil then 1.2 else 4 -- Rise stands up slowly
+				a.Down = if reduced then goal else a.Down + math.clamp(goal - a.Down, -dt * rate, dt * rate)
+				a.KeepHighlight = boosted
+				if boosted and not a.Highlight then
+					flash(a, Theme.Warning, 0)
+				end
+				if a.Highlight then
+					if boosted and not (a.FlashUntil and os.clock() < a.FlashUntil) then
+						a.Highlight.FillColor, a.Highlight.FillTransparency, a.Highlight.Enabled = Theme.Warning, 0.7, true
+					elseif a.FlashUntil and os.clock() < a.FlashUntil then
+						a.Highlight.FillTransparency = 0.35
+					end
+				end
+				local lunge = animate(a, dt, false, 1)
+				local flyer = cfg.Flyer ~= nil
+				local bob = if reduced or down then 0 else math.sin(os.clock() * (if flyer then 3 else 2) + a.Seed) * (if flyer then 0.22 else 0.1)
+				local cf = spotCF(view, def, anchor, i)
+				-- Goblins: the active one walks over to the front spot.
+				if cfg.StepIn and i > 1 then
+					local want = if i == unit and not down then 1 else 0
+					a.StepP = math.clamp((a.StepP or 0) + (want * 2 - 1) * dt / 0.5, 0, 1)
+					if a.StepP > 0 then
+						local front = spotCF(view, def, anchor, 1)
+						cf = cf:Lerp(front, a.StepP)
+					end
+				end
+				a.Model:PivotTo(cf * CFrame.new(0, bob + a.Lift * (1 - a.Down) - a.Down * 0.3, -lunge) * CFrame.Angles(-a.Down * 1.4, 0, 0))
 			end
 		end
-		local lunge = animate(a, dt, false, 1)
-		local bob = if reduced or down then 0 else math.sin(os.clock() * 2 + a.Seed) * 0.1
-		local cf = spotCF(view, def, anchor)
-		a.Model:PivotTo(cf * CFrame.new(0, bob - a.Down * 0.3, -lunge) * CFrame.Angles(-a.Down * 1.4, 0, 0))
 	end
 
 	-- Traps: telegraph from the fixed cycle, strike from Trap events.
@@ -901,6 +1237,61 @@ local function stepView(view, dt: number)
 		trap.Tag = tag
 	end
 
+	-- Animated room art.
+	local now = os.clock()
+	for m, an in view.Anims do
+		if not m.Parent then
+			continue
+		end
+		if not reduced then
+			for _, sp in an.Spin do
+				if sp.Part.Parent then
+					sp.Part.CFrame = sp.Rest * CFrame.fromAxisAngle(sp.Axis, now * sp.Speed)
+				end
+			end
+		end
+		for _, st in an.Stars do
+			if st.Part.Parent then
+				st.Part.Size = if reduced then st.Size else st.Size * (1 + 0.25 * math.sin(now * 3 + st.Phase))
+			end
+		end
+		if an.Fire then
+			local live = false
+			for _, ar in an.Arrows do
+				local t = (now - an.Fire - ar.Delay) / 0.5
+				if ar.Part.Parent then
+					if reduced or t >= 1 or t < 0 and ar.Flying == nil then
+						if ar.Flying then
+							ar.Flying = nil
+							ar.Part.CFrame = ar.Rest
+							ar.Part.LocalTransparencyModifier = 0
+						end
+					else
+						live = true
+						ar.Flying = true
+						ar.Part.CFrame = ar.Fly + ar.Dir * (math.max(t, 0) * 7)
+						ar.Part.LocalTransparencyModifier = if t > 0.75 then (t - 0.75) * 4 else 0
+					end
+				end
+			end
+			if not live and now - an.Fire > 1.5 then
+				an.Fire = nil
+			end
+		end
+		if an.Burst then
+			local t = (now - an.Burst) / 0.45
+			local k = if t >= 1 or reduced then 0 else math.sin(math.pi * t)
+			for _, f in an.Flames do
+				if f.Part.Parent then
+					f.Part.Size = f.Size * Vector3.new(1 + k * 0.5, 1 + k * 1.2, 1 + k * 0.5)
+				end
+			end
+			if t >= 1 then
+				an.Burst = nil
+			end
+		end
+	end
+
 	view.Timer += dt
 	if view.Timer > 1 then
 		view.Timer = 0
@@ -916,9 +1307,12 @@ local function addPlot(plot: Instance)
 	if not plot:IsA("Model") or views[plot] then
 		return
 	end
-	local view = { Plot = plot, Defenders = {}, Traps = {}, Deco = {}, Timer = 0, Dirty = true }
+	local view = { Plot = plot, Defenders = {}, Traps = {}, Anims = {}, Deco = {}, Marks = {}, Timer = 0, Dirty = true }
 	views[plot] = view
 	plot:GetAttributeChangedSignal("Route"):Connect(function()
+		view.Dirty = true
+	end)
+	plot:GetAttributeChangedSignal("State"):Connect(function()
 		view.Dirty = true
 	end)
 	local function hookRooms(rooms: Instance)
@@ -1014,14 +1408,20 @@ local function onFx(e: any)
 		if e.By == "Defender" then
 			swing(def and def.Actor)
 			flash(v, Theme.Danger, 0.15)
+			if e.Burn and def and v and view.VisitorPos then
+				-- Dragon breath: a flame cone from the head toward the visitor, jaw open for the swing.
+				local head = def.Actor.Model:FindFirstChild("Head", true)
+				local from = if head and head:IsA("BasePart") then head.Position else def.Actor.Model:GetPivot().Position + Vector3.new(0, 1.2, 0)
+				breath(from, view.VisitorPos + Vector3.new(0, 1, 0), Color3.fromRGB(255, 220, 90), Color3.fromRGB(255, 80, 20))
+			end
 			if v and view.VisitorPos then
-				floatText(view.VisitorPos + Vector3.new(0, 2.5, 0), "-" .. tostring(e.Damage or ""), Theme.Danger)
+				floatText(view.VisitorPos + Vector3.new(0, 2.5, 0), "-" .. tostring(e.Damage or ""), Theme.Danger, nil, true)
 			end
 		else
 			swing(v)
-			if def then
+			if def and def.Actor then
 				flash(def.Actor, Theme.Danger, 0.15)
-				floatText(def.Actor.Model:GetPivot().Position + Vector3.new(0, 2.5, 0), "-" .. tostring(e.Damage or ""), Theme.Warning)
+				floatText(def.Actor.Model:GetPivot().Position + Vector3.new(0, 2.5, 0), "-" .. tostring(e.Damage or ""), Theme.Warning, nil, true)
 			end
 		end
 		play(if e.By == "Defender" and def and def.Model:GetAttribute("RoomId") == "GuardRoom" then "GuardAttack" else "Hit")
@@ -1030,12 +1430,95 @@ local function onFx(e: any)
 		if trap then
 			trap.Strike = os.clock()
 		end
+		local room = roomAt(view, index)
+		local an = room and view.Anims[room]
+		if an and an.Id == "ArrowGallery" then
+			an.Fire = os.clock()
+		elseif an and an.Id == "FlameVent" then
+			an.Burst = os.clock()
+			puff(room:GetPivot().Position + Vector3.new(0, 1.2, 0), FIRE, 12, 4, 0.8)
+		end
 		if e.Hit then
-			flash(v, Theme.Danger, 0.15)
+			flash(v, if e.Burn then FIRE else Theme.Danger, 0.15)
 		end
 		play("SpikeStrike")
 	elseif kind == "Slow" then
 		flash(v, Theme.Success, 0.3)
+	elseif kind == "Burn" then
+		if v and view.VisitorPos then
+			floatText(view.VisitorPos + Vector3.new(math.random() * 1.2 - 0.6, 2.2, 0), "-" .. tostring(e.Damage or ""), FIRE)
+		end
+	elseif kind == "Chill" then
+		local room = roomAt(view, index)
+		if room then
+			pulseRoom(room, "Crystal", FROST, 5, 1.35)
+			puff(room:GetPivot().Position + Vector3.new(0, 1.4, 0), FROST, 10, 3, 1)
+		end
+		flash(v, FROST, 0.3)
+	elseif kind == "Unit" then
+		local def = defenderAt(view, index)
+		if def then
+			def.UnitEvt = if type(e.Unit) == "number" then e.Unit else (def.UnitEvt or 1) + 1
+			local a = def.Actors[math.clamp(def.UnitEvt, 1, #def.Actors)]
+			puff(a.Model:GetPivot().Position + Vector3.new(0, 0.4, 0), Color3.fromRGB(190, 170, 130), 8, 3, 0.7)
+			if def.Cfg.Summoned then
+				flash(a, Color3.fromRGB(120, 255, 150), 0.5)
+			end
+		end
+	elseif kind == "Summon" then
+		local def = defenderAt(view, index)
+		local sk = def and def.Cfg.Summoned and def.Actors[def.Cfg.Summoned]
+		if sk then
+			def.SummonAt = os.clock()
+			sk.Down = 1
+			sk.RiseUntil = os.clock() + 1.4
+			flash(sk, Color3.fromRGB(120, 255, 150), 0.7)
+			puff(sk.Model:GetPivot().Position + Vector3.new(0, 0.5, 0), Color3.fromRGB(120, 255, 150), 14, 3, 1)
+			play("Rise")
+		end
+	elseif kind == "Ambush" then
+		local def = defenderAt(view, index)
+		if def and def.Actor then
+			def.Actor.OpenUntil = os.clock() + 0.6
+			swing(def.Actor)
+			puff(def.Actor.Model:GetPivot().Position + Vector3.new(0, 1, 0), Theme.Gold, 12, 6, 0.6)
+		end
+		flash(v, Theme.Danger, 0.25)
+		if v and view.VisitorPos then
+			floatText(view.VisitorPos + Vector3.new(0, 3, 0), "AMBUSH -" .. tostring(e.Damage or ""), Theme.Danger, nil, true)
+		end
+		play("Hit")
+	elseif kind == "Revive" then
+		local def = defenderAt(view, index)
+		if def then
+			def.Forced = false
+			for _, a in def.Actors do
+				a.Down = math.max(a.Down, 1)
+				a.RiseUntil = os.clock() + 1.2
+			end
+			flash(def.Actor, FIRE, 0.8)
+			local pos = def.Actor.Model:GetPivot().Position + Vector3.new(0, 1, 0)
+			puff(pos, FIRE, 26, 9, 1.1)
+			puff(pos, Color3.fromRGB(255, 230, 120), 12, 5, 0.9)
+			floatText(pos + Vector3.new(0, 2, 0), "Reborn!", FIRE)
+		end
+		local nest = if type(e.By) == "number" then roomAt(view, e.By) else nil
+		if nest then
+			pulseRoom(nest, "Egg", FIRE, 5, 1.4)
+		end
+		play("Heal")
+	elseif kind == "Void" then
+		local room = roomAt(view, index)
+		if room then
+			pulseRoom(room, "PortalRing", VOID, 5, 1.3)
+			pulseRoom(room, "PortalCore", VOID, 5, 1.5)
+		end
+		if view.VisitorPos then
+			puff(view.VisitorPos + Vector3.new(0, 1.2, 0), VOID, 22, 8, 0.9)
+			floatText(view.VisitorPos + Vector3.new(0, 3, 0), "Sent back!", VOID)
+		end
+		flash(v, VOID, 0.4)
+		view.SnapUntil = os.clock() + 1
 	elseif kind == "DefenderDown" then
 		local def = defenderAt(view, index)
 		if def then
@@ -1049,12 +1532,20 @@ local function onFx(e: any)
 		end
 		local amount = if type(e.Amount) == "number" then e.Amount else 0
 		if e.Result == "Defeated" then
-			floatText(pos + Vector3.new(0, 3, 0), "+" .. amount, Theme.Gold)
+			floatText(pos + Vector3.new(0, 3, 0), "+" .. amount, Theme.Gold, "CoinFloat")
 			coinBurst(pos)
 			play("VisitorDefeated")
 			play("CoinGain")
 		elseif e.Result == "Robbed" then
 			floatText(pos + Vector3.new(0, 3, 0), "Robbed -" .. amount, Theme.Danger)
+			local rooms = view.Plot:FindFirstChild("Rooms")
+			for _, m in if rooms then rooms:GetChildren() else {} do
+				local def = Catalog.Room(m:GetAttribute("RoomId"))
+				if def and def.Kind == "Treasure" and m:GetAttribute("OnRoute") ~= false then
+					openChest(m :: Model)
+					puff(m:GetPivot().Position + Vector3.new(0, 1.5, 0), Theme.Gold, 14, 5, 0.9)
+				end
+			end
 			Sound.Play("Robbed")
 		elseif e.Result == "Escaped" then
 			floatText(pos + Vector3.new(0, 3, 0), "Escaped", Theme.TextMuted)
@@ -1075,11 +1566,15 @@ local function onFx(e: any)
 			end
 			if d.Source == "LevelUp" then
 				text = "Level reward: " .. text
+			elseif d.Guaranteed then
+				text = "Guaranteed " .. text
+				color = Badges.VariantTint[e.Variant or ""] or Theme.Gold
+				puff(pos + Vector3.new(0, 1.5 + i * 0.9, 0), color, 16, 6, 1)
 			end
 			dropPill(pos + Vector3.new(0, 0.5 + i * 0.9, 0), text, color, (i - 1) * 0.25)
 		end
 		if type(e.Xp) == "number" and e.Xp > 0 then
-			floatText(pos + Vector3.new(0, 4.6, 0), "+" .. e.Xp .. " XP", Color3.fromRGB(170, 160, 255))
+			floatText(pos + Vector3.new(0, 4.6, 0), "+" .. e.Xp .. " XP", Color3.fromRGB(170, 160, 255), "XpFloat")
 		end
 		if type(e.LevelUp) == "number" then
 			floatText(pos + Vector3.new(0, 6, 0), "LEVEL UP! " .. e.LevelUp, Theme.Gold)
@@ -1116,7 +1611,12 @@ function View.Start()
 		if #shimmerBars > 0 and not Settings.Reduced() then
 			local t = os.clock()
 			for i, bar in shimmerBars do
-				bar.Color = Color3.fromHSV((t * 0.15 + i * 0.12) % 1, 0.45, 1)
+				local c = Color3.fromHSV((t * 0.15 + i * 0.12) % 1, 0.45, 1)
+				if bar:IsA("ImageLabel") then
+					bar.ImageColor3 = c
+				else
+					bar.Color = c
+				end
 			end
 		end
 		for _, view in views do

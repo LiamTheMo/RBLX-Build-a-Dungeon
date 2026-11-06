@@ -76,7 +76,7 @@ function BuildService.CommitLayout(player: Player, layout: { [string]: string })
 		return false, "RateLimited"
 	end
 	lastCommit[player] = clock
-	local ok, routeCells, cells = LayoutRules.Validate(profile, layout)
+	local ok, routeCells, _, offRouteCells = LayoutRules.Validate(profile, layout)
 	if not ok then
 		return false, routeCells
 	end
@@ -97,43 +97,35 @@ function BuildService.CommitLayout(player: Player, layout: { [string]: string })
 		end
 	end
 	if unchanged then
-		return true, routeCells -- nothing to rebuild or replicate
+		return true, routeCells, offRouteCells -- nothing to rebuild or replicate
 	end
 
-	local newLayout, hasTreasure = {}, false
+	local newLayout = {}
 	for key, instanceId in layout do
 		newLayout[key] = instanceId
-		if cells[key] == "TreasureRoom" then
-			hasTreasure = true
-		end
 	end
 	profile.Layout = newLayout
-	if not hasTreasure and profile.Vault > 0 then
-		local banked = profile.Vault
-		profile.Coins += banked
-		profile.Vault = 0
-		Net.Fire("Notice", player, { Text = `Your vault was banked: +{banked} coins.`, Kind = "Info" })
-	end
 	PlotService.Render(player)
 	ProfileService.Changed(player)
 	TutorialService.Notify(player, "Commit")
-	return true, routeCells
+	return true, routeCells, offRouteCells
 end
 
 -- Validates a draft exactly like CommitLayout's layout check (ownership, each
--- instance once, Route.Build) without applying anything, so the build UI can show
--- the route and the offending cell. Returns (true, routeCells) or (false, reason,
--- cellKey?). CommitLayout re-validates; this result is never trusted.
+-- instance once, bounds, MaxPlaced; any shape is accepted) without applying
+-- anything, so the build UI can show the server-computed route, the idle rooms
+-- and the offending cell. Returns (true, routeCells, offRouteCells) or (false,
+-- reason, cellKey?). CommitLayout re-validates; this result is never trusted.
 function BuildService.PreviewLayout(player: Player, layout: { [string]: string })
 	local profile = ProfileService.Get(player)
 	if profile == nil then
 		return false, "ProfileNotLoaded"
 	end
-	local ok, routeOrReason, cellsOrKey = LayoutRules.Validate(profile, layout)
+	local ok, routeOrReason, cellsOrKey, offRouteCells = LayoutRules.Validate(profile, layout)
 	if not ok then
 		return false, routeOrReason, cellsOrKey
 	end
-	return true, routeOrReason
+	return true, routeOrReason, offRouteCells
 end
 
 function BuildService.Init()

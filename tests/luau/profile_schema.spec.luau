@@ -14,14 +14,17 @@ end
 
 test("default profile matches the contract", function()
 	local p = ProfileSchema.Default()
-	expectEq(p.Version, 3, "version")
+	expectEq(p.Version, 5, "version")
+	expectEq(p.VaultPercent, 0, "vault percent")
+	expectEq(p.Threat, 1, "threat")
+	expectEq(p.Vault, nil, "no vault balance")
 	expectEq(p.NextSerial, 3, "NextSerial")
 	expectEq(p.Rooms.r1.Id, "SlimeNest", "r1")
 	expectEq(p.Rooms.r2.Id, "TreasureRoom", "r2")
 	expectEq(p.Layout["3,2"], "r1", "layout")
 	expectEq(p.Layout["3,3"], nil, "only one placed room")
 	expectEq(p.Settings.MusicVolume, 0.5, "music")
-	expectEq(p.Settings.SfxVolume, 0.8, "sfx")
+	expectEq(p.Settings.SfxVolume, 0.4, "sfx")
 	expectEq(p.Tutorial.Step, "Welcome", "tutorial")
 	expect(ProfileSchema.Default() ~= p and ProfileSchema.Default().Rooms ~= p.Rooms, "fresh tables")
 end)
@@ -48,19 +51,23 @@ end)
 
 test("money is clamped to whole numbers >= 0", function()
 	local p = migrated(function(s)
-		s.Coins = -50
-		s.Vault = 12.9
+		s.Coins = 12.9
+		s.VaultPercent = 55.5
 		s.Stats.Earned = 0 / 0
 	end)
-	expectEq(p.Coins, 0, "negative")
-	expectEq(p.Vault, 12, "fractional floored")
+	expectEq(p.Coins, 12, "fractional floored")
+	expectEq(p.VaultPercent, 55, "percent floored")
 	expectEq(p.Stats.Earned, 0, "nan")
 	local q = migrated(function(s)
 		s.Coins = math.huge
-		s.Vault = "100"
+		s.VaultPercent = 900
+		s.Threat = 2.5
 	end)
 	expectEq(q.Coins, 0, "inf")
-	expectEq(q.Vault, 0, "string")
+	expectEq(q.VaultPercent, 100, "percent clamped")
+	expectEq(q.Threat, 1, "fractional threat reset")
+	expectEq(migrated(function(s) s.Coins = -50 end).Coins, 0, "negative")
+	expectEq(migrated(function(s) s.VaultPercent = "100" end).VaultPercent, 0, "string percent")
 end)
 
 test("unknown and unplaceable room ids and bad instance ids are dropped", function()
@@ -99,21 +106,32 @@ test("duplicate and missing instances in the layout are dropped", function()
 	expectEq(p.Layout["2,2"], nil, "missing dropped")
 end)
 
-test("a broken layout resets to empty but keeps the rooms", function()
+test("any layout shape is kept; only bad entries are dropped", function()
 	local p = migrated(function(s)
-		s.Layout = { ["3,2"] = "r1", ["5,4"] = "r2" } -- disconnected
+		s.Layout = { ["3,2"] = "r1", ["5,4"] = "r2" } -- disconnected treasure: idle, still valid
 	end)
-	expectEq(next(p.Layout), nil, "layout emptied")
-	expectEq(p.Rooms.r1.Id, "SlimeNest", "rooms kept")
-	expectEq(p.Rooms.r2.Id, "TreasureRoom", "rooms kept")
+	expectEq(p.Layout["3,2"], "r1", "route room kept")
+	expectEq(p.Layout["5,4"], "r2", "disconnected room kept")
 	local q = migrated(function(s)
-		s.Layout = { ["bad"] = "r1" }
+		s.Rooms.r3 = { Id = "SpikeHall", Level = 1, Rarity = "Common", Perks = {} }
+		s.Rooms.r4 = { Id = "TreasureRoom", Level = 1, Rarity = "Common", Perks = {} }
+		s.Layout = {
+			["3,2"] = "r1",
+			["bad"] = "r3", -- malformed key
+			["3,1"] = "r3", -- on the entrance
+			["6,2"] = "r3", -- out of bounds
+			["1,1"] = "r2",
+			["2,2"] = "r4", -- second Treasure Room (key order: 1,1 came first)
+		}
 	end)
-	expectEq(next(q.Layout), nil, "bad cell key")
-	local r = migrated(function(s)
-		s.Layout = { ["3,1"] = "r1" } -- on the entrance
-	end)
-	expectEq(next(r.Layout), nil, "entrance cell")
+	expectEq(q.Layout["3,2"], "r1", "valid entry kept")
+	expectEq(q.Layout["1,1"], "r2", "first treasure kept")
+	expectEq(q.Layout["2,2"], nil, "second treasure dropped")
+	expectEq(q.Layout["bad"], nil, "bad cell key")
+	expectEq(q.Layout["3,1"], nil, "entrance cell")
+	expectEq(q.Layout["6,2"], nil, "out of bounds")
+	expectEq(q.Rooms.r3.Id, "SpikeHall", "rooms kept")
+	expectEq(q.Rooms.r4.Id, "TreasureRoom", "rooms kept")
 end)
 
 test("NextSerial always stays above existing instance ids", function()

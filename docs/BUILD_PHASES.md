@@ -27,9 +27,9 @@
 
 **Goal:** Make room arrangement satisfying and reliable before adding combat.
 
-**Build:** Create an isolated plot, a fixed entrance cell and a server-owned 5 × 4 prototype grid. Define one-cell open rooms (doorways on all sides), the single-chain route rule, the optional treasure room as the route's end, and starter ownership. Implement build camera, inventory, touch/mouse placement, preview, move/remove and useful rejection messages. Validate bounds, ownership, occupancy and room connectors on the server. Compute a continuous route; MVP permits one path without branches or loops. Show a temporary route overlay. Allow disconnected draft edits, but commit only valid layouts; cancel restores the last valid layout. Pause visitor spawning while editing and block edits during encounters. Use simple blocks with obvious doors.
+**Build:** Create an isolated plot, a fixed entrance cell and a server-owned 5 × 4 prototype grid. Define one-cell open rooms (doorways on all sides), placement in any cell except the entrance, a server-computed route (the longest path from the entrance, ending at the treasure room when it can be reached), off-route rooms that stay placed but idle, and starter ownership. Implement build camera, inventory, touch/mouse placement, preview, move/remove and useful rejection messages. Validate bounds, ownership and occupancy on the server. Show the route overlay and dim off-route rooms. Cancel restores the last committed layout. Pause visitor spawning while editing and block edits during encounters. Use simple blocks with obvious doors.
 
-**Verify:** Valid and invalid placements, disconnected routes, branches and loops from touching rooms, a treasure room that is not last, overlaps, removals, separate plots and malformed requests. Check a small phone screen.
+**Verify:** Placements in every cell, longest-route selection (branches, loops, islands, a reachable and an unreachable treasure room), off-route rooms giving no bonuses, overlaps, removals, separate plots and malformed requests. Check a small phone screen.
 
 **Exit:** Players can create a valid route and explain why an invalid placement is rejected.
 
@@ -52,6 +52,8 @@
 **Verify:** Wins, losses, empty vault, play with and without a treasure room, removing the treasure room while the vault holds gold, banking near resolution, duplicate requests, insufficient funds and disconnects. Confirm banked coins and owned rooms cannot be stolen. Observe a 10–15 minute playtest.
 
 **Exit:** Players make a purchase and understand the choice between safe banking and optional risk. Safe progression remains worthwhile.
+
+**Superseded (owner-approved 2026-11-05):** the separate vault balance, Bank and the invited challenger were replaced by the treasure vault allocation (a share of Coins at risk in exchange for faster visitors and rarer variants) and threat levels. See GDD "Threat levels, variants and the treasure vault".
 
 ## Phase 4 — Persistence and security
 
@@ -96,6 +98,10 @@
 **Loot and progression status (2026-11-04):** server rules, schema v3, remotes and specs done (`Rules/Loot`, `Rules/Progression`, server `Rules/Rewards`, `LootService`; 17 spec files pass in Studio). Client UI is in code (`Controllers/LootController`, `Ui/PanelsLoot`: box opening with shown odds, blueprints and crafting, scrapping, keeper level and XP, permanent upgrades; rarity badges in `Ui/Kit`). Pending: a Play-mode test of the new remotes, and economy tuning with real sessions.
 
 **Owner addition (2026-11-04):** loot drops (Dungeon and Rare Boxes with shown odds and pity, blueprints with crafting and scrapping), Common to Mythic room variants with coin, loot and XP perks, upgrades for every room up to a rarity cap, keeper XP and levels, and permanent coin upgrades (GDD "Loot, rarity and progression").
+
+**Owner addition (2026-11-05):** threat levels T1–T6 (keeper levels 1/4/8/13/19/26, chosen by the player) replace the challenger invite and the fixed visitor rotation; rare Elite/Shiny/Gilded variants; coin ranges per visitor; the treasure vault allocation (`VaultPercent`, schema v4) replaces Bank; server events with room modifiers and admin chat commands; full drop tables and "next goal" data in State. **Status:** server rules, schema v4, remotes and specs done (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the spec run). Pending: client UI for the new State/Catalog fields and remotes, a Play-mode test of SetThreat, SetVaultPercent, events and admin commands, and economy tuning.
+
+**Owner addition (2026-11-05, item model):** each room type has one fixed rarity (instances are `{Id, Level, Modifier?}`, schema v5); boxes roll a tier then a room; tier-based craft/scrap costs; shop sells Common/Uncommon only; treasure line of seven tiers; eleven new rooms with Burn, Chill, units, ambush, summon, revive and void mechanics. **Status:** server rules, schema v5 and specs done. Pending: client UI and FX for the new fields and events, room and creature art, a Play-mode test and tuning (see KNOWN_ISSUES).
 
 **Exit:** Players can deliberately build at least two effective combinations, and a rare room is not required for a viable dungeon. Box odds are shown before opening, and every room is reachable without luck.
 

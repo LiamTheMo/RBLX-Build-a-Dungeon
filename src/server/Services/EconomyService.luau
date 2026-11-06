@@ -1,4 +1,4 @@
--- Bank, Buy, Upgrade, BuyPermanent. Every mutation reads and writes the profile without
+-- SetVaultPercent, Buy, Upgrade, BuyPermanent. Every mutation reads and writes the profile without
 -- yielding, so each request is atomic; the client never supplies a price.
 
 local Balance = require(script.Parent.Parent.Definitions.Balance)
@@ -19,25 +19,24 @@ local function oneString(...)
 	return select("#", ...) == 1 and type(value) == "string" and #value >= 1 and #value <= 32
 end
 
-function EconomyService.Bank(player: Player)
+-- SetVaultPercent: the share of Coins kept in the vault (at risk while a Treasure
+-- Room is placed; raises the spawn-rate bonus). Whole number 0..100, any time
+-- except during an encounter, so a theft cannot be dodged at the last second.
+function EconomyService.SetVaultPercent(player: Player, percent: number)
 	local profile = ProfileService.Get(player)
 	if profile == nil then
 		return false, "ProfileNotLoaded"
 	end
 	local plot = PlotService.GetPlot(player)
 	if plot and plot:GetAttribute("State") == "Encounter" then
-		return false, "EncounterActive" -- no dodging a theft by banking at the last second
+		return false, "EncounterActive"
 	end
-	local amount = profile.Vault
-	if amount <= 0 then
-		return false, "NothingToBank"
+	if profile.VaultPercent ~= percent then
+		profile.VaultPercent = percent
+		ProfileService.Changed(player)
 	end
-	profile.Coins += amount
-	profile.Vault = 0
-	ProfileService.Changed(player)
-	Net.Fire("Notice", player, { Text = `Banked {amount} coins.`, Kind = "Good" })
-	TutorialService.Notify(player, "Banked")
-	return true, amount
+	TutorialService.Notify(player, "VaultSet")
+	return true, percent
 end
 
 function EconomyService.Buy(player: Player, roomId: string)
@@ -50,7 +49,9 @@ function EconomyService.Buy(player: Player, roomId: string)
 		return false, "UnknownRoom"
 	end
 	local stats = Balance.Rooms[roomId]
-	if def.Source ~= "Shop" or stats == nil or type(stats.Cost) ~= "number" then
+	-- Only Common and Uncommon rooms are sold (rarer rooms are box/blueprint-only).
+	local sellable = def.Rarity == "Common" or def.Rarity == "Uncommon"
+	if def.Source ~= "Shop" or not sellable or stats == nil or type(stats.Cost) ~= "number" then
 		return false, "NotForSale"
 	end
 	if profile.Level < Progression.ShopLevel(roomId) then
@@ -84,7 +85,7 @@ function EconomyService.Upgrade(player: Player, instanceId: string)
 		return false, "NotOwned"
 	end
 	local def = Rooms.Get(instance.Id)
-	local cost = if def and def.Upgradable then Economy.UpgradeCost(instance.Level, instance.Rarity) else nil
+	local cost = if def and def.Upgradable then Economy.UpgradeCost(instance.Level, def.Rarity) else nil
 	if cost == nil then
 		return false, "MaxLevel"
 	end
@@ -115,9 +116,10 @@ function EconomyService.BuyPermanent(player: Player, upgradeId: string)
 end
 
 function EconomyService.Init()
-	Net.Handle("Bank", function(...)
-		return select("#", ...) == 0
-	end, EconomyService.Bank)
+	Net.Handle("SetVaultPercent", function(...)
+		local percent = ...
+		return select("#", ...) == 1 and type(percent) == "number" and percent % 1 == 0 and percent >= 0 and percent <= 100
+	end, EconomyService.SetVaultPercent)
 	Net.Handle("Buy", oneString, EconomyService.Buy)
 	Net.Handle("Upgrade", oneString, EconomyService.Upgrade)
 	Net.Handle("BuyPermanent", oneString, EconomyService.BuyPermanent)

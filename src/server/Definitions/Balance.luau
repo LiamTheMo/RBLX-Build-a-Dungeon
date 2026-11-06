@@ -10,21 +10,109 @@
 
 local Balance = {}
 
-Balance.Version = 3
+Balance.Version = 5
 
 Balance.Economy = table.freeze({
 	StartingCoins = 0,
-	-- Only while a Treasure Room is placed: each full 100 unbanked vault gold
-	-- adds this much to win rewards, up to the cap.
-	VaultBonusPer100 = 0.01,
-	VaultBonusCap = 0.20,
 })
 
 Balance.Timing = table.freeze({
-	-- Seconds after the previous encounter ends before the next automatic visitor.
+	-- Seconds after the previous encounter ends before the next automatic visitor
+	-- (before Lure, the vault bonus and events).
 	VisitorInterval = 30,
-	-- A placed Treasure Room attracts visitors more often.
-	VisitorIntervalWithTreasure = 20,
+	-- No modifier (vault bonus, Lure, Swarm) brings the interval below this.
+	MinVisitorInterval = 5,
+})
+
+-- Treasure vault allocation (owner-approved 2026-11-05). The player picks
+-- VaultPercent (0..100); while a treasure-kind room is on the route,
+-- floor(Coins * pct / 100) coins count as vaulted: visitors who reach the
+-- treasure steal TheftFraction of them (times the treasure's TheftScale). In
+-- exchange: vault bonus % = pct * rate, where rate = RatePerPercent * the
+-- treasure room's Exchange (Balance.Rooms) * (1 + LevelBonus * (level - 1) +
+-- DeepVault PerLevel * Deep Vault level). The bonus shortens the visitor interval
+-- (interval / (1 + bonus / 100)) and multiplies rare-variant chances by
+-- (1 + VariantPerBonus * bonus / 100).
+Balance.Vault = table.freeze({
+	RatePerPercent = 1.0,
+	LevelBonus = 0.1,
+	VariantPerBonus = 0.5,
+})
+
+-- Threat levels: the attackers a keeper unlocks for better loot. Tier t unlocks at
+-- keeper level UnlockLevels[t]; the player picks the active tier (the tutorial
+-- always uses tier 1). Per tier above 1 each stat multiplier grows by PerTier:
+-- multiplier = 1 + PerTier * (t - 1). Roster[t] = visitor weights at that tier
+-- (ordered; Practice is tutorial-only and never rostered).
+local function roster(...)
+	local list = {}
+	for i = 1, select("#", ...), 2 do
+		local id, weight = select(i, ...)
+		table.insert(list, table.freeze({ Id = id, Weight = weight }))
+	end
+	return table.freeze(list)
+end
+Balance.Threat = table.freeze({
+	UnlockLevels = table.freeze({ 1, 4, 8, 13, 19, 26 }),
+	PerTier = table.freeze({ Health = 0.35, Damage = 0.35, Coins = 0.5, Xp = 0.4, Drops = 0.25 }),
+	Roster = table.freeze({
+		roster("Novice", 100),
+		roster("Novice", 70, "Scout", 30),
+		roster("Novice", 50, "Scout", 30, "Cleric", 20),
+		roster("Novice", 35, "Scout", 30, "Cleric", 25, "ArmoredChallenger", 10),
+		roster("Novice", 20, "Scout", 30, "Cleric", 30, "ArmoredChallenger", 20),
+		roster("Novice", 10, "Scout", 25, "Cleric", 35, "ArmoredChallenger", 30),
+	}),
+})
+
+-- Rare visitor variants, rolled once at spawn (never for Practice). Ordered
+-- rarest first; Chance is the base chance per visitor, multiplied by the vault
+-- bonus and events. Health/Coins/Drops multiply the visitor's health, coin
+-- reward and drop chances; GuaranteedBox is an extra box on defeat.
+local function variant(id: string, chance: number, health: number, coins: number, drops: number, box: string?)
+	return table.freeze({ Id = id, Chance = chance, Health = health, Coins = coins, Drops = drops, GuaranteedBox = box })
+end
+Balance.Variants = table.freeze({
+	variant("Gilded", 0.002, 2.0, 10, 1, "Rare"),
+	variant("Shiny", 0.01, 1.2, 3, 1, "Dungeon"),
+	variant("Elite", 0.05, 1.5, 2, 2, nil),
+})
+
+-- Server events (one at a time). Effects multiply: Coins (win coins), Drops (drop
+-- chances), Variants (rare-variant chances), BoxRarity (box weights of
+-- BoxRarityFrom and rarer), Interval (visitor interval, still >= the minimum).
+-- While an event runs, a room from a box gets a Modifier with ModifierChance.
+local function event(id: string, name: string, text: string, effects)
+	return table.freeze({ Id = id, Name = name, Text = text, Effects = table.freeze(effects) })
+end
+local function modifier(id: string, effect: string, amount: number, text: string)
+	return table.freeze({ Id = id, Effect = effect, Amount = amount, Text = text })
+end
+Balance.Events = table.freeze({
+	List = table.freeze({
+		event("GoldenHour", "Golden Hour", "Double coins from defeated adventurers.", { Coins = 2 }),
+		event("LuckyStars", "Lucky Stars", "Double drop chances.", { Drops = 2 }),
+		event("RareInvasion", "Rare Invasion", "Triple chance of Elite, Shiny and Gilded adventurers.", { Variants = 3 }),
+		event("BlessedBoxes", "Blessed Boxes", "Epic and rarer rooms are twice as likely in boxes.", { BoxRarity = 2 }),
+		event("Swarm", "Swarm", "Adventurers arrive twice as often.", { Interval = 0.5 }),
+	}),
+	BoxRarityFrom = "Epic",
+	-- Automatic schedule: a random event every MinGap..MaxGap seconds after the
+	-- previous one ends (or the server starts), lasting Duration. Off in Studio
+	-- unless RunInStudio (admins can still start one with /event start).
+	MinGap = 35 * 60,
+	MaxGap = 50 * 60,
+	Duration = 10 * 60,
+	MaxAdminMinutes = 240,
+	RunInStudio = false,
+	-- Room modifiers: at most one per room. Damage scales that room's defender
+	-- and trap damage; Loot and Coins add to the bonuses like perks (capped).
+	ModifierChance = 0.25,
+	Modifiers = table.freeze({
+		modifier("Blazing", "Damage", 0.15, "+15% damage"),
+		modifier("Lucky", "Loot", 0.10, "+10% loot chance"),
+		modifier("Golden", "Coins", 0.10, "+10% coins"),
+	}),
 })
 
 -- Visitors stop to fight a room's defender until it is knocked out (it recovers
@@ -35,7 +123,7 @@ Balance.Visitors = table.freeze({
 		AttackDamage = 5,
 		AttackInterval = 1.0,
 		WalkSpeed = 4,
-		Reward = 10,
+		Reward = table.freeze({ Min = 8, Max = 12 }),
 		TheftFraction = 0,
 	}),
 	Novice = table.freeze({
@@ -43,7 +131,7 @@ Balance.Visitors = table.freeze({
 		AttackDamage = 10,
 		AttackInterval = 1.0,
 		WalkSpeed = 4,
-		Reward = 20,
+		Reward = table.freeze({ Min = 18, Max = 26 }),
 		TheftFraction = 0.10,
 	}),
 	ArmoredChallenger = table.freeze({
@@ -51,7 +139,7 @@ Balance.Visitors = table.freeze({
 		AttackDamage = 14,
 		AttackInterval = 1.0,
 		WalkSpeed = 3.5,
-		Reward = 50,
+		Reward = table.freeze({ Min = 45, Max = 65 }),
 		TheftFraction = 0.25,
 	}),
 	-- Phase 7 visitors with visible traits (docs/GDD.md). Traits are named in
@@ -61,7 +149,7 @@ Balance.Visitors = table.freeze({
 		AttackDamage = 8,
 		AttackInterval = 1.0,
 		WalkSpeed = 6,
-		Reward = 25,
+		Reward = table.freeze({ Min = 22, Max = 32 }),
 		TheftFraction = 0.10,
 	}),
 	Cleric = table.freeze({
@@ -69,23 +157,36 @@ Balance.Visitors = table.freeze({
 		AttackDamage = 8,
 		AttackInterval = 1.0,
 		WalkSpeed = 4,
-		Reward = 30,
+		Reward = table.freeze({ Min = 26, Max = 36 }),
 		TheftFraction = 0.10,
-		-- Mender: HP regained per second while walking (not while duelling).
+		-- Mender: HP regained per second while walking (not while duelling or burning).
 		HealPerSecond = 4,
 	}),
 })
 
--- Which automatic visitor comes next (Rules/VisitorRotation). Before the
--- tutorial is done and Wins reaches MixMinWins it is always a Novice. After that
--- the visitor is Pattern[Stats.Encounters % #Pattern + 1]: fixed, so the
--- player can plan, and Novice-heavy.
-Balance.Rotation = table.freeze({
-	MixMinWins = 8,
-	Pattern = table.freeze({ "Novice", "Novice", "Scout", "Novice", "Cleric" }),
+-- Shared status effects. Burn: DamagePerSecond (before the source room's level
+-- and Blazing scaling) dealt in ticks every Tick seconds for Duration seconds;
+-- a new burn refreshes the duration and keeps the stronger damage. Burning
+-- visitors cannot heal (Mender). Burn ticks are not trap strikes: Spored does
+-- not raise them.
+Balance.Status = table.freeze({
+	Burn = table.freeze({ DamagePerSecond = 5, Duration = 3, Tick = 0.5 }),
 })
 
+-- Room stats, keyed by room Id (rarity, kind and texts are in Rooms.luau). Each
+-- level above 1 scales defender damage and health, trap, zone and burn damage
+-- and the Den / Mushroom bonuses (Balance.Upgrades). Cost = shop price in coins
+-- (only Common and Uncommon rooms are sold; level gates in
+-- Balance.Progression.ShopLevel).
+-- Defenders: DefenderHealth / AttackDamage / AttackInterval, or Units = an ordered
+-- list fought one after another (the next unit steps in when one is knocked out).
+-- Strike traps: Damage every Cycle seconds, the first strike Telegraph seconds
+-- after the encounter starts. Zone traps: ZoneDamage per second while inside.
+local function unit(name: string, health: number, damage: number, interval: number)
+	return table.freeze({ Name = name, Health = health, Damage = damage, Interval = interval })
+end
 Balance.Rooms = table.freeze({
+	-- Common ------------------------------------------------------------------
 	SlimeNest = table.freeze({
 		DefenderHealth = 40,
 		AttackDamage = 6,
@@ -106,6 +207,35 @@ Balance.Rooms = table.freeze({
 		AttackInterval = 1.2,
 		Cost = 100,
 	}),
+	-- Treasure line. Exchange replaces the old rarity multiplier in the vault rate;
+	-- VariantBonus multiplies rare-variant chances by (1 + VariantBonus); TheftScale
+	-- multiplies what a visitor steals. Coin bonuses are perks (RoomPerks).
+	TreasureRoom = table.freeze({ Exchange = 1.0 }), -- "Coin Cache", the starter treasure
+	-- Uncommon ----------------------------------------------------------------
+	-- A visitor entering the cell is Spored for SporeDuration seconds and takes
+	-- TrapDamageBonus more trap damage (+TrapDamageBonusPerLevel per level above 1).
+	MushroomCavern = table.freeze({
+		SporeDuration = 5,
+		TrapDamageBonus = 0.50,
+		TrapDamageBonusPerLevel = 0.10,
+		Cost = 200,
+	}),
+	-- Arrow volleys hit anywhere in the room.
+	ArrowGallery = table.freeze({
+		Damage = 8,
+		Cycle = 0.8,
+		Telegraph = 0.3,
+		Cost = 250,
+	}),
+	BatRoost = table.freeze({
+		-- Doubled from 30/4 so the Uncommon defender out-duels the Common Guard Room.
+		DefenderHealth = 60,
+		AttackDamage = 6,
+		AttackInterval = 0.4,
+		Cost = 220,
+	}),
+	Strongbox = table.freeze({ Exchange = 1.15, Cost = 600 }),
+	-- Rare --------------------------------------------------------------------
 	-- Support room: no defender, no stop. Each Defender room next to it on the
 	-- route gets these bonuses (once per defender: the strongest adjacent Den).
 	-- Each level above 1 adds BonusPerLevel to both bonuses.
@@ -113,15 +243,6 @@ Balance.Rooms = table.freeze({
 		DamageBonus = 0.20,
 		HealthBonus = 0.20,
 		BonusPerLevel = 0.05,
-		Cost = 250,
-	}),
-	-- Trap-like: a visitor entering the cell is Spored for SporeDuration seconds
-	-- and takes TrapDamageBonus more from traps (+TrapDamageBonusPerLevel per level above 1).
-	MushroomCavern = table.freeze({
-		SporeDuration = 5,
-		TrapDamageBonus = 0.50,
-		TrapDamageBonusPerLevel = 0.10,
-		Cost = 200,
 	}),
 	-- Skeleton defender: the first time it is knocked out it rises once with
 	-- ReviveFraction of its max health.
@@ -130,12 +251,74 @@ Balance.Rooms = table.freeze({
 		AttackDamage = 8,
 		AttackInterval = 1.0,
 		ReviveFraction = 0.5,
-		Cost = 300,
 	}),
-	-- Each level above 1 raises the vault-bonus cap (only while placed).
-	TreasureRoom = table.freeze({
-		VaultBonusCapPerLevel = 0.05,
+	-- Strike trap; a hit also sets the visitor on fire (Balance.Status.Burn).
+	FlameVent = table.freeze({
+		Damage = 10,
+		Cycle = 1.5,
+		Telegraph = 0.6,
+		Burn = true,
 	}),
+	Treasury = table.freeze({ Exchange = 1.3 }),
+	-- Epic --------------------------------------------------------------------
+	-- Zone: while the visitor is inside, or in the NEXT room on the route, it is
+	-- Chilled: SlowFraction slower (Sure-footed visitors ignore the slow) and
+	-- ZoneDamage per second.
+	FrostChamber = table.freeze({
+		ZoneDamage = 3,
+		SlowFraction = 0.40,
+		ChillsNextRoom = true,
+	}),
+	GoblinBarracks = table.freeze({
+		Units = table.freeze({ unit("Goblin", 50, 9, 1.0), unit("Goblin", 50, 9, 1.0) }),
+	}),
+	-- Looks like a chest: AmbushDamage lands the moment the visitor arrives, then
+	-- a normal duel (its first regular attack one AttackInterval later).
+	MimicRoom = table.freeze({
+		DefenderHealth = 70,
+		AttackDamage = 10,
+		AttackInterval = 1.0,
+		AmbushDamage = 40,
+	}),
+	RoyalVault = table.freeze({ Exchange = 1.6 }),
+	-- Legendary ---------------------------------------------------------------
+	GolemForge = table.freeze({
+		DefenderHealth = 220,
+		AttackDamage = 18,
+		AttackInterval = 1.6,
+	}),
+	-- The lich summons a skeleton (the first unit) when the visitor arrives, then
+	-- fights itself once the skeleton is knocked out.
+	LichSanctum = table.freeze({
+		Units = table.freeze({ unit("Skeleton", 40, 8, 1.0), unit("Lich", 110, 15, 1.4) }),
+		Summon = true,
+	}),
+	DragonHoard = table.freeze({ Exchange = 2.0, VariantBonus = 0.25 }),
+	-- Mythic ------------------------------------------------------------------
+	-- Breath: every hit also burns (Balance.Status.Burn).
+	DragonLair = table.freeze({
+		DefenderHealth = 300,
+		AttackDamage = 30,
+		AttackInterval = 2.0,
+		Burn = true,
+	}),
+	-- Revives = route defenders it brings back per encounter: the first one knocked
+	-- out (the phoenix itself included) stands up again at full health.
+	PhoenixNest = table.freeze({
+		DefenderHealth = 150,
+		AttackDamage = 16,
+		AttackInterval = 1.2,
+		Revives = 1,
+	}),
+	CelestialCoffer = table.freeze({ Exchange = 2.6 }),
+	-- Secret ------------------------------------------------------------------
+	-- Zone: ZoneDamage per second inside. Once per encounter, a visitor reaching
+	-- the room's centre is sent back to the entrance (progress 0), keeping its damage.
+	VoidGate = table.freeze({
+		ZoneDamage = 10,
+		SendsBack = true,
+	}),
+	VoidVault = table.freeze({ Exchange = 3.5, TheftScale = 0.5 }),
 })
 
 Balance.Upgrades = table.freeze({
@@ -149,31 +332,31 @@ Balance.Upgrades = table.freeze({
 
 -- Room rarity (GDD "Loot, rarity and progression"). THE ordered list: index is
 -- rank (lowest first), and every rule and UI iterates it, so a new tier is one
--- new entry here (plus its colour in the client's Ui/RarityColors). Weight = Dungeon
--- Box odds, RareWeight = Rare Box odds (each column sums to 100). StatMultiplier
--- scales defender health and damage, trap damage, the Monster Den boost and the
--- Mushroom spore bonus. Perks: PerkCount different kinds, each of PerkSize.
--- Shop, starter, tutorial and crafted rooms are Common. Keep Common first and
--- never rename an Id: it is saved in profiles (unknown ids load as Common).
-local function tier(id: string, weight: number, rareWeight: number, stat: number, maxLevel: number, perkCount: number, perkSize: string)
+-- new entry here (plus its colour in the client's Ui/RarityColors). Since the
+-- 2026-11-05 item model a rarity belongs to a room DEFINITION (Rooms.luau), not
+-- to an instance. Weight = Dungeon Box tier odds, RareWeight = Rare Box tier
+-- odds (each column sums to 100); a box rolls a tier, then a room of that tier.
+-- MaxLevel = upgrade cap of the tier's rooms. CraftCost = blueprints of one room
+-- to craft it; ScrapReturn = blueprints back for scrapping one (always below
+-- CraftCost). Keep Common first and never rename an Id.
+local function tier(id: string, weight: number, rareWeight: number, maxLevel: number, craft: number, scrap: number)
 	return table.freeze({
 		Id = id,
 		Weight = weight,
 		RareWeight = rareWeight,
-		StatMultiplier = stat,
 		MaxLevel = maxLevel,
-		PerkCount = perkCount,
-		PerkSize = perkSize,
+		CraftCost = craft,
+		ScrapReturn = scrap,
 	})
 end
 Balance.Rarities = table.freeze({
-	tier("Common", 60, 0, 1.00, 3, 0, "Small"),
-	tier("Uncommon", 25, 45, 1.10, 4, 1, "Small"),
-	tier("Rare", 10, 32, 1.25, 5, 1, "Medium"),
-	tier("Epic", 3.5, 14, 1.40, 6, 2, "Medium"),
-	tier("Legendary", 1.2, 6, 1.60, 7, 2, "Large"),
-	tier("Mythic", 0.28, 2.5, 1.85, 8, 3, "Large"),
-	tier("Secret", 0.02, 0.5, 2.20, 10, 3, "Huge"),
+	tier("Common", 60, 0, 3, 5, 2),
+	tier("Uncommon", 25, 45, 4, 6, 3),
+	tier("Rare", 10, 32, 5, 8, 4),
+	tier("Epic", 3.5, 14, 6, 10, 5),
+	tier("Legendary", 1.2, 6, 7, 12, 6),
+	tier("Mythic", 0.28, 2.5, 8, 15, 8),
+	tier("Secret", 0.02, 0.5, 10, 20, 10),
 })
 local byId = {}
 for _, r in Balance.Rarities do
@@ -181,15 +364,41 @@ for _, r in Balance.Rarities do
 end
 Balance.RarityById = table.freeze(byId)
 
--- Room perks, as fractions. Perks of every PLACED room add up with the
--- permanent upgrades, then each total is capped (Progression.Bonuses).
+-- Room perks, as fractions, fixed by the room definition (RoomPerks, keyed by
+-- room Id; rooms not listed have none). Perks of every room ON THE ROUTE add up
+-- with the permanent upgrades, then each total is capped (Progression.Bonuses).
+-- Rare: one kind +5%; Epic: one kind +10%; Legendary: two kinds; Mythic and
+-- Secret: all three.
+local function perks(...)
+	local list = {}
+	for i = 1, select("#", ...), 2 do
+		local kind, amount = select(i, ...)
+		table.insert(list, table.freeze({ Kind = kind, Amount = amount }))
+	end
+	return table.freeze(list)
+end
 Balance.Perks = table.freeze({
 	Kinds = table.freeze({ "Coins", "Loot", "Xp" }),
-	Small = table.freeze({ Coins = 0.05, Loot = 0.10, Xp = 0.10 }),
-	Medium = table.freeze({ Coins = 0.10, Loot = 0.20, Xp = 0.20 }),
-	Large = table.freeze({ Coins = 0.20, Loot = 0.40, Xp = 0.40 }),
-	Huge = table.freeze({ Coins = 0.30, Loot = 0.60, Xp = 0.60 }),
 	Caps = table.freeze({ Coins = 1.00, Loot = 1.00, Xp = 1.00 }),
+})
+Balance.RoomPerks = table.freeze({
+	MonsterDen = perks("Xp", 0.05),
+	RestlessCrypt = perks("Loot", 0.05),
+	FlameVent = perks("Coins", 0.05),
+	Treasury = perks("Coins", 0.05),
+	FrostChamber = perks("Xp", 0.10),
+	GoblinBarracks = perks("Loot", 0.10),
+	MimicRoom = perks("Coins", 0.10),
+	RoyalVault = perks("Coins", 0.10),
+	GolemForge = perks("Coins", 0.10, "Xp", 0.10),
+	LichSanctum = perks("Loot", 0.10, "Xp", 0.10),
+	DragonHoard = perks("Coins", 0.10, "Loot", 0.10),
+	DragonLair = perks("Coins", 0.10, "Loot", 0.10, "Xp", 0.10),
+	PhoenixNest = perks("Coins", 0.10, "Loot", 0.10, "Xp", 0.10),
+	-- Includes its "+10% coins" ability (+10% Mythic base, +10% ability).
+	CelestialCoffer = perks("Coins", 0.20, "Loot", 0.10, "Xp", 0.10),
+	VoidGate = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
+	VoidVault = perks("Coins", 0.15, "Loot", 0.15, "Xp", 0.15),
 })
 
 -- Gameplay-earned loot only; never sold. Chances are per defeated visitor and
@@ -202,26 +411,28 @@ Balance.Loot = table.freeze({
 		Cleric = table.freeze({ Box = 0.09, Blueprint = 0.15, BoxType = "Dungeon" }),
 		ArmoredChallenger = table.freeze({ Box = 0.25, Blueprint = 0.35, BoxType = "Rare" }),
 	}),
-	-- Which room a box holds (both box types).
-	BoxRooms = table.freeze({
-		SlimeNest = 25,
-		SpikeHall = 25,
-		GuardRoom = 20,
-		MushroomCavern = 12,
-		MonsterDen = 10,
-		RestlessCrypt = 8,
+	-- A box (and a blueprint drop) rolls a tier, then a room OF THAT TIER by these
+	-- weights; rooms not listed weigh 1, so a tier's rooms are equally likely.
+	-- 0 = never from loot and not craftable (the starter Coin Cache). The other
+	-- treasure rooms weigh less: only one treasure can be placed.
+	RoomWeights = table.freeze({
+		TreasureRoom = 0,
+		Strongbox = 0.5,
+		Treasury = 0.5,
+		RoyalVault = 0.5,
+		DragonHoard = 0.5,
+		CelestialCoffer = 0.5,
+		VoidVault = 0.5,
 	}),
 	-- After PityAfter boxes in a row below PityRarity, the next is at least PityRarity.
 	PityAfter = 9,
 	PityRarity = "Rare",
-	-- Blueprint drop type: a shop room, weighted toward common roles.
-	BlueprintRooms = table.freeze({ GuardRoom = 40, MushroomCavern = 25, MonsterDen = 20, RestlessCrypt = 15 }),
-	CraftCost = 5, -- blueprints of one type -> one Common room of that type
-	ScrapReturn = 2, -- blueprints back for scrapping an unplaced room
+	-- Blueprint drops roll their tier with this box type's tier weights (no pity,
+	-- no event boost), then a room of that tier like a box.
+	BlueprintTierBox = "Dungeon",
 	MaxStack = 999, -- most boxes of one type or blueprints of one room held
 	-- A box earned while its stack is full converts to this many coins (banked).
 	BoxOverflowCoins = table.freeze({ Dungeon = 100, Rare = 300 }),
-	ChallengerCooldown = 120, -- seconds after a challenger encounter ends before another invite
 })
 
 -- Keeper XP and levels. XP to go from level L to L + 1 is XpBase + XpPerLevel * (L - 1).
@@ -232,8 +443,9 @@ Balance.Progression = table.freeze({
 	MaxLevel = 100,
 	-- Each level-up gives a Dungeon Box; every RareBoxEvery-th level a Rare Box instead.
 	RareBoxEvery = 5,
-	-- Keeper level needed to buy a shop room.
-	ShopLevel = table.freeze({ MushroomCavern = 3, MonsterDen = 5, RestlessCrypt = 8 }),
+	-- Keeper level needed to buy a shop room (1 when absent). Boxes and blueprints
+	-- respect the same gates, for Common and Uncommon rooms only.
+	ShopLevel = table.freeze({ MushroomCavern = 3, BatRoost = 4, ArrowGallery = 5, Strongbox = 6 }),
 })
 
 -- Account-wide keeper upgrades bought with banked coins; never reset. Cost to
@@ -247,7 +459,7 @@ Balance.Permanent = table.freeze({
 	Scholar = table.freeze({ Effect = "Xp", PerLevel = 0.10, MaxLevel = 5, Base = 250 }),
 	StoutDefenders = table.freeze({ Effect = "DefenderHealth", PerLevel = 0.05, MaxLevel = 10, Base = 200 }),
 	Lure = table.freeze({ Effect = "VisitorInterval", PerLevel = 1, MaxLevel = 5, Base = 400 }), -- seconds shorter
-	DeepVault = table.freeze({ Effect = "VaultBonusCap", PerLevel = 0.02, MaxLevel = 5, Base = 300 }),
+	DeepVault = table.freeze({ Effect = "VaultRate", PerLevel = 0.05, MaxLevel = 5, Base = 300 }), -- vault exchange rate
 })
 
 Balance.Server = table.freeze({

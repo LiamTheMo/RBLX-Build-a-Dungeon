@@ -47,9 +47,8 @@ function P.Card(parent: Instance, order: number?, rarity: string?): Frame
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = order or 0,
 		Rarity = rarity,
+		Pad = Vector2.new(6, 4),
 	})
-	local side = if rarity then 22 else 16
-	make("UIPadding", { PaddingLeft = UDim.new(0, side), PaddingRight = UDim.new(0, side), PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 18) }, f)
 	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, f)
 	return f
 end
@@ -60,7 +59,7 @@ function P.RoomImage(parent: Instance, roomId: string, size: number, kind: strin
 	if id and Sprites.Ok(id) then
 		local img = make("ImageLabel", { Name = "RoomImage", BackgroundTransparency = 1, Image = id, Size = UDim2.fromOffset(size, size), ScaleType = Enum.ScaleType.Fit }, parent)
 		Sprites.Watch(id, function()
-			img.Image = ""
+			Kit.Neutral(img)
 		end)
 		return img
 	end
@@ -81,10 +80,24 @@ function P.Text(parent: Instance, text: string, size: number?, color: Color3?, h
 	return l
 end
 
+-- Section heading with the Feedback.Divider sprite under it. Returns the container (the text is its "Text" child).
 function P.Section(parent: Instance, text: string, order: number)
-	local l = P.Text(parent, text, Theme.TextSize.Heading, Theme.Gold, true, order)
-	l.Size = UDim2.new(1, 0, 0, 36)
-	return l
+	local f = make("Frame", { Name = "Section", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58), LayoutOrder = order }, parent)
+	local l = P.Text(f, text, Theme.TextSize.Heading, Theme.Gold, true, 0)
+	l.Name, l.Size = "Text", UDim2.new(1, 0, 0, 34)
+	local d = Kit.Sprite(f, "Feedback.Divider", { Name = "Divider", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromOffset(372, 24), ScaleType = Enum.ScaleType.Fit })
+	d.ZIndex = 2
+	return f
+end
+
+-- Empty state: the EmptyBox sprite with a short caption.
+function P.Empty(parent: Instance, text: string, order: number): Frame
+	local f = make("Frame", { Name = "Empty", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 96), LayoutOrder = order }, parent)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }, f)
+	Kit.Sprite(f, "Feedback.EmptyBox", { Size = UDim2.fromOffset(80, 86), LayoutOrder = 1 })
+	local l = Kit.Label(f, text, Theme.TextSize.Body, Theme.TextMuted, true)
+	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 40), false, 2
+	return f
 end
 
 -- Row: optional leading image, text block, optional button on the right.
@@ -112,21 +125,46 @@ function P.Row(parent: Instance, text: string, btn: { [string]: any }?, lead: { 
 	return row, label, button
 end
 
+-- Wrapping row of small "icon + number" chips (odds), growing downward.
+function P.ChipFlow(parent: Instance, order: number): Frame
+	local f = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order }, parent)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Wraps = true, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, f)
+	return f
+end
+
+function P.Chip(flow: Instance, order: number, art: (Instance) -> GuiObject, text: string, color: Color3, tip: string)
+	local c = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 26), LayoutOrder = order, Active = true }, flow)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, c)
+	art(c).LayoutOrder = 1
+	local l = Kit.Label(c, text, Theme.TextSize.Caption + 1, color, true)
+	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 26), false, 2
+	Kit.Tip(c, tip)
+end
+
+-- Icon + text on one line (heading rows of the panels).
+function P.IconLine(parent: Instance, icon: string, text: string, order: number, color: Color3?): Frame
+	local f = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = order }, parent)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, f)
+	Kit.Icon(f, icon, UDim2.fromOffset(28, 28)).LayoutOrder = 1
+	local l = Kit.Label(f, text, Theme.TextSize.Body, color or Theme.TextMuted, true)
+	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 32), false, 2
+	return f
+end
+
 -- Modal shell. Returns { Gui, Panel, Title, Show(bool), Content(name) -> ScrollingFrame, Tabs }.
 function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	local gui = Kit.Screen("Panels", 20)
 	gui.Enabled = false
-	local dim = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0 }, gui)
-	local panel = Kit.Panel(dim, { Sprite = "Large", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.94, 0.92) })
+	local dim = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0 }, gui)
+	Kit.Sprite(dim, "Feedback.Scrim", { Name = "Scrim", Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0.2, ScaleType = Enum.ScaleType.Stretch, ZIndex = 0 })
+	local panel = Kit.Panel(dim, { Sprite = "Large", Pad = Vector2.new(8, 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.94, 0.92) })
 	panel.Active = true
 	make("UISizeConstraint", { MaxSize = Vector2.new(820, 680) }, panel)
-	make("UIPadding", { PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20), PaddingTop = UDim.new(0, 16), PaddingBottom = UDim.new(0, 18) }, panel)
 
 	local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56) }, panel)
+	-- The tab row names the panel, so the title stays hidden (callers still set its text).
 	local title = P.Text(head, "", Theme.TextSize.Title, Theme.TextPrimary, true)
-	title.Size = UDim2.new(1, -72, 1, 0)
-	title.AutomaticSize = Enum.AutomaticSize.None
-	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.Visible = false
 	local self = { Gui = gui, Panel = panel, Title = title, Tabs = {}, Scrolls = {} }
 	local close = Kit.CloseButton(head, UDim2.fromOffset(56, 56), function()
 		gui.Enabled = false
@@ -134,25 +172,25 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	close.Instance.AnchorPoint = Vector2.new(1, 0)
 	close.Instance.Position = UDim2.fromScale(1, 0)
 
-	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 62), Size = UDim2.new(1, 0, 0, 52) }, panel)
+	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 2), Size = UDim2.new(1, -72, 0, 52) }, head)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) }, tabs)
 	for _, name in tabNames do
-		self.Tabs[name] = Kit.Button(tabs, { Text = name, Style = "Tab", Size = UDim2.fromOffset(186, 52), TextSize = 20, OnClick = function()
+		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = name, IconLayout = "Row", Style = "Tab", Size = UDim2.fromOffset(176, 52), TextSize = 20, OnClick = function()
 			onTab(name)
 		end })
 		local scroll = make("ScrollingFrame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, 126),
-			Size = UDim2.new(1, 0, 1, -126),
+			Position = UDim2.fromOffset(0, 66),
+			Size = UDim2.new(1, 0, 1, -66),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			ScrollBarThickness = 8,
+			ScrollBarThickness = 10,
 			ScrollingDirection = Enum.ScrollingDirection.Y,
 			Visible = false,
 		}, panel)
 		make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
-		make("UIPadding", { PaddingRight = UDim.new(0, 12) }, scroll)
+		make("UIPadding", { PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 6) }, scroll)
 		self.Scrolls[name] = scroll
 	end
 	return self

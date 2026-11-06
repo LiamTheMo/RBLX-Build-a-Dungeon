@@ -1,5 +1,9 @@
 -- Loot tab: boxes with real odds + pity, open reveal, blueprints, scrap. The odds
 -- are the server's (State.BoxOdds: exactly what the next open rolls from).
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local Badges = require(script.Parent.Badges)
 local Catalog = require(script.Parent.Catalog)
 local Kit = require(script.Parent.Kit)
 local Net = require(script.Parent.Net)
@@ -7,6 +11,9 @@ local P = require(script.Parent.PanelsKit)
 local RarityColors = require(script.Parent.RarityColors)
 local ReasonText = require(script.Parent.ReasonText)
 local Settings = require(script.Parent.Settings)
+local Sound = require(script.Parent.Sound)
+local Sprites = require(script.Parent.Sprites)
+local State = require(script.Parent.State)
 local Theme = require(script.Parent.Theme)
 local Toast = require(script.Parent.Toast)
 
@@ -21,93 +28,287 @@ local function roomName(id: string): string
 	return def and def.DisplayName or P.Spaced(id)
 end
 
-local function oddsText(odds: any): (string, string)
-	local r, rooms = {}, {}
-	for _, e in odds.Rarities do
-		table.insert(r, P.Rich(e.Id, e.Id) .. " " .. P.Pct(e.Chance))
-	end
-	for _, e in odds.Rooms do
-		if e.Chance > 0 then
-			table.insert(rooms, roomName(e.Id) .. " " .. P.Pct(e.Chance))
-		end
-	end
-	return "Rarity: " .. table.concat(r, ", "), "Rooms: " .. table.concat(rooms, ", ")
-end
-
 -- Reveal: shake a closed box (~0.8 s), then show room, rarity and perks. Instant when motion is reduced.
 -- The result card wears the tier's card frame (Secret keeps a shimmer on top; static under reduced motion).
-local function reveal(overlay: Instance, box: string, result: any)
-	local gui = make("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.35, Size = UDim2.fromScale(1, 1), ZIndex = 10, Active = true }, overlay)
+-- Tapping anywhere (or Esc / B) skips the shake, then closes the card. The catcher is its own full-screen
+-- ScreenGui (no safe insets), so nothing of the panel underneath can be hit while it is up.
+-- Reel pieces: weighted pick from the box's displayed odds (State.BoxOdds), so the roll looks honest.
+local function pickWeighted(list: any, rng: Random): any
+	local total = 0
+	for _, e in list or {} do
+		total += math.max(e.Chance or 0, 0)
+	end
+	if total <= 0 then
+		return nil
+	end
+	local r = rng:NextNumber() * total
+	for _, e in list do
+		r -= math.max(e.Chance or 0, 0)
+		if r <= 0 then
+			return e
+		end
+	end
+	return list[#list]
+end
+
+local REEL_SLOTS, REEL_STOP = 38, 33
+local REEL_SECONDS = 5
+
+local function reveal(box: string, result: any, onDone: (() -> ())?)
+	local rg = Kit.Screen("Reveal", 30)
+	rg.ScreenInsets = Enum.ScreenInsets.None
+	local gui = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 10 }, rg)
+	Kit.Sprite(gui, "Feedback.Scrim", { Name = "Scrim", Size = UDim2.fromScale(1, 1), ImageTransparency = 0.1, ScaleType = Enum.ScaleType.Stretch, ZIndex = 10 })
 	local reduced = Settings.Reduced()
 	local color = P.RarityColor[result.Rarity] or Theme.TextPrimary
 	local card
-	local function makeCard(rarity: string?)
-		local c = Kit.Panel(gui, { Sprite = "Large", Rarity = rarity, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(340, if rarity then 400 else 300), ZIndex = 11 })
-		return c
-	end
-	card = makeCard(nil)
-	local scale = make("UIScale", {}, card)
+	local phase, readyAt = "reel", 0
+	local reelConn: RBXScriptConnection? = nil
+	local skipReel: (() -> ())? = nil
+	local keyConn: RBXScriptConnection? = nil
+	local closed = false
 
-	local function label(text: string, size: number, c: Color3, y: number, h: number, heading: boolean)
-		local l = Kit.Label(card, text, size, c, heading)
-		l.Position = UDim2.fromOffset(12, y)
-		l.Size = UDim2.new(1, -24, 0, h)
-		l.ZIndex = 12
-		return l
+	local function close()
+		if closed then
+			return
+		end
+		closed = true
+		if keyConn then
+			keyConn:Disconnect()
+		end
+		if reelConn then
+			reelConn:Disconnect()
+		end
+		rg:Destroy()
+		if onDone then
+			onDone() -- applies the held State snapshot: counts, new room, badge
+		end
 	end
+
+	-- Card frame (square-ish, so the tier frame keeps its proportions) with a centred content column.
+	local function makeCard(rarity: string?): (Frame, Frame)
+		local c = Kit.Panel(gui, { Sprite = "Large", Rarity = rarity, Pad = Vector2.new(6, 6), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(340, if rarity then 380 else 320), ZIndex = 11 })
+		local col = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 12 }, c)
+		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }, col)
+		return c, col
+	end
+	local col
+	local scale = make("UIScale", {})
+
+	-- "Tap" hint under the card: a pulsing check mark, no sentence.
+	local hint = make("Frame", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 190 + 20), Size = UDim2.fromOffset(120, 44), ZIndex = 12, Visible = false }, gui)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8) }, hint)
+	local hintIcon = Kit.Icon(hint, "Check", UDim2.fromOffset(36, 36), Theme.Success)
+	local hintText = Kit.Label(hint, "Tap", Theme.TextSize.Body, Theme.TextPrimary, true)
+	hintText.AutomaticSize, hintText.Size, hintText.TextWrapped = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false
+	hintText.TextTransparency = 0.15
 
 	local function show()
-		card:Destroy()
-		card = makeCard(result.Rarity)
+		phase = "shown"
+		if reelConn then
+			reelConn:Disconnect()
+			reelConn = nil
+		end
+		if card then
+			card:Destroy()
+		end
+		card, col = makeCard(result.Rarity)
 		scale = make("UIScale", {}, card)
-		local stroke = card:FindFirstChildOfClass("UIStroke")
-		if stroke and stroke.Enabled then -- drawn fallback frame
-			stroke.Color, stroke.Thickness = color, 5
+		-- Light behind the card in the tier colour, and a burst that blooms once (Reel.Burst).
+		local glow = Kit.Glow(card, color, 0.45)
+		glow.Size, glow.ZIndex = UDim2.new(1.9, 0, 1.9, 0), 11
+		glow.ClipsDescendants = false
+		local burst = Kit.Sprite(gui, "Reel.Burst", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(300, 300), ImageColor3 = color, ImageTransparency = 0.2, ZIndex = 11 })
+		if reduced then
+			burst.ImageTransparency = 1
+		else
+			Settings.Tween(burst, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(620, 620), ImageTransparency = 1 })
 		end
 		if RarityColors.Shimmer[result.Rarity] then
-			Kit.Prismatic(if stroke and stroke.Enabled then stroke else card)
+			Kit.Prismatic(card)
 		end
-		label(string.upper(tostring(result.Rarity)), Theme.TextSize.Heading, color, 22, 32, true)
-		local gem = Kit.Gem(card, result.Rarity, UDim2.fromOffset(36, 36))
-		gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, -26, 0, 20), 12
-		local room = P.RoomImage(card, result.RoomId, 104)
-		room.AnchorPoint, room.Position, room.ZIndex = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 62), 12
-		label(roomName(result.RoomId), Theme.TextSize.Title, Theme.TextPrimary, 172, 40, true)
-		local perks = P.PerkText(result.Perks)
-		label(if perks ~= "" then perks else "No perks", Theme.TextSize.Body, if perks ~= "" then Theme.Success else Theme.TextMuted, 216, 48, false)
-		label("Added to your unplaced rooms.", Theme.TextSize.Caption, Theme.TextMuted, 268, 22, false)
-		local done = Kit.Button(card, { Text = "Nice!", Style = "Primary", Size = UDim2.fromOffset(200, 56), OnClick = function()
-			gui:Destroy()
-		end })
-		done.Instance.AnchorPoint = Vector2.new(0.5, 1)
-		done.Instance.Position = UDim2.new(0.5, 0, 1, -24)
-		done.Instance.ZIndex = 12
+		-- Rarity: gem + name, inside the frame's inset (never on the rim).
+		local top = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36), LayoutOrder = 1, ZIndex = 12 }, col)
+		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, top)
+		Kit.Gem(top, result.Rarity, UDim2.fromOffset(32, 32)).LayoutOrder = 1
+		local rl = Kit.Label(top, string.upper(tostring(result.Rarity)), Theme.TextSize.Heading, color, true)
+		rl.AutomaticSize, rl.Size, rl.TextWrapped, rl.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false, 2
+		local room = P.RoomImage(col, result.RoomId, 104)
+		room.LayoutOrder, room.ZIndex = 2, 12
+		local nm = Kit.Label(col, roomName(result.RoomId), Theme.TextSize.Title, Theme.TextPrimary, true)
+		nm.Size, nm.LayoutOrder, nm.ZIndex, nm.TextWrapped, nm.TextScaled = UDim2.new(1, 0, 0, 40), 3, 12, false, true
+		make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Title }, nm)
+		if result.Perks and #result.Perks > 0 then
+			local perks = Kit.Perks(col, result.Perks, false)
+			perks.LayoutOrder = 4
+			perks.Size = UDim2.fromOffset(0, 26)
+		end
+		if result.Modifier then
+			local mod = Badges.Modifier(col, result.Modifier, 36)
+			if mod then
+				mod.LayoutOrder = 5
+				local name = Kit.Label(col, tostring(result.Modifier), Theme.TextSize.Body, Badges.ModifierColor[result.Modifier] or Theme.TextPrimary, true)
+				name.LayoutOrder, name.Size, name.TextWrapped = 6, UDim2.new(1, 0, 0, 24), false
+			end
+		end
+		-- Siblings draw by ZIndex across whole subtrees: lift every part of the card to the card's level.
+		for _, d in col:GetDescendants() do
+			if d:IsA("GuiObject") then
+				d.ZIndex = 12
+			end
+		end
+		hint.Visible = true
+		readyAt = os.clock() + 0.4
 		if not reduced then
 			scale.Scale = 0.7
 			Settings.Tween(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+			Settings.Tween(hintIcon, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { ImageTransparency = 0.55 })
 		end
 	end
+
+	gui.Activated:Connect(function()
+		if phase == "reel" then
+			if skipReel then
+				skipReel()
+			end
+		elseif os.clock() >= readyAt then
+			close()
+		end
+	end)
+	keyConn = UserInputService.InputBegan:Connect(function(input)
+		if (input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.B or input.KeyCode == Enum.KeyCode.ButtonB) and not UserInputService:GetFocusedTextBox() then
+			if phase == "reel" then
+				if skipReel then
+					skipReel()
+				end
+			elseif os.clock() >= readyAt then
+				close()
+			end
+		end
+	end)
 
 	if reduced then
 		show()
 		return
 	end
-	local q = Kit.Icon(card, if box == "Rare" then "RareBox" else "Box", UDim2.fromOffset(140, 140))
-	q.AnchorPoint, q.Position, q.ZIndex = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 80), 12
-	label(box .. " Box", Theme.TextSize.Heading, Theme.TextPrimary, 24, 32, true)
-	local t = Settings.Tween(q, TweenInfo.new(0.1, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, 4, true), { Rotation = 12 })
-	task.delay(0.85, function()
-		if t then
-			t:Cancel()
+
+	-- Reel: a window with a pointer; slots (rarity frame + room) slide past and stop on the server's result.
+	local rng = Random.new()
+	local odds = State.Current and State.Current.BoxOdds and State.Current.BoxOdds[box]
+	local slotW, pitch = 112, 122
+	local phone = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+	local winW = if phone then 520 else 660
+	local window = Kit.Panel(gui, { Sprite = "ReelWindow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(winW, 190), ZIndex = 11 })
+	window.Active = true
+	window.ClipsDescendants = false
+	window:FindFirstChild("Inset"):Destroy() -- pointers, selector and the skip button are placed against the whole frame
+	local clip = make("Frame", { Name = "Clip", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(26, 22), Size = UDim2.new(1, -52, 1, -44), ZIndex = 12 }, window)
+	local strip = make("Frame", { Name = "Strip", BackgroundTransparency = 1, Size = UDim2.fromOffset(REEL_SLOTS * pitch, 126), AnchorPoint = Vector2.new(0, 0.5), ZIndex = 12 }, clip)
+	for i = 1, REEL_SLOTS do
+		local room, rarity
+		if i == REEL_STOP then
+			room, rarity = result.RoomId, result.Rarity
+		else
+			-- BoxOdds.Rooms entries are { Id, Rarity, Chance }: a room always carries its own fixed rarity.
+			local pick = pickWeighted(odds and odds.Rooms, rng)
+			room = if pick then pick.Id else result.RoomId
+			rarity = if pick and pick.Rarity then pick.Rarity else (Catalog.RoomRarity(room))
 		end
-		if gui.Parent then
-			show()
+		local slot = Kit.Panel(strip, { Sprite = "Small", Rarity = rarity, Size = UDim2.fromOffset(slotW, 118), Position = UDim2.fromOffset((i - 1) * pitch + (pitch - slotW) / 2, 4), Pad = 0, ZIndex = 12 })
+		local img = P.RoomImage(slot, room, 64)
+		img.AnchorPoint, img.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.45)
+		local gem = Kit.Gem(slot, rarity, UDim2.fromOffset(22, 22))
+		gem.AnchorPoint, gem.Position = Vector2.new(1, 0), UDim2.new(1, -4, 0, 4)
+	end
+	-- Pointers (Reel.PointerTop above, Reel.PointerBottom below the centre slot) and the selector frame (Reel.Slot).
+	local pointer = Kit.Sprite(window, "Reel.PointerTop", { Size = UDim2.fromOffset(44, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, -6), ZIndex = 14 })
+	local pointerB = Kit.Sprite(window, "Reel.PointerBottom", { Size = UDim2.fromOffset(44, 30), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 6), ZIndex = 14 })
+	local selector = Kit.Sprite(window, "Reel.Slot", { Size = UDim2.fromOffset(slotW + 8, 126), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ImageTransparency = 0.6, ZIndex = 13 })
+	-- Skip button (Reel.SpinButton art) under the window.
+	local skipBtn = make("ImageButton", { Name = "Skip", BackgroundTransparency = 1, AutoButtonColor = false, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 18), Size = UDim2.fromOffset(160, 60), Image = "", ZIndex = 14 }, window)
+	Kit.Skin(skipBtn, Kit.Spec("Reel.SpinButton"), "Uniform", nil, nil)
+	local skipLabel = Kit.Label(skipBtn, "Skip", Theme.TextSize.Button, Theme.TextOnGold, true)
+	skipLabel.Size, skipLabel.ZIndex = UDim2.fromScale(1, 1), 15
+	skipBtn.Activated:Connect(function()
+		if skipReel then
+			skipReel()
 		end
 	end)
+	for _, d in window:GetDescendants() do
+		if d:IsA("GuiObject") and d ~= pointer and d ~= pointerB and d ~= selector and d ~= skipBtn and d.Parent ~= skipBtn then
+			d.ZIndex = math.max(d.ZIndex, 12)
+		end
+	end
+	-- Centre of slot k sits at the window's centre; the strip's x shifts left as it rolls.
+	local function stripX(progress: number): number
+		local centre = (clip.AbsoluteSize.X / math.max(window.AbsoluteSize.X / window.Size.X.Offset, 0.01)) / 2
+		local finalX = centre - ((REEL_STOP - 1) * pitch + pitch / 2)
+		local startX = centre - pitch / 2
+		return startX + (finalX - startX) * progress
+	end
+	local function ease(t: number): number -- fast, decelerating, small overshoot then settle
+		if t >= 1 then
+			return 1
+		end
+		if t < 0.88 then
+			local u = t / 0.88
+			return (1 - (1 - u) ^ 4) * 1.012
+		end
+		local u = (t - 0.88) / 0.12
+		return 1.012 - 0.012 * (u * u * (3 - 2 * u))
+	end
+	local startClock = os.clock()
+	local lastSlot = 0
+	local function place(progress: number)
+		local x = stripX(progress)
+		strip.Position = UDim2.fromOffset(x, clip.AbsoluteSize.Y / math.max(window.AbsoluteSize.Y / window.Size.Y.Offset, 0.01) / 2)
+		return x
+	end
+	local landing = false
+	local function land(hold: number)
+		if landing then
+			return
+		end
+		landing = true
+		phase = "landing"
+		if reelConn then
+			reelConn:Disconnect()
+			reelConn = nil
+		end
+		place(1)
+		task.delay(hold, function()
+			if not closed then
+				window:Destroy()
+				show()
+			end
+		end)
+	end
+	skipReel = function()
+		skipReel = nil
+		land(0.2)
+	end
+	reelConn = RunService.RenderStepped:Connect(function()
+		local t = (os.clock() - startClock) / REEL_SECONDS
+		local x = place(ease(t))
+		local centre = (clip.AbsoluteSize.X / math.max(window.AbsoluteSize.X / window.Size.X.Offset, 0.01)) / 2
+		local slotAtPointer = math.floor((centre - x) / pitch) + 1
+		if slotAtPointer ~= lastSlot then
+			lastSlot = slotAtPointer
+			Sound.Play("Click") -- tick as a slot passes the pointer
+		end
+		if t >= 1 then
+			skipReel = nil
+			land(0.5)
+		end
+	end)
+	place(0)
 end
 
-local function run(remote: string, arg: string, onOk: (any) -> ())
+local function run(remote: string, arg: string, onOk: (any) -> (), onFail: (() -> ())?)
 	if busy then
+		if onFail then
+			onFail()
+		end
 		return
 	end
 	busy = true
@@ -117,10 +318,13 @@ local function run(remote: string, arg: string, onOk: (any) -> ())
 		onOk(res)
 	else
 		Toast.Show(ReasonText.Get(res), "Bad")
+		if onFail then
+			onFail()
+		end
 	end
 end
 
-function L.Build(scroll: ScrollingFrame, state: any, overlay: Instance)
+function L.Build(scroll: ScrollingFrame, state: any)
 	local catalog = Catalog.Wait()
 	local pos = P.Reset(scroll)
 	local order = 0
@@ -133,34 +337,59 @@ function L.Build(scroll: ScrollingFrame, state: any, overlay: Instance)
 	for _, boxType in catalog.Loot.BoxTypes do
 		local count = (state.Boxes or {})[boxType] or 0
 		local card = P.Card(scroll, nxt())
-		local _, _, open = P.Row(card, string.format("%s Box x%d", boxType, count), { Text = "Open", Style = "Primary", Width = 120, OnClick = function()
+		local _, _, open = P.Row(card, string.format("%s  x%d", boxType, count), { Text = "Open", Style = "Primary", Width = 120, OnClick = function()
+			-- The server rolls and saves first; State snapshots are held until the reel and reveal finish.
+			State.Hold(true)
 			run("OpenBox", boxType, function(res)
 				if type(res) == "table" then
-					reveal(overlay, boxType, res)
+					reveal(boxType, res, function()
+						State.Hold(false)
+					end)
+				else
+					State.Hold(false)
 				end
+			end, function()
+				State.Hold(false)
 			end)
 		end }, { Icon = if boxType == "Rare" then "RareBox" else "Box" })
-		open.SetEnabled(count > 0, if count > 0 then nil else "None")
+		open.SetEnabled(count > 0)
 		local odds = (state.BoxOdds or {})[boxType]
 		if odds then
-			local rText, roomText = oddsText(odds)
-			P.Text(card, rText, Theme.TextSize.Body, Theme.TextPrimary, false, 2)
-			P.Text(card, roomText, Theme.TextSize.Caption, Theme.TextMuted, false, 3)
+			-- Real odds as icon chips: rarity gem + %, room + % (names on hover / long-press).
+			local rf = P.ChipFlow(card, 2)
+			for i, e in odds.Rarities do
+				P.Chip(rf, i, function(p)
+					return Kit.Gem(p, e.Id, UDim2.fromOffset(22, 22))
+				end, P.Pct(e.Chance), P.RarityColor[e.Id] or Theme.TextPrimary, e.Id)
+			end
+			local rmf = P.ChipFlow(card, 3)
+			for i, e in odds.Rooms do
+				if e.Chance > 0 then
+					P.Chip(rmf, i, function(p)
+						return P.RoomImage(p, e.Id, 26)
+					end, P.Pct(e.Chance), P.RarityColor[e.Rarity or Catalog.RoomRarity(e.Id)] or Theme.TextMuted, roomName(e.Id))
+				end
+			end
+			-- Pity: gem of the guaranteed tier + bar "3/10".
 			local top = odds.PityAfter + 1
 			local pity = math.clamp(state.BoxPity or 0, 0, top)
-			local bar = Kit.Bar(card, UDim2.new(1, 0, 0, 24))
-			bar.Instance.LayoutOrder = 4
-			bar.Set(pity / top, string.format("Pity %d / %d", pity, top))
-			P.Text(card, string.format("Your %dth box in a row without %s or better is at least %s.", top, odds.PityRarity, odds.PityRarity), Theme.TextSize.Caption, Theme.TextMuted, false, 5)
+			local prow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 4 }, card)
+			make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, prow)
+			local pg = Kit.Gem(prow, odds.PityRarity, UDim2.fromOffset(26, 26))
+			pg.LayoutOrder = 1
+			pg.Active = true
+			Kit.Tip(pg, string.format("%s+ by box %d", tostring(odds.PityRarity), top))
+			local bar = Kit.Bar(prow, UDim2.new(1, -34, 0, 24))
+			bar.Instance.LayoutOrder = 2
+			bar.Set(pity / top, string.format("%d/%d", pity, top))
 		end
 	end
 
 	P.Section(scroll, "Blueprints", nxt())
-	local cost = catalog.Loot.CraftCost
-	P.Text(scroll, string.format("%d blueprints of one room craft it at Common rarity.", cost), Theme.TextSize.Body, Theme.TextMuted, false, nxt())
 	for _, id in catalog.RoomOrder do
 		local def = catalog.Rooms[id]
-		if def and def.Craftable then
+		local cost = def and def.CraftCost
+		if def and def.Craftable and cost then
 			local n = (state.Blueprints or {})[id] or 0
 			local card = P.Card(scroll, nxt())
 			local _, _, craft = P.Row(card, string.format("%s  %d/%d", roomName(id), math.min(n, cost), cost), { Text = "Craft", Style = "Primary", Width = 120, OnClick = function()
@@ -168,7 +397,7 @@ function L.Build(scroll: ScrollingFrame, state: any, overlay: Instance)
 					Toast.Show(roomName(id) .. " crafted.", "Good")
 				end)
 			end }, { Room = id, Kind = def.Kind })
-			craft.SetEnabled(n >= cost, if n >= cost then nil else "Need " .. (cost - n))
+			craft.SetEnabled(n >= cost)
 		end
 	end
 
@@ -195,9 +424,7 @@ function L.Build(scroll: ScrollingFrame, state: any, overlay: Instance)
 		return a.InstanceId < b.InstanceId
 	end)
 	if #list == 0 then
-		P.Text(scroll, "No spare rooms. Rooms you are not using appear here.", Theme.TextSize.Body, Theme.TextMuted, false, nxt())
-	else
-		P.Text(scroll, string.format("Scrapping a spare room gives %d blueprints of its type.", catalog.Loot.ScrapReturn), Theme.TextSize.Body, Theme.TextMuted, false, nxt())
+		P.Empty(scroll, "No unplaced rooms", nxt())
 	end
 	for _, e in list do
 		local room = e.Room
@@ -205,7 +432,7 @@ function L.Build(scroll: ScrollingFrame, state: any, overlay: Instance)
 		local text = string.format("%s %s  Lv %d%s", roomName(room.Id), P.Rich("[" .. tostring(room.Rarity) .. "]", room.Rarity), room.Level or 1, if perks ~= "" then "\n" .. perks else "")
 		local card = P.Card(scroll, nxt(), room.Rarity)
 		local btn
-		_, _, btn = P.Row(card, text, { Text = "Scrap", Style = "Danger", Width = 130, OnClick = function()
+		_, _, btn = P.Row(card, text, { Text = "Scrap", Icon = "Blueprint", IconLayout = "Row", Style = "Danger", Width = 150, Tip = string.format("+%d blueprints", (catalog.Rooms[room.Id] or {}).ScrapReturn or 0), OnClick = function()
 			if (confirming[e.InstanceId] or 0) < os.clock() then
 				confirming[e.InstanceId] = os.clock() + 3
 				btn.SetText("Tap again")
@@ -218,7 +445,7 @@ function L.Build(scroll: ScrollingFrame, state: any, overlay: Instance)
 			end
 			confirming[e.InstanceId] = nil
 			run("ScrapRoom", e.InstanceId, function()
-				Toast.Show(string.format("Scrapped: +%d blueprints.", catalog.Loot.ScrapReturn), "Good")
+				Toast.Show(string.format("+%d blueprints", (catalog.Rooms[room.Id] or {}).ScrapReturn or 0), "Good")
 			end)
 		end }, { Room = room.Id, Kind = (catalog.Rooms[room.Id] or {}).Kind })
 		if (confirming[e.InstanceId] or 0) > os.clock() then

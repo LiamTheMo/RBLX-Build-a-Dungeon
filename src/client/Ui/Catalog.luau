@@ -47,6 +47,16 @@ function Catalog.Visitor(id: any): any
 	return c and type(id) == "string" and c.Visitors[id] or nil
 end
 
+-- Rarity of a room: the room type's fixed rarity (Catalog.Rooms[id].Rarity) once the server sends it, else the
+-- instance's own field (older server), else Common. Never build UI around per-instance rarity directly.
+function Catalog.RoomRarity(roomId: any, instance: any?): string
+	local def = Catalog.Room(roomId)
+	if def and type(def.Rarity) == "string" then
+		return def.Rarity
+	end
+	return if instance and type(instance.Rarity) == "string" then instance.Rarity else "Common"
+end
+
 -- 1-based rank of a rarity id (lowest first), nil if unknown. For sorting only.
 function Catalog.RarityRank(id: any): number?
 	return rank[id]

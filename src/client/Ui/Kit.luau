@@ -1,4 +1,7 @@
 -- Small UI kit: Screen, Panel, Label, Pill, Icon, Rarity, Perks, Button, Bar, Toggle, Slider.
+-- Owner rule: every UI visual is a ChatGPT sprite (SpriteIds / SpriteIds3 / SpriteIds4). Code only lays things out and
+-- tints/fades the art; when a sprite is unusable the piece shows the minimal neutral image (Sprites.FallbackId), never a
+-- code-drawn replacement shape.
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -6,16 +9,29 @@ local UserInputService = game:GetService("UserInputService")
 local IconIds = require(script.Parent.IconIds)
 local RarityColors = require(script.Parent.RarityColors)
 local SpriteIds = require(script.Parent.SpriteIds)
+local SpriteIds3 = require(script.Parent.SpriteIds3)
 local Sprites = require(script.Parent.Sprites)
 local Theme = require(script.Parent.Theme)
 local Scale = require(script.Parent.Scale)
 local Settings = require(script.Parent.Settings)
 local Sound = require(script.Parent.Sound)
 
+local V4: any = Sprites.Ids4
 local Kit = {}
+
+-- Scroll bars: every ScrollingFrame wears the v4 thumb sprite (Roblox has no track image property).
+local THUMB = V4.Controls.ScrollBarThumb.Id
 
 local function make(class: string, props: { [string]: any }, parent: Instance?): any
 	local i = Instance.new(class)
+	if class == "TextLabel" or class == "TextButton" or class == "TextBox" then
+		(i :: any).FontFace = Theme.BodyFont -- the one UI family; a prop below may still override it
+	elseif class == "ScrollingFrame" then
+		local s: any = i
+		s.ScrollBarImageColor3 = Color3.new(1, 1, 1)
+		s.ScrollBarImageTransparency = 0
+		s.TopImage, s.MidImage, s.BottomImage = THUMB, THUMB, THUMB
+	end
 	for k, v in props do
 		(i :: any)[k] = v
 	end
@@ -49,13 +65,14 @@ function Kit.Screen(name: string, order: number?): ScreenGui
 end
 
 -- Sprite skins ---------------------------------------------------------------
--- A skin is a SpriteIds entry (Id, optional SliceCenter, Size) drawn on an image
--- object. Sliced skins get a SliceScale kept in step with the object's size:
--- "Uniform" scales the whole sprite to fit (pills, buttons, bars, rarity frames),
--- "Border" keeps the border near `cap` reference px (big panels). Reference px =
--- screen px / UIScale, so desktop and phone scales look alike.
-local function fit(img: GuiObject, spec: any, mode: string?, cap: number?)
+-- A skin is a spec (Id, optional SliceCenter, Size) drawn on an image object. Sliced skins get a SliceScale kept in
+-- step with the object's size: "Uniform" scales the whole sprite to fit (pills, buttons, bars, rarity frames), "Border"
+-- keeps the border near `cap` reference px (big panels). Reference px = screen px / UIScale, so desktop and phone look
+-- alike. The scale is capped at 0.5 (Roblox drops right/bottom slices above ~0.5); v4 bands are >= 24 px so 0.3-0.5 is
+-- the sweet spot.
+local function fit(img: GuiObject, spec: any, mode: string?, cap: number?, onScale: ((number) -> ())?)
 	local c = spec.SliceCenter
+	local nudge = 0
 	local function apply()
 		local a = img.AbsoluteSize / math.max(Scale.Value, 0.01)
 		if a.X < 2 or a.Y < 2 then
@@ -63,35 +80,60 @@ local function fit(img: GuiObject, spec: any, mode: string?, cap: number?)
 		end
 		local s
 		if mode == "Border" then
-			s = (cap or 14) / ((c.Min.X + c.Min.Y) / 2)
+			s = math.min((cap or 14) / ((c.Min.X + c.Min.Y) / 2), 0.5)
 		else
-			s = math.min(a.X / spec.Size.X, a.Y / spec.Size.Y)
+			s = math.min(a.X / spec.Size.X, a.Y / spec.Size.Y, 0.5)
 		end
 		-- The two borders must never overlap.
 		s = math.min(s, 0.98 * a.X / (c.Min.X + spec.Size.X - c.Max.X + 0.001), 0.98 * a.Y / (c.Min.Y + spec.Size.Y - c.Max.Y + 0.001))
 		local target: any = img
 		target.SliceScale = s
+		-- Re-assign SliceScale a moment after the last change: Studio sometimes leaves the right/bottom slices
+		-- unrendered when it is only set once as the frame is laid out.
+		nudge += 1
+		local mine = nudge
+		task.delay(0.1, function()
+			if mine == nudge and img.Parent then
+				target.SliceScale = s + 0.001
+			end
+		end)
+		if onScale then
+			onScale(s)
+		end
 	end
 	apply()
 	img:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply)
 end
 
--- Draws spec on img (ImageLabel/ImageButton). Returns false (and does nothing) when the
--- id is unusable; onFail runs if it later fails to load.
-local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: (() -> ())?): boolean
+-- Neutral image shown in place of an unusable sprite.
+local function neutral(img: any)
+	img.Image = Sprites.FallbackId
+	local f = Sprites.Fallback
+	if f and f.SliceCenter then
+		img.ScaleType, img.SliceCenter = Enum.ScaleType.Slice, f.SliceCenter
+		img.SliceScale = 0.15
+	else
+		img.ScaleType = Enum.ScaleType.Fit
+	end
+end
+Kit.Neutral = neutral
+
+-- Draws spec on img (ImageLabel/ImageButton). A missing or unloadable id shows the neutral image and returns false.
+local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: (() -> ())?, onScale: ((number) -> ())?): boolean
 	if not spec or not Sprites.Ok(spec.Id) then
+		neutral(img)
 		return false
 	end
 	img.Image = spec.Id
 	if spec.SliceCenter then
 		img.ScaleType = Enum.ScaleType.Slice
 		img.SliceCenter = spec.SliceCenter
-		fit(img, spec, mode, cap)
+		fit(img, spec, mode, cap, onScale)
 	else
 		img.ScaleType = Enum.ScaleType.Fit
 	end
 	Sprites.Watch(spec.Id, function()
-		img.Image = ""
+		neutral(img)
 		if onFail then
 			onFail()
 		end
@@ -100,83 +142,182 @@ local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: ((
 end
 Kit.Skin = skin
 
-local PANELS = {
-	Large = { SpriteIds.Kit.PanelLarge, "Border", 15 },
-	Small = { SpriteIds.Kit.PanelSmall, "Border", 12 },
-	Pill = { SpriteIds.Kit.ProgressFrame, "Uniform", nil },
-}
+-- Sliced image whose SliceScale follows its HEIGHT only (bar fills / slider fills: their width changes with the value).
+local function skinByHeight(img: any, spec: any)
+	if not Sprites.Ok(spec.Id) then
+		neutral(img)
+		return
+	end
+	img.Image, img.ScaleType, img.SliceCenter = spec.Id, Enum.ScaleType.Slice, spec.SliceCenter
+	local nudge = 0
+	local function apply()
+		local h = img.AbsoluteSize.Y / math.max(Scale.Value, 0.01)
+		if h < 2 then
+			return
+		end
+		local s = math.min(h / spec.Size.Y, 0.5)
+		img.SliceScale = s
+		nudge += 1
+		local mine = nudge
+		task.delay(0.1, function()
+			if mine == nudge and img.Parent then
+				img.SliceScale = s + 0.001
+			end
+		end)
+	end
+	apply()
+	img:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply)
+	Sprites.Watch(spec.Id, function()
+		neutral(img)
+	end)
+end
+Kit.SkinByHeight = skinByHeight
 
--- props: any property of the panel plus Sprite ("Large" | "Small" (default) | "Pill" |
--- false for the plain drawn panel; its stroke may carry state colour) and Rarity (tier
--- name: draws that tier's card frame instead). The panel is an ImageLabel; without a
--- usable sprite it is the drawn rounded rectangle (BackgroundColor3 + stroke).
+-- Spec lookup in the v4 set by dotted path ("Feedback.GlowSoft"); nil when missing.
+function Kit.Spec(path: string): any
+	local node: any = V4
+	for part in string.gmatch(path, "[^%.]+") do
+		if type(node) ~= "table" then
+			return nil
+		end
+		node = node[part]
+	end
+	return node
+end
+
+-- A decorative sprite image (no input): path is a v4 spec path ("Feedback.GlowSoft"); props are ImageLabel properties.
+-- Sliced specs stay "Uniform"-fitted to the object.
+function Kit.Sprite(parent: Instance?, path: string, props: { [string]: any }?): any
+	local img = make("ImageLabel", { Name = (string.match(path, "[^%.]+$")), BackgroundTransparency = 1, BorderSizePixel = 0, Active = false, Image = "" }, nil)
+	for k, v in props or {} do
+		img[k] = v
+	end
+	skin(img, Kit.Spec(path), "Uniform", nil, nil)
+	if props and props.ScaleType then
+		img.ScaleType = props.ScaleType -- skin() picks Fit/Slice; an explicit choice (Stretch scrims) wins
+	end
+	img.Parent = parent
+	return img
+end
+
+-- Soft light behind something (Feedback.GlowSoft, additive). Returns the image; size and place it.
+function Kit.Glow(parent: Instance, color: Color3?, transparency: number?): any
+	return Kit.Sprite(parent, "Feedback.GlowSoft", {
+		ImageColor3 = color or Theme.Gold,
+		ImageTransparency = transparency or 0.5,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		ZIndex = 0,
+	})
+end
+
+-- Tutorial / selection ring (Feedback.HighlightRing) around an object, outset by `outset` reference px.
+function Kit.Ring(parent: Instance, outset: number?): any
+	local o = outset or 8
+	return Kit.Sprite(parent, "Feedback.HighlightRing", {
+		Size = UDim2.new(1, o * 2, 1, o * 2),
+		Position = UDim2.fromOffset(-o, -o),
+		ZIndex = 8,
+		Visible = false,
+	})
+end
+
+-- Panels ---------------------------------------------------------------------
+-- kind = { spec, mode, cap, noInset }.
+local P4, F4, C4 = V4.Panels, V4.Feedback, V4.Controls
+local PANELS: { [string]: { any } } = {
+	Large = { P4.Large, "Border", 22 },
+	Small = { P4.Small, "Border", 18 },
+	Pill = { P4.HudPill, "Uniform", nil, true },
+	Row = { P4.Row, "Border", 12 },
+	Chip = { P4.Chip, "Uniform", nil, true },
+	Tooltip = { P4.Tooltip, "Border", 9 },
+	TitleBar = { P4.TitleBar, "Border", 14, true },
+	ToastInfo = { F4.ToastInfo, "Border", 18 },
+	ToastGood = { F4.ToastGood, "Border", 18 },
+	ToastBad = { F4.ToastBad, "Border", 18 },
+	Bubble = { F4.TutorialBubble, "Border", 28 }, -- 0.4 slice scale: the tail band renders cleanly below 0.5
+	LoadFail = { F4.LoadFailPanel, "Border", 24 },
+	ReelWindow = { V4.Reel.Window, "Border", 24 },
+}
+Kit.PanelKinds = PANELS
+
+-- Kept for older callers.
+function Kit.SafeSpec(spec: any): any
+	return spec
+end
+Kit.V4Frames = V4.Frames
+
+-- props: any property of the panel plus
+--   Sprite  a PANELS kind ("Large", "Small" (default), "Pill", "Row", "Chip", "Tooltip", "TitleBar", "ToastInfo/Good/Bad",
+--           "Bubble", "LoadFail")
+--   Rarity  tier name: draws that tier's card frame instead
+--   Pad     extra content padding in px (number or Vector2) added to the frame's border.
+-- The panel is an ImageLabel wearing the sprite. Panels get a UIPadding "Inset" equal to the sliced border (kept in step
+-- with the SliceScale) plus Pad, so children never sit on the frame's rim, and clip to the frame. Pills/chips carry no
+-- inset: callers pad their own content.
 function Kit.Panel(parent: Instance, props: { [string]: any }?): any
-	local f = make("ImageLabel", { BackgroundColor3 = Theme.BgDeep, BorderSizePixel = 0, Image = "" }, parent)
-	local kind, rarity, bgT = "Small", nil, 0
+	local f = make("ImageLabel", { BackgroundTransparency = 1, BorderSizePixel = 0, Image = "" }, parent)
+	local kind, rarity = "Small", nil
+	local padX, padY = 0, 0
 	for k, v in props or {} do
 		if k == "Sprite" then
-			kind = v
+			kind = if type(v) == "string" then v else "Small"
 		elseif k == "Rarity" then
 			rarity = v
-		else
-			f[k] = v
-			if k == "BackgroundTransparency" then
-				bgT = v
+		elseif k == "Pad" then
+			if typeof(v) == "Vector2" then
+				padX, padY = v.X, v.Y
+			else
+				padX, padY = v, v
 			end
+		elseif k ~= "BackgroundColor3" then -- the art carries the colour
+			f[k] = v
 		end
 	end
-	local pill = kind == "Pill"
-	local corner = Kit.Corner(f, if pill then Theme.CornerPill else Theme.CornerPanel)
-	local stroke = Kit.Stroke(f)
-	local function drawn()
-		f.BackgroundTransparency, stroke.Enabled, corner.CornerRadius = bgT, true, if pill then Theme.CornerPill else Theme.CornerPanel
+	local entry = PANELS[kind] or PANELS.Small
+	local spec, mode, cap, noInset = entry[1], entry[2], entry[3], entry[4]
+	if rarity and V4.Rarity[rarity] then
+		spec, mode, cap, noInset = V4.Rarity[rarity].Frame, "Uniform", nil, false
 	end
-	local spec, mode, cap
-	if rarity and SpriteIds.Rarity[rarity] then
-		spec, mode, cap = SpriteIds.Rarity[rarity].Frame, "Uniform", nil
-	elseif kind and PANELS[kind] then
-		spec, mode, cap = PANELS[kind][1], PANELS[kind][2], PANELS[kind][3]
+	local inset = nil
+	local function setInset(l: number, t: number, r: number, b: number)
+		if inset then
+			inset.PaddingLeft, inset.PaddingTop = UDim.new(0, math.ceil(l + padX)), UDim.new(0, math.ceil(t + padY))
+			inset.PaddingRight, inset.PaddingBottom = UDim.new(0, math.ceil(r + padX)), UDim.new(0, math.ceil(b + padY))
+		end
 	end
-	if spec and skin(f, spec, mode, cap, drawn) then
-		f.BackgroundTransparency, stroke.Enabled, corner.CornerRadius = 1, false, UDim.new(0, 0)
+	if not noInset then
+		inset = make("UIPadding", { Name = "Inset" }, f)
+	end
+	skin(f, spec, mode, cap, nil, function(s)
+		local c = spec.SliceCenter
+		if c then
+			setInset(c.Min.X * s + 2, c.Min.Y * s + 2, (spec.Size.X - c.Max.X) * s + 2, (spec.Size.Y - c.Max.Y) * s + 2)
+		end
+	end)
+	if not noInset then
+		f.ClipsDescendants = true
+		setInset(14, 14, 14, 14) -- until the first measure
 	end
 	return f
 end
 
--- Rarity gem (small diamond/jewel) of a tier; a drawn dot in the tier colour without the sprite.
+-- Rarity gem (small diamond/jewel) of a tier.
 function Kit.Gem(parent: Instance, rarity: string?, size: UDim2?): any
 	local r = if rarity and SpriteIds.Rarity[rarity] then rarity else "Common"
 	local gem = make("ImageLabel", { Name = "Gem", BackgroundTransparency = 1, Size = size or UDim2.fromOffset(24, 24), ScaleType = Enum.ScaleType.Fit }, parent)
-	local function drawn()
-		gem.BackgroundTransparency = 0
-		gem.BackgroundColor3 = RarityColors.Accent[r] or RarityColors.Accent.Common
-		gem.Rotation = 45
-		Kit.Corner(gem, UDim.new(0.2, 0))
-	end
-	if not skin(gem, { Id = SpriteIds.Rarity[r].Gem }, nil, nil, drawn) then
-		drawn()
-	end
+	skin(gem, { Id = SpriteIds.Rarity[r].Gem }, nil, nil, nil)
 	return gem
 end
 
--- Close "X" button: the Close sprite (drawn "X" button without it). Returns { Instance }.
+-- Close "X" button. Returns { Instance }.
 function Kit.CloseButton(parent: Instance, size: UDim2?, onClick: () -> ())
 	local sz = size or UDim2.fromOffset(52, 52)
 	local b = make("ImageButton", { Name = "Close", BackgroundTransparency = 1, AutoButtonColor = false, Size = sz, Image = "" }, parent)
 	Kit.MinTouch(b)
-	local label = Kit.Label(b, "", Theme.TextSize.Button, Theme.TextPrimary, true)
-	label.Size = UDim2.fromScale(1, 1)
-	label.TextWrapped = false
 	local scale = make("UIScale", {}, b)
-	local function drawn()
-		b.BackgroundTransparency, b.BackgroundColor3 = 0, Theme.BgRaised
-		label.Text = "X"
-		Kit.Corner(b)
-		Kit.Stroke(b)
-	end
-	if not skin(b, SpriteIds.Kit.Close, nil, nil, drawn) then
-		drawn()
-	end
+	skin(b, SpriteIds.Kit.Close, nil, nil, nil)
 	b.MouseButton1Down:Connect(function()
 		Settings.Tween(scale, TweenInfo.new(0.06), { Scale = 0.92 })
 	end)
@@ -201,56 +342,55 @@ function Kit.Label(parent: Instance, text: string, size: number?, color: Color3?
 	}, parent)
 end
 
--- Pill label that grows with its text. Neutral pills (BgRaised/BgPanel/BgDeep fill) wear the
--- Pill sprite (the object is then an ImageLabel with a child TextLabel "Label": set text with
--- Kit.SetText); coloured pills (gold counts, rarity names, status) stay flat colour.
-local function neutral(c: Color3): boolean
-	return c == Theme.BgRaised or c == Theme.BgPanel or c == Theme.BgDeep
-end
-function Kit.Pill(parent: Instance, text: string, bg: Color3, fg: Color3, height: number?): any
-	local h = height or 20
-	if neutral(bg) and Sprites.Ok(SpriteIds.Kit.Pill.Id) then
-		local root = make("ImageLabel", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, h), Image = "" }, parent)
-		local label = make("TextLabel", {
-			Name = "Label",
-			BackgroundTransparency = 1,
-			TextColor3 = fg,
-			Text = text,
-			TextSize = Theme.TextSize.Caption,
-			FontFace = Theme.HeadingFont,
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, h),
-			TextWrapped = false,
-		}, root)
-		make("UIPadding", { PaddingLeft = UDim.new(0, math.max(10, h * 0.45)), PaddingRight = UDim.new(0, math.max(10, h * 0.45)) }, label)
-		local function drawn()
-			root.BackgroundTransparency, root.BackgroundColor3 = 0, bg
-			Kit.Corner(root, Theme.CornerPill)
-		end
-		if skin(root, SpriteIds.Kit.Pill, "Uniform", nil, drawn) then
-			-- Dark tint so the light sprite reads as a plum chip behind cream text.
-			root.ImageColor3 = if bg == Theme.BgDeep then Color3.fromRGB(70, 60, 95) else Color3.fromRGB(120, 105, 160)
-		else
-			drawn()
-		end
-		return root
+-- Chips -----------------------------------------------------------------------
+-- A chip is an ImageLabel wearing a chip sprite with a child TextLabel "Label" (set text with Kit.SetText, restyle the
+-- label with Kit.PillLabel). The sprite follows the colour asked for: gold / green / red / grey / dark chips are their own
+-- art, other plum fills use the plain Panels.Chip.
+local function chipSpec(bg: Color3): any
+	if bg == Theme.Gold then
+		return C4.Chip.Gold
+	elseif bg == Theme.Success then
+		return C4.Chip.Green
+	elseif bg == Theme.Danger then
+		return C4.Chip.Red
+	elseif bg == Theme.Disabled then
+		return C4.Chip.Grey
+	elseif bg == Theme.BgDeep then
+		return C4.Chip.Dark
 	end
-	local p = make("TextLabel", {
-		BackgroundColor3 = bg,
+	return P4.Chip
+end
+
+local function pillWith(parent: Instance, text: string, spec: any, fg: Color3, height: number?): any
+	local h = height or 20
+	local root = make("ImageLabel", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, h), Image = "" }, parent)
+	local label = make("TextLabel", {
+		Name = "Label",
+		BackgroundTransparency = 1,
 		TextColor3 = fg,
 		Text = text,
 		TextSize = Theme.TextSize.Caption,
 		FontFace = Theme.HeadingFont,
 		AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.fromOffset(0, h),
-		BorderSizePixel = 0,
-	}, parent)
-	Kit.Corner(p, Theme.CornerPill)
-	make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, p)
-	return p
+		TextWrapped = false,
+		ZIndex = 2,
+	}, root)
+	make("UIPadding", { PaddingLeft = UDim.new(0, math.max(10, h * 0.5)), PaddingRight = UDim.new(0, math.max(10, h * 0.5)) }, label)
+	skin(root, spec, "Uniform", nil, nil)
+	return root
 end
 
--- Sets the text of a Kit.Pill (either kind).
+function Kit.Pill(parent: Instance, text: string, bg: Color3, fg: Color3, height: number?): any
+	return pillWith(parent, text, chipSpec(bg), fg, height)
+end
+
+-- The text label of a Kit.Pill.
+function Kit.PillLabel(pill: any): TextLabel
+	return pill:FindFirstChild("Label") or pill
+end
+
+-- Sets the text of a Kit.Pill.
 function Kit.SetText(pill: any, text: string)
 	local l = pill:FindFirstChild("Label")
 	if l and l:IsA("TextLabel") then
@@ -260,80 +400,56 @@ function Kit.SetText(pill: any, text: string)
 	end
 end
 
--- Drawn glyphs for icons that have no uploaded image (check mark, padlock).
-function Kit.Check(parent: Instance, size: UDim2?, color: Color3?): Frame
-	local root = make("Frame", { BackgroundTransparency = 1, Size = size or UDim2.fromOffset(24, 24) }, parent)
-	for _, leg in { { 0.3, 0.62, 0.17, 0.38, -45 }, { 0.58, 0.48, 0.17, 0.75, 45 } } do
-		local f = make("Frame", {
-			BackgroundColor3 = color or Theme.Success,
-			BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(leg[1], leg[2]),
-			Size = UDim2.fromScale(leg[3], leg[4]),
-			Rotation = leg[5],
-		}, root)
-		Kit.Corner(f, UDim.new(0.5, 0))
+-- Threat / event / variant / misc sprites (SpriteIds3) by icon name. Threat.Lock and Threat.Check become
+-- "ThreatLock" / "ThreatCheck" (plain "Lock" / "Check" are the older icons).
+local FLAT3: { [string]: string } = {}
+for group, entries in SpriteIds3 do
+	for name, id in entries do
+		FLAT3[if group == "Threat" and (name == "Lock" or name == "Check") then "Threat" .. name else name] = id
 	end
-	return root
 end
+Kit.Sprites3 = FLAT3
 
-function Kit.LockGlyph(parent: Instance, size: UDim2?, color: Color3?): Frame
-	local root = make("Frame", { BackgroundTransparency = 1, Size = size or UDim2.fromOffset(18, 18) }, parent)
-	local c = color or Theme.DisabledText
-	local body = make("Frame", { BackgroundColor3 = c, BorderSizePixel = 0, Position = UDim2.fromScale(0.12, 0.45), Size = UDim2.fromScale(0.76, 0.5) }, root)
-	Kit.Corner(body, UDim.new(0.2, 0))
-	local arc = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromScale(0.27, 0.05), Size = UDim2.fromScale(0.46, 0.55) }, root)
-	Kit.Corner(arc, UDim.new(0.5, 0))
-	make("UIStroke", { Color = c, Thickness = 2.5 }, arc)
-	return root
+-- v4 icon sprites by name: Slow, SureFooted, ReducedMotion, ModifierRing, ModBlazing/Lucky/Golden, CoinFloat, XpFloat,
+-- Back, Plus, Minus, Sort, Filter, Crown, and the feedback icons as Info / Good / Warn.
+local V4ICONS: { [string]: string } = {}
+for name, spec in V4.Icons do
+	V4ICONS[name] = spec.Id
 end
+V4ICONS.Info, V4ICONS.Good, V4ICONS.Warn = F4.IconInfo.Id, F4.IconGood.Id, F4.IconWarn.Id
+Kit.Icons4 = V4ICONS
 
-local FALLBACK = { Coin = "$", Vault = "V", Build = "B", Shop = "S", Sword = "/", Shield = "D", Visitor = "V", Clock = "T", Settings = "*", Challenger = "C", Upgrade = "^", Cross = "X", Warn = "!" }
-
--- Icon-name aliases onto SpriteIds.Icons (the sprite wins; IconIds / drawn glyphs are the fallback).
+-- Icon-name aliases onto SpriteIds.Icons.
 local ICON_ALIAS = { Loot = "Box", Cross = false }
 
-local function legacyIcon(parent: Instance, name: string, sz: UDim2, color: Color3?): any
-	if name == "Check" then
-		return Kit.Check(parent, sz, color)
-	elseif name == "Lock" then
-		return Kit.LockGlyph(parent, sz, color)
-	end
-	local id = (IconIds :: any)[name]
-	if id then
-		return make("ImageLabel", { BackgroundTransparency = 1, Image = id, Size = sz, ScaleType = Enum.ScaleType.Fit }, parent)
-	end
-	local t = Kit.Label(parent, FALLBACK[name] or name, 20, color or Theme.TextPrimary, true)
-	t.Size = sz
-	t.TextScaled = true
-	return t
-end
-
--- Icon by name as an ImageLabel: a SpriteIds.Icons entry ("Loot"/"Box", "Collection", "Keeper",
--- "Xp", "Level", "Lock", "Check", "Spores", "Heal", "Trap", "Defender", "Support", "CoinStack",
--- "SoundOn", "Music", ...), else an IconIds one ("Coin", "Vault", "Build", ...). The drawn glyph
--- (check, padlock) or short text is the fallback when the sprite id is missing or fails to load.
+-- Icon by name as an ImageLabel: a SpriteIds.Icons entry, a SpriteIds3 one, a v4 icon, else an IconIds one ("Coin",
+-- "Vault", ...). Nothing usable shows the neutral image.
 function Kit.Icon(parent: Instance, name: string, size: UDim2?, color: Color3?): any
 	local sz = size or UDim2.fromOffset(32, 32)
 	local alias = ICON_ALIAS[name]
-	local id = if name == "Cross" then SpriteIds.Kit.Close.Id else (SpriteIds.Icons :: any)[if alias == nil then name else alias]
+	local id = if name == "Cross" then SpriteIds.Kit.Close.Id else ((SpriteIds.Icons :: any)[if alias == nil then name else alias] or FLAT3[name] or V4ICONS[name] or (IconIds :: any)[name])
+	local img = make("ImageLabel", { Name = name, BackgroundTransparency = 1, Size = sz, ScaleType = Enum.ScaleType.Fit, Image = "" }, parent)
 	if id and Sprites.Ok(id) then
-		local img = make("ImageLabel", { Name = name, BackgroundTransparency = 1, Image = id, Size = sz, ScaleType = Enum.ScaleType.Fit }, parent)
+		img.Image = id
 		Sprites.Watch(id, function()
-			if not img.Parent then
-				return
-			end
-			local fb = legacyIcon(img.Parent, name, img.Size, color)
-			fb.AnchorPoint, fb.Position, fb.LayoutOrder, fb.ZIndex = img.AnchorPoint, img.Position, img.LayoutOrder, img.ZIndex
-			img:Destroy()
+			neutral(img)
 		end)
-		return img
+	else
+		neutral(img)
 	end
-	return legacyIcon(parent, name, sz, color)
+	return img
 end
 
--- Soft prismatic gradient on a stroke that slowly turns (static under reduced
--- motion); the stroke's own colour should be near white.
+-- Check mark / padlock: the sprite icons.
+function Kit.Check(parent: Instance, size: UDim2?, color: Color3?): any
+	return Kit.Icon(parent, "Check", size or UDim2.fromOffset(24, 24), color)
+end
+
+function Kit.LockGlyph(parent: Instance, size: UDim2?, color: Color3?): any
+	return Kit.Icon(parent, "Lock", size or UDim2.fromOffset(18, 18), color)
+end
+
+-- Soft prismatic gradient on a stroke or image that slowly turns (static under reduced motion).
 local PRISM = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromHex("#FF9AD5")),
 	ColorSequenceKeypoint.new(0.25, Color3.fromHex("#FFE79A")),
@@ -341,7 +457,7 @@ local PRISM = ColorSequence.new({
 	ColorSequenceKeypoint.new(0.75, Color3.fromHex("#9AC8FF")),
 	ColorSequenceKeypoint.new(1, Color3.fromHex("#FF9AD5")),
 })
-function Kit.Prismatic(stroke: Instance): UIGradient -- a UIStroke, or an image to tint
+function Kit.Prismatic(stroke: Instance): UIGradient
 	local g = make("UIGradient", { Color = PRISM }, stroke)
 	if not Settings.Reduced() then
 		TweenService:Create(g, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Rotation = 360 }):Play()
@@ -349,21 +465,16 @@ function Kit.Prismatic(stroke: Instance): UIGradient -- a UIStroke, or an image 
 	return g
 end
 
--- Rarity badge: name on the rarity colour (text always names the rarity). Dark
--- tier colours get light text; shimmer tiers get a prismatic edge.
-function Kit.Rarity(parent: Instance, rarity: string?): TextLabel
-	local r = if rarity and RarityColors.Fill[rarity] then rarity else "Common"
-	local fill = RarityColors.Fill[r]
-	local dark = fill.R * 0.3 + fill.G * 0.59 + fill.B * 0.11 < 0.35
-	local pill = Kit.Pill(parent, r, fill, if dark then Theme.TextPrimary else Theme.DangerText, 18)
-	if RarityColors.Shimmer[r] then
-		Kit.Prismatic(Kit.Stroke(pill, RarityColors.Accent[r], 2))
-	end
+-- Rarity badge (the RarityBadge sprite of the tier with its name; text always names the rarity).
+function Kit.Rarity(parent: Instance, rarity: string?): any
+	local r = if rarity and RarityColors.Fill[rarity] and C4.RarityBadge[rarity] then rarity else "Common"
+	local pill = pillWith(parent, r, C4.RarityBadge[r], Theme.TextPrimary, 22)
+	local l = Kit.PillLabel(pill)
+	l.TextStrokeColor3, l.TextStrokeTransparency = Theme.Stroke, 0.3
 	return pill
 end
 
 local PERK_ICON = { Coins = "Coin", Loot = "Loot", Xp = "Xp" }
-local PERK_NAME = { Coins = "coins", Loot = "loot", Xp = "XP" }
 
 -- Row of perk icons (plus "+5% coins" text unless compact).
 function Kit.Perks(parent: Instance, perks: { any }?, compact: boolean?): Frame
@@ -378,7 +489,7 @@ function Kit.Perks(parent: Instance, perks: { any }?, compact: boolean?): Frame
 	for i, p in perks or {} do
 		Kit.Icon(f, PERK_ICON[p.Kind] or "Upgrade", UDim2.fromOffset(16, 16)).LayoutOrder = i * 2
 		if not compact then
-			local l = Kit.Label(f, ("+%d%% %s"):format(math.floor((p.Amount or 0) * 100 + 0.5), PERK_NAME[p.Kind] or ""), Theme.TextSize.Caption, Theme.TextPrimary, true)
+			local l = Kit.Label(f, ("+%d%%"):format(math.floor((p.Amount or 0) * 100 + 0.5)), Theme.TextSize.Caption, Theme.TextPrimary, true)
 			l.AutomaticSize = Enum.AutomaticSize.X
 			l.Size = UDim2.fromOffset(0, 18)
 			l.TextWrapped = false
@@ -388,18 +499,16 @@ function Kit.Perks(parent: Instance, perks: { any }?, compact: boolean?): Frame
 	return f
 end
 
+-- Buttons -----------------------------------------------------------------------
+local B4 = V4.Buttons
 local STYLES = {
-	Primary = { Theme.Gold, Theme.TextOnGold, "ButtonPrimary" },
-	Secondary = { Theme.BgRaised, Theme.TextPrimary, "ButtonSecondary" },
-	Success = { Theme.Success, Theme.DangerText, "ButtonSuccess" },
-	Danger = { Theme.Danger, Theme.DangerText, "ButtonDanger" },
-	Cancel = { Theme.BgRaised, Theme.TextPrimary, "ButtonSecondary" },
-	Tab = { Theme.BgRaised, Theme.TextPrimary, "Tab" },
+	Primary = { Theme.Gold, Theme.TextOnGold, B4.Primary },
+	Secondary = { Theme.BgRaised, Theme.TextPrimary, B4.Secondary },
+	Success = { Theme.Success, Theme.DangerText, B4.Success },
+	Danger = { Theme.Danger, Theme.DangerText, B4.Danger },
+	Cancel = { Theme.BgRaised, Theme.TextPrimary, B4.Secondary },
+	Tab = { Theme.BgRaised, Theme.TextPrimary, nil },
 }
-
-local function shade(c: Color3, amount: number): Color3
-	return if amount >= 0 then c:Lerp(Color3.new(1, 1, 1), amount) else c:Lerp(Color3.new(0, 0, 0), -amount)
-end
 
 -- Touch targets stay >= 44 px after UIScale (phones scale below 1).
 function Kit.MinTouch(b: GuiObject)
@@ -415,20 +524,108 @@ function Kit.MinTouch(b: GuiObject)
 	end)
 end
 
-local DISABLED_TINT = Color3.fromRGB(150, 142, 165)
-local TAB_DIM = Color3.fromRGB(165, 150, 195)
+-- Tooltip: hover (mouse) or press-and-hold (touch) shows a short label above the object, or below
+-- it near the top edge. For icon-only UI whose meaning is not obvious.
+local tipGui: ScreenGui? = nil
+local tipFrame: GuiObject? = nil
+local tipText: TextLabel? = nil
+local tipId = 0
+local function ensureTip()
+	if tipGui and tipGui.Parent then
+		return
+	end
+	local gui = make("ScreenGui", { Name = "Tips", ResetOnSpawn = false, DisplayOrder = 80, ScreenInsets = Enum.ScreenInsets.None }, nil)
+	Scale.Attach(gui)
+	local f = Kit.Panel(gui, { Sprite = "Tooltip", Visible = false, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0), Active = false })
+	f.ClipsDescendants = false
+	local t = Kit.Label(f, "", Theme.TextSize.Caption + 2, Theme.TextPrimary, true)
+	t.AutomaticSize, t.Size, t.TextWrapped = Enum.AutomaticSize.XY, UDim2.fromOffset(0, 0), false
+	make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 2), PaddingBottom = UDim.new(0, 2) }, t)
+	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
+	tipGui, tipFrame, tipText = gui, f, t
+end
+
+local function showTip(obj: GuiObject, text: string)
+	ensureTip()
+	local f, t, gui = tipFrame :: GuiObject, tipText :: TextLabel, tipGui :: ScreenGui
+	t.Text = text
+	f.Visible = true
+	task.defer(function()
+		local sc = math.max(Scale.Value, 0.01)
+		local view = gui.AbsoluteSize / sc
+		local half = f.AbsoluteSize.X / sc / 2
+		local c = (obj.AbsolutePosition + obj.AbsoluteSize / 2 - gui.AbsolutePosition) / sc
+		local above = c.Y - obj.AbsoluteSize.Y / sc / 2 - 8
+		local below = above >= 40
+		f.AnchorPoint = Vector2.new(0.5, if below then 1 else 0)
+		local y = if below then above else c.Y + obj.AbsoluteSize.Y / sc / 2 + 8
+		f.Position = UDim2.fromOffset(math.clamp(c.X, half + 6, math.max(half + 6, view.X - half - 6)), y)
+	end)
+end
+
+function Kit.Tip(obj: GuiObject, text: string | () -> string)
+	local function hide(id: number)
+		if tipFrame and id == tipId then
+			tipFrame.Visible = false
+		end
+	end
+	obj.MouseEnter:Connect(function()
+		if not UserInputService.MouseEnabled then
+			return
+		end
+		tipId += 1
+		local id = tipId
+		task.delay(0.35, function()
+			if id == tipId and obj.Parent then
+				showTip(obj, if type(text) == "function" then text() else text)
+			end
+		end)
+	end)
+	obj.MouseLeave:Connect(function()
+		tipId += 1
+		hide(tipId)
+	end)
+	obj.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		tipId += 1
+		local id = tipId
+		local held = true
+		local ended
+		ended = input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				held = false
+				ended:Disconnect()
+			end
+		end)
+		task.delay(0.45, function()
+			if id == tipId and held and obj.Parent then
+				showTip(obj, if type(text) == "function" then text() else text)
+				task.delay(1.6, function()
+					hide(id)
+				end)
+			end
+		end)
+	end)
+	obj.Destroying:Once(function()
+		tipId += 1
+		hide(tipId)
+	end)
+end
 
 -- opts: Text, Style (Primary/Secondary/Success/Danger/Cancel/Tab), Size (UDim2, default 140x56;
 -- never below 44 px), OnClick, Icon (icon name, see Kit.Icon), IconLayout ("Column" = icon above
--- the label, default; "Row" = icon at the left), Edge (stroke colour), Rarity (tier name: the
--- button is that tier's card frame instead of a styled button).
--- The button is a TextButton (transparent when a sprite is used) holding the sprite "Skin", an
--- optional "Icon" and the text "Label". Without a usable sprite it is the drawn rounded button.
--- Returns { Instance, Stroke, Icon, SetText, SetTextSize, SetEnabled(on, reasonText?, locked?),
--- SetSelected (visual only), SetStyle, SetEdge, SetBadge(n), SetHighlight(thickness?), Shimmer }.
+-- the label, default; "Row" = icon at the left), Round (the round icon-button sprite), Shadow (ButtonShadow sprite under
+-- the button), Rarity (tier name: the button is that tier's card frame instead of a styled button).
+-- The button is a TextButton (transparent) holding the sprite "Skin" (normal / pressed / disabled art), an optional
+-- "Icon" and the text "Label". Selection and the tutorial highlight show the HighlightRing sprite.
+-- Returns { Instance, Stroke (always disabled; kept for callers), Icon, SetText, SetTextSize, SetEnabled(on, reasonText?,
+-- locked?), SetSelected (visual only), SetStyle, SetEdge, SetBadge(n), SetHighlight(thickness?), Shimmer }.
 function Kit.Button(parent: Instance, opts: { [string]: any })
 	local style = STYLES[opts.Style or "Secondary"]
 	local isTab = opts.Style == "Tab"
+	local isRound = opts.Round == true
 	local size: UDim2 = opts.Size or UDim2.fromOffset(140, 56)
 	size = UDim2.new(
 		size.X.Scale,
@@ -441,47 +638,64 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		Text = "",
 		AutoButtonColor = false,
 		Size = size,
-		BackgroundColor3 = style[1],
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		LayoutOrder = opts.LayoutOrder or 0,
 	}, parent)
-	Kit.Corner(b)
-	local stroke = Kit.Stroke(b)
 	Kit.MinTouch(b)
+	if opts.Shadow then
+		local sh = make("ImageLabel", { Name = "Shadow", BackgroundTransparency = 1, Position = UDim2.new(0, 0, 0, 5), Size = UDim2.fromScale(1, 1), ZIndex = 0, Active = false, Image = "" }, b)
+		if isRound then
+			skin(sh, B4.Round, nil, nil, nil)
+			sh.ImageColor3, sh.ImageTransparency = Color3.new(0, 0, 0), 0.6
+		else
+			skin(sh, C4.ButtonShadow, "Uniform", nil, nil)
+		end
+	end
+	if opts.Tip then
+		Kit.Tip(b, opts.Tip)
+	end
 
-	local self: any = { Instance = b, Stroke = stroke }
+	local self: any = { Instance = b, Stroke = make("UIStroke", { Enabled = false, Thickness = 0 }, b) }
 	local enabled, selected, hover, pressed, baseText = true, false, false, false, opts.Text or ""
-	local edge: Color3? = opts.Edge
 	local highlight: number? = nil
 	local scale = make("UIScale", {}, b)
 
-	local normalSpec, pressedSpec = nil, nil
-	local function pickSpecs()
-		if opts.Rarity and SpriteIds.Rarity[opts.Rarity] then
-			normalSpec, pressedSpec = SpriteIds.Rarity[opts.Rarity].Frame, nil
-		else
-			local kit = SpriteIds.Kit
-			normalSpec, pressedSpec = kit[style[3]], kit[style[3] .. "Pressed"]
+	local function specs()
+		if opts.Rarity and V4.Rarity[opts.Rarity] then
+			return V4.Rarity[opts.Rarity].Frame, nil
+		elseif isRound then
+			return B4.Round, nil
+		elseif isTab then
+			return (if selected then P4.TabOn else P4.TabOff), nil
+		end
+		return style[3].Normal, style[3].Pressed
+	end
+	local normalSpec, pressedSpec = specs()
+
+	-- Layers: Skin (z1) under Icon (z2) under Label (z3); Ring above all.
+	local img = make("ImageLabel", { Name = "Skin", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, Image = "", Active = false }, b)
+	skin(img, normalSpec, "Uniform", nil, nil)
+	for _, s in { pressedSpec, C4.ButtonDisabled } do
+		if s and Sprites.Ok(s.Id) then
+			task.spawn(function() -- warm the other states so the first press does not flash
+				pcall(function()
+					game:GetService("ContentProvider"):PreloadAsync({ s.Id })
+				end)
+			end)
 		end
 	end
-	pickSpecs()
+	local ring = Kit.Ring(b, if isTab then 2 else 8)
 
-	-- Layers: Skin (z1) under Icon (z2) under Label (z3).
-	local img = make("ImageLabel", { Name = "Skin", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, Image = "", Active = false }, b)
-	local useSprite = false
-	local function drawn()
-		useSprite = false
-		img.Image = ""
-		b.BackgroundTransparency = 0
-	end
-	useSprite = skin(img, normalSpec, "Uniform", nil, drawn)
-	b.BackgroundTransparency = if useSprite then 1 else 0
-	if pressedSpec and Sprites.Ok(pressedSpec.Id) then
-		task.spawn(function() -- warm the pressed art so the first press does not flash
-			pcall(function()
-				game:GetService("ContentProvider"):PreloadAsync({ pressedSpec.Id })
-			end)
-		end)
+	local function show(spec: any)
+		if spec and Sprites.Ok(spec.Id) and img.Image ~= spec.Id then
+			img.Image = spec.Id
+			if spec.SliceCenter then
+				img.ScaleType, img.SliceCenter = Enum.ScaleType.Slice, spec.SliceCenter
+			else
+				img.ScaleType = Enum.ScaleType.Fit
+			end
+		end
 	end
 
 	local label = make("TextLabel", {
@@ -501,10 +715,11 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 	if opts.Icon then
 		local row = opts.IconLayout == "Row"
 		-- Square icon: as tall as the fraction of the button, never wider than the button.
-		icon = Kit.Icon(b, opts.Icon, UDim2.new(1, 0, if row then 0.6 else 0.5, 0), style[2])
+		icon = Kit.Icon(b, opts.Icon, UDim2.new(1, 0, if row then 0.6 else (opts.IconScale or 0.5), 0), style[2])
 		make("UIAspectRatioConstraint", { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width }, icon)
-		icon.AnchorPoint = if row then Vector2.new(0, 0.5) else Vector2.new(0.5, 0)
-		icon.Position = if row then UDim2.new(0, 14, 0.5, 0) else UDim2.new(0.5, 0, 0.07, 0)
+		local centred = not row and baseText == ""
+		icon.AnchorPoint = if row then Vector2.new(0, 0.5) elseif centred then Vector2.new(0.5, 0.5) else Vector2.new(0.5, 0)
+		icon.Position = if row then UDim2.new(0, 14, 0.5, 0) elseif centred then UDim2.fromScale(0.5, 0.5) else UDim2.new(0.5, 0, 0.07, 0)
 		icon.ZIndex = 2
 		if row then
 			pad.PaddingLeft = UDim.new(0, 44)
@@ -516,43 +731,33 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 	end
 
 	local function paint()
-		local fill, text = style[1], style[2]
+		local text = style[2]
+		normalSpec, pressedSpec = specs()
+		local plainStyle = not opts.Rarity and not isRound and not isTab
 		if not enabled then
-			fill, text = Theme.Disabled, Theme.DisabledText
-		elseif pressed then
-			fill = shade(fill, -0.1)
-		elseif hover then
-			fill = shade(fill, 0.08)
+			text = Theme.DisabledText
 		end
 		label.TextColor3 = text
-		if useSprite then
-			if isTab then
-				img.ImageColor3 = if selected then Color3.new(1, 1, 1) else TAB_DIM
-				label.TextColor3 = if selected and enabled then Theme.Gold else text
-			elseif not enabled then
-				img.ImageColor3 = DISABLED_TINT
+		if isTab then
+			show(normalSpec)
+			img.ImageColor3 = if selected then Color3.new(1, 1, 1) elseif hover then Color3.fromRGB(215, 205, 235) else Color3.fromRGB(190, 180, 215)
+			label.TextColor3 = if selected and enabled then Theme.Gold else text
+		elseif not enabled then
+			if plainStyle then
+				show(C4.ButtonDisabled)
+				img.ImageColor3 = Color3.new(1, 1, 1)
 			else
-				img.ImageColor3 = if pressed then Color3.fromRGB(235, 235, 235) elseif hover then Color3.new(1, 1, 1) else Color3.fromRGB(250, 250, 250)
+				show(normalSpec)
+				img.ImageColor3 = Color3.fromRGB(150, 142, 165)
 			end
-			if pressedSpec and enabled and Sprites.Ok(pressedSpec.Id) then
-				local want = if pressed then pressedSpec else normalSpec
-				if img.Image ~= want.Id then
-					img.Image = want.Id
-					img.SliceCenter = want.SliceCenter
-				end
-			end
-			b.BackgroundTransparency = 1
-			-- Gold outline marks selection / the tutorial highlight; Edge only tints drawn buttons.
-			local ring = (selected and not isTab) or highlight ~= nil
-			stroke.Enabled = ring
-			stroke.Color = Theme.Gold
-			stroke.Thickness = highlight or 4
 		else
-			b.BackgroundColor3 = fill
-			stroke.Enabled = true
-			stroke.Color = if selected or highlight then Theme.Gold else (edge or Theme.Stroke)
-			stroke.Thickness = highlight or 3
+			show(if pressed and pressedSpec then pressedSpec else normalSpec)
+			img.ImageColor3 = if pressed then Color3.fromRGB(235, 235, 235) elseif hover then Color3.new(1, 1, 1) else Color3.fromRGB(250, 250, 250)
 		end
+		-- The ring marks selection (not tabs: they swap to the lit tab art) and the tutorial highlight.
+		local showRing = (selected and not isTab) or highlight ~= nil
+		ring.Visible = showRing
+		ring.ImageTransparency = if highlight then math.clamp((6 - highlight) * 0.35, 0, 0.6) else 0
 		if icon and icon:IsA("ImageLabel") then
 			icon.ImageTransparency = if enabled then 0 else 0.55
 		end
@@ -618,36 +823,18 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 	end
 	function self.SetStyle(name: string)
 		style = STYLES[name]
-		pickSpecs()
-		if useSprite and normalSpec and normalSpec.Id ~= img.Image then
-			img.Image = normalSpec.Id
-			img.SliceCenter = normalSpec.SliceCenter
-		end
 		paint()
 	end
-	function self.SetEdge(color: Color3?)
-		edge = color
-		paint()
-	end
-	-- Tutorial ring (thickness in px) or nil to clear.
+	function self.SetEdge(_color: Color3?) end
+	-- Tutorial ring (thickness in px, pulses 4..6) or nil to clear.
 	function self.SetHighlight(thickness: number?)
 		highlight = thickness
-		-- Stroke only (called every frame while pulsing): no scale tween.
-		if useSprite then
-			stroke.Enabled = (selected and not isTab) or thickness ~= nil
-			stroke.Color = Theme.Gold
-			stroke.Thickness = thickness or 4
-		else
-			stroke.Color = if selected or thickness then Theme.Gold else (edge or Theme.Stroke)
-			stroke.Thickness = thickness or 3
-		end
+		local showRing = (selected and not isTab) or thickness ~= nil
+		ring.Visible = showRing
+		ring.ImageTransparency = if thickness then math.clamp((6 - thickness) * 0.35, 0, 0.6) else 0
 	end
 	function self.Shimmer()
-		if useSprite then
-			Kit.Prismatic(img)
-		else
-			Kit.Prismatic(stroke)
-		end
+		Kit.Prismatic(img)
 	end
 	local badge: any = nil
 	function self.SetBadge(n: number)
@@ -662,78 +849,60 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 			badge.AnchorPoint = Vector2.new(1, 0)
 			badge.Position = UDim2.new(1, 6, 0, -6)
 			badge.ZIndex = 5
-			Kit.Stroke(badge, Theme.Stroke, 2)
+			Kit.PillLabel(badge).ZIndex = 6
 		end
 		badge.Visible = true
-		badge.Text = if n > 99 then "99+" else tostring(n)
+		Kit.SetText(badge, if n > 99 then "99+" else tostring(n))
 	end
 	paint()
 	return self
 end
 
--- Progress bar with text over it: the ProgressFrame sprite with a ProgressFill sprite inside
--- (drawn pill frame + colour fill without them). color tints the fill (nil = the sprite's gold).
--- Returns { Instance, Set(fraction, text, danger?) }.
+-- Progress bar from the v4 Bar sprites: the Track frame with the Fill sprite clipped inside it and centred text with
+-- padding at both ends. The fill never gets narrower than its own height, so it always reads as a rounded pill (instead
+-- of a sliver), and is hidden at 0.
+-- color tints the fill (nil = the sprite's gold). Returns { Instance, Set(fraction, text, tint?) } where tint is a
+-- Color3, or true for the danger red.
 function Kit.Bar(parent: Instance, size: UDim2, color: Color3?)
-	local bar = make("ImageLabel", { BackgroundColor3 = Theme.BgPanel, Size = size, BorderSizePixel = 0, Image = "" }, parent)
-	local corner = Kit.Corner(bar, Theme.CornerPill)
-	local stroke = Kit.Stroke(bar, Theme.Stroke, 2)
-	-- The fill lives in an inset box so it stays inside the frame's rim.
-	local inner = make("Frame", { Name = "Inner", BackgroundTransparency = 1, ZIndex = 2 }, bar)
-	local fill = make("ImageLabel", { Name = "Fill", BackgroundColor3 = color or Theme.Gold, BorderSizePixel = 0, Image = "", ZIndex = 2 }, inner)
-	local fillCorner = Kit.Corner(fill, Theme.CornerPill)
-	local fillSprite, frameSprite = false, false
-	local function insetBox()
+	local bar = make("ImageLabel", { Name = "Bar", BackgroundTransparency = 1, Size = size, Image = "", BorderSizePixel = 0 }, parent)
+	skin(bar, V4.Bars.Track, "Uniform", nil, nil)
+	local track = make("Frame", { Name = "Track", BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8), ClipsDescendants = true }, bar)
+	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(0, 1), Visible = false, Image = "", ZIndex = 2 }, track)
+	skinByHeight(fill, V4.Bars.Fill)
+	local minW = make("UISizeConstraint", {}, fill)
+	local function measure()
+		-- The track follows the bar's height (about 14% of it each side); the fill is never narrower than it is tall.
 		local h = bar.AbsoluteSize.Y / math.max(Scale.Value, 0.01)
-		local k = if frameSprite then math.floor(h * 0.17 + 0.5) else 0
-		inner.Position = UDim2.fromOffset(k, k)
-		inner.Size = UDim2.new(1, -2 * k, 1, -2 * k)
+		local inset = math.max(2, math.floor(h * 0.14 + 0.5))
+		track.Position, track.Size = UDim2.fromOffset(inset, inset), UDim2.new(1, -inset * 2, 1, -inset * 2)
+		minW.MinSize = Vector2.new(math.max(h - inset * 2, 1), 0)
 	end
-	local function frameDrawn()
-		frameSprite = false
-		bar.BackgroundTransparency, stroke.Enabled, corner.CornerRadius = 0, true, Theme.CornerPill
-		insetBox()
-	end
-	local function fillDrawn()
-		fillSprite = false
-		fill.BackgroundTransparency = 0
-		fillCorner.CornerRadius = Theme.CornerPill
-	end
-	frameSprite = skin(bar, SpriteIds.Kit.ProgressFrame, "Uniform", nil, frameDrawn)
-	if frameSprite then
-		bar.BackgroundTransparency, stroke.Enabled, corner.CornerRadius = 1, false, UDim.new(0, 0)
-	end
-	fillSprite = skin(fill, SpriteIds.Kit.ProgressFill, "Uniform", nil, fillDrawn)
-	fill.BackgroundTransparency = if fillSprite then 1 else 0
-	if fillSprite then
-		fillCorner.CornerRadius = UDim.new(0, 0)
-	end
-	bar:GetPropertyChangedSignal("AbsoluteSize"):Connect(insetBox)
-	insetBox()
-	local label = Kit.Label(bar, "", 14, Theme.TextPrimary, true)
+	bar:GetPropertyChangedSignal("AbsoluteSize"):Connect(measure)
+	measure()
+	local label = Kit.Label(bar, "", 16, Theme.TextPrimary, true)
+	label.Name = "Text"
 	label.Size = UDim2.fromScale(1, 1)
 	label.ZIndex = 3
+	label.TextWrapped = false
+	label.TextScaled = true
 	label.TextStrokeColor3 = Theme.Stroke
-	label.TextStrokeTransparency = 0.3
-	local self = { Instance = bar }
-	function self.Set(fraction: number, text: string, danger: boolean?)
+	label.TextStrokeTransparency = 0.35
+	make("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12), PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3) }, label)
+	make("UITextSizeConstraint", { MinTextSize = 9, MaxTextSize = 18 }, label)
+	local self = { Instance = bar, Fill = fill }
+	function self.Set(fraction: number, text: string, tint: any?)
 		fraction = math.clamp(fraction, 0, 1)
-		fill.Size = UDim2.fromScale(fraction, 1)
-		-- A sliced sprite narrower than its borders would tear; hide the sliver instead.
-		fill.Visible = fraction > (if fillSprite then 0.04 else 0)
-		local tint = if danger then Theme.Danger else color
-		if fillSprite then
-			fill.ImageColor3 = tint or Color3.new(1, 1, 1)
-		else
-			fill.BackgroundColor3 = tint or Theme.Gold
-		end
+		fill.Visible = fraction > 0
+		fill.Size = UDim2.new(fraction, 0, 1, 0)
+		local c = if tint == true then Theme.Danger elseif typeof(tint) == "Color3" then tint else color
+		fill.ImageColor3 = c or Color3.new(1, 1, 1)
 		label.Text = text
 	end
 	return self
 end
 
--- Switch 96x48 (the ToggleOn / ToggleOff sprites) with the word "On" / "Off" opposite the knob
--- (a drawn check + colour fill without the sprites). Returns { Instance, Set(on) }.
+-- Switch 96x48 (the v4 ToggleOn / ToggleOff sprites) with the word "On" / "Off" opposite the knob.
+-- Returns { Instance, Set(on) }.
 function Kit.Toggle(parent: Instance, initial: boolean, onChange: (boolean) -> ())
 	local on = initial
 	local b = make("ImageButton", {
@@ -749,46 +918,22 @@ function Kit.Toggle(parent: Instance, initial: boolean, onChange: (boolean) -> (
 	label.TextWrapped = false
 	label.ZIndex = 3
 	local lpad = make("UIPadding", {}, label)
-	local check = Kit.Check(b, UDim2.fromOffset(22, 22), Theme.DangerText)
-	check.AnchorPoint = Vector2.new(0, 0.5)
-	check.Position = UDim2.new(0, 12, 0.5, 0)
-	check.ZIndex = 3
-	local sprite = Sprites.Ok(SpriteIds.Kit.ToggleOn.Id) and Sprites.Ok(SpriteIds.Kit.ToggleOff.Id)
-	local corner, stroke
-	local paint
-	local function drawn()
-		sprite = false
-		b.Image = ""
-		b.BackgroundTransparency = 0
-		corner = corner or Kit.Corner(b, Theme.CornerPill)
-		stroke = stroke or Kit.Stroke(b)
-		if paint then
-			paint()
-		end
-	end
-	if sprite then
-		for _, spec in { SpriteIds.Kit.ToggleOn, SpriteIds.Kit.ToggleOff } do
-			Sprites.Watch(spec.Id, drawn)
-		end
-	else
-		drawn()
-	end
-	function paint()
+	b.ScaleType = Enum.ScaleType.Fit
+	local function paint()
 		label.Text = if on then "On" else "Off"
-		if sprite then
-			b.Image = (if on then SpriteIds.Kit.ToggleOn else SpriteIds.Kit.ToggleOff).Id
-			-- Word on the side the knob has left; the knob is at the right when on.
-			label.TextXAlignment = if on then Enum.TextXAlignment.Left else Enum.TextXAlignment.Right
-			lpad.PaddingLeft, lpad.PaddingRight = UDim.new(0, 16), UDim.new(0, 16)
-			label.TextColor3 = if on then Theme.DangerText else Theme.TextPrimary
-			check.Visible = false
+		local spec = if on then V4.Bars.ToggleOn else V4.Bars.ToggleOff
+		if Sprites.Ok(spec.Id) then
+			b.Image = spec.Id
 		else
-			b.BackgroundColor3 = if on then Theme.Success else Theme.Disabled
-			label.TextColor3 = if on then Theme.DangerText else Theme.DisabledText
-			label.TextXAlignment = Enum.TextXAlignment.Right
-			lpad.PaddingLeft, lpad.PaddingRight = UDim.new(0, 12), UDim.new(0, 14)
-			check.Visible = on
+			neutral(b)
 		end
+		-- Word on the side the knob has left; the knob is at the right when on.
+		label.TextXAlignment = if on then Enum.TextXAlignment.Left else Enum.TextXAlignment.Right
+		lpad.PaddingLeft, lpad.PaddingRight = UDim.new(0, 16), UDim.new(0, 16)
+		label.TextColor3 = if on then Theme.DangerText else Theme.TextPrimary
+	end
+	for _, spec in { V4.Bars.ToggleOn, V4.Bars.ToggleOff } do
+		Sprites.Watch(spec.Id, paint)
 	end
 	paint()
 	b.Activated:Connect(function()
@@ -806,77 +951,59 @@ function Kit.Toggle(parent: Instance, initial: boolean, onChange: (boolean) -> (
 	}
 end
 
--- Horizontal slider 0..1 with a percent readout: SliderTrack + ProgressFill sprites and the
--- SliderKnob (drawn track/knob without them). Returns { Instance, Set(v) }.
-function Kit.Slider(parent: Instance, initial: number, onChange: (number) -> ())
-	local root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(340, 48) }, parent)
+-- Horizontal slider 0..1 with a percent readout: SliderTrack + SliderFill sprites and the Knob sprite. Fills the
+-- width of its parent (height 48): track with 20 px of room for the knob at both ends, readout on the right.
+-- Returns { Instance, Set(v) }.
+function Kit.Slider(parent: Instance, initial: number, onChange: (number) -> (), onRelease: ((number) -> ())?)
+	local root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48) }, parent)
 	local track = make("ImageLabel", {
-		BackgroundColor3 = Theme.BgRaised,
-		Size = UDim2.fromOffset(260, 24),
-		Position = UDim2.fromOffset(0, 12),
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -(40 + 72), 0, 26),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 20, 0.5, 0),
 		BorderSizePixel = 0,
 		Image = "",
 	}, root)
-	local tCorner = Kit.Corner(track, Theme.CornerPill)
-	local tStroke = Kit.Stroke(track, Theme.Stroke, 2)
-	local inner = make("Frame", { Name = "Inner", BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) }, track)
-	local fill = make("ImageLabel", { BackgroundColor3 = Theme.Gold, BorderSizePixel = 0, Image = "" }, inner)
-	local fCorner = Kit.Corner(fill, Theme.CornerPill)
+	skin(track, V4.Bars.SliderTrack, "Uniform", nil, nil)
+	local inner = make("Frame", { Name = "Inner", BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 1), Size = UDim2.new(1, -8, 1, -2), ClipsDescendants = true }, track)
+	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Image = "", ZIndex = 2 }, inner)
+	skinByHeight(fill, C4.SliderFill)
 	local thumb = make("ImageLabel", {
-		BackgroundColor3 = Theme.TextPrimary,
+		BackgroundTransparency = 1,
 		Size = UDim2.fromOffset(40, 40),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BorderSizePixel = 0,
 		Image = "",
 		ZIndex = 3,
 	}, track)
-	local kCorner = Kit.Corner(thumb, Theme.CornerPill)
-	local kStroke = Kit.Stroke(thumb)
-	local function trackDrawn()
-		track.BackgroundTransparency, tStroke.Enabled, tCorner.CornerRadius = 0, true, Theme.CornerPill
-		inner.Position, inner.Size = UDim2.new(), UDim2.fromScale(1, 1)
-	end
-	if skin(track, SpriteIds.Kit.SliderTrack, "Uniform", nil, trackDrawn) then
-		track.BackgroundTransparency, tStroke.Enabled, tCorner.CornerRadius = 1, false, UDim.new(0, 0)
-	else
-		trackDrawn()
-	end
-	if skin(fill, SpriteIds.Kit.ProgressFill, "Uniform", nil, function()
-		fill.BackgroundTransparency, fCorner.CornerRadius = 0, Theme.CornerPill
-	end) then
-		fill.BackgroundTransparency, fCorner.CornerRadius = 1, UDim.new(0, 0)
-	end
-	local function knobDrawn()
-		thumb.BackgroundTransparency, kStroke.Enabled, kCorner.CornerRadius = 0, true, Theme.CornerPill
-	end
-	if skin(thumb, SpriteIds.Kit.SliderKnob, nil, nil, knobDrawn) then
-		thumb.BackgroundTransparency, kStroke.Enabled, kCorner.CornerRadius = 1, false, UDim.new(0, 0)
-	else
-		knobDrawn()
-	end
+	skin(thumb, V4.Bars.Knob, nil, nil, nil)
 	local readout = Kit.Label(root, "", Theme.TextSize.Body, Theme.TextPrimary, true)
-	readout.Position = UDim2.fromOffset(272, 0)
-	readout.Size = UDim2.fromOffset(68, 48)
+	readout.AnchorPoint = Vector2.new(1, 0.5)
+	readout.Position = UDim2.new(1, 0, 0.5, 0)
+	readout.Size = UDim2.fromOffset(68, 40)
+	readout.TextWrapped = false
 
 	local value = initial
 	local function paint()
 		fill.Size = UDim2.new(value, 0, 1, 0)
-		fill.Visible = value > 0.04
+		fill.Visible = value > 0.02
 		thumb.Position = UDim2.new(value, 0, 0.5, 0)
 		readout.Text = math.floor(value * 100 + 0.5) .. "%"
 	end
 	paint()
 
-	-- 48 px hit area over the track and thumb.
+	-- >= 48 px hit area over the track and thumb.
 	local hitH = if Scale.Phone or UserInputService.TouchEnabled then math.max(48, 48 / math.max(Scale.Value, 0.1)) else 48
 	local hit = make("TextButton", {
 		BackgroundTransparency = 1,
 		Text = "",
-		Size = UDim2.fromOffset(260 + 40, hitH),
-		Position = UDim2.fromOffset(-20, 12 - hitH / 2),
+		Size = UDim2.new(1, 40, 0, hitH),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, -20, 0.5, 0),
 		ZIndex = 5,
 	}, track)
 	local dragging = false
+	local locked = false
 	local function setFrom(x: number)
 		value = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
 		value = math.floor(value * 100 + 0.5) / 100
@@ -884,6 +1011,9 @@ function Kit.Slider(parent: Instance, initial: number, onChange: (number) -> ())
 		onChange(value)
 	end
 	hit.InputBegan:Connect(function(input)
+		if locked then
+			return
+		end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			setFrom(input.Position.X)
@@ -896,11 +1026,28 @@ function Kit.Slider(parent: Instance, initial: number, onChange: (number) -> ())
 	end)
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging and onRelease then
+				onRelease(value)
+			end
 			dragging = false
 		end
 	end)
 	return {
 		Instance = root,
+		-- Locked: not draggable and dimmed (the caller shows why).
+		SetLocked = function(on: boolean)
+			locked = on
+			if on then
+				dragging = false
+			end
+			hit.Active = not on
+			track.ImageTransparency = 0
+			thumb.ImageTransparency = if on then 0.5 else 0
+			fill.ImageTransparency = if on then 0.5 else 0
+		end,
+		IsDragging = function()
+			return dragging
+		end,
 		Set = function(v: number)
 			if not dragging then
 				value = v

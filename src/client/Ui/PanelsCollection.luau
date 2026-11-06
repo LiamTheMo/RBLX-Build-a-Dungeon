@@ -1,7 +1,9 @@
 -- Collection tab (rooms and visitors, silhouettes for undiscovered) and Keeper
 -- tab (level, XP, permanent upgrades). Display only; the server owns every value
 -- (texts from the Catalog, per-player numbers from the State snapshot).
+local Badges = require(script.Parent.Badges)
 local Catalog = require(script.Parent.Catalog)
+local DropCard = require(script.Parent.DropCard)
 local Kit = require(script.Parent.Kit)
 local Net = require(script.Parent.Net)
 local P = require(script.Parent.PanelsKit)
@@ -20,23 +22,23 @@ local C = {}
 local function entry(parent: Instance, order: number, known: boolean, image: { [string]: any }?, rarity: string?): Frame
 	local card = P.Card(parent, order)
 	card:FindFirstChildOfClass("UIListLayout"):Destroy()
-	local badge = Kit.Panel(card, { BackgroundColor3 = if known then Theme.BgRaised else Theme.BgDeep, Size = UDim2.fromOffset(64, 64), Rarity = if known then rarity else nil })
+	local badge = Kit.Panel(card, { BackgroundColor3 = if known then Theme.BgRaised else Theme.BgDeep, Size = UDim2.fromOffset(64, 64), Rarity = if known then rarity else nil, Pad = 0 })
 	if known and image then
 		local img
 		if image.Room then
-			img = P.RoomImage(badge, image.Room, 50, image.Kind)
+			img = P.RoomImage(badge, image.Room, 44, image.Kind)
 		else
 			local id = SpriteIds.Portraits[image.Portrait]
 			if id and Sprites.Ok(id) then
-				img = make("ImageLabel", { BackgroundTransparency = 1, Image = id, Size = UDim2.fromOffset(50, 50), ScaleType = Enum.ScaleType.Fit }, badge)
+				img = make("ImageLabel", { BackgroundTransparency = 1, Image = id, Size = UDim2.fromOffset(44, 44), ScaleType = Enum.ScaleType.Fit }, badge)
 			else
-				img = Kit.Icon(badge, "Visitor", UDim2.fromOffset(40, 40))
+				img = Kit.Icon(badge, "Visitor", UDim2.fromOffset(36, 36))
 			end
 		end
 		img.AnchorPoint, img.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
 		if rarity then
-			local gem = Kit.Gem(badge, rarity, UDim2.fromOffset(20, 20))
-			gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, 2, 0, -2), 4
+			local gem = Kit.Gem(badge, rarity, UDim2.fromOffset(18, 18))
+			gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, 0, 0, 0), 4
 		end
 	else
 		local q = Kit.Label(badge, "?", 34, Theme.DisabledText, true)
@@ -52,14 +54,14 @@ end
 local function roomHint(def: any): string
 	if def.Source == "Shop" then
 		local lvl = def.ShopLevel or 1
-		return (if lvl > 1 then string.format("Shop (keeper level %d)", lvl) else "Shop") .. ", boxes or blueprints"
+		return (if lvl > 1 then string.format("Shop Lv%d", lvl) else "Shop") .. ", box, blueprint"
 	elseif def.Source == "Tutorial" then
-		return "Granted by the tutorial"
+		return "Tutorial"
 	end
-	return "Starter room"
+	return "Starter"
 end
 
-local ARRIVAL = { Tutorial = "Your first practice visitor", Automatic = "Arrives on its own", Invited = "Invite it from the HUD once unlocked" }
+local ARRIVAL = { Tutorial = "First visitor", Automatic = "Random arrival", Invited = "Special arrival" }
 
 function C.BuildCollection(scroll: ScrollingFrame, state: any)
 	local catalog = Catalog.Wait()
@@ -73,9 +75,13 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 
 	local owned = {} -- roomId -> { total, byRarity }
 	for _, room in state.Rooms or {} do
-		local o = owned[room.Id] or { Total = 0, Rarity = {} }
+		local o = owned[room.Id] or { Total = 0, Rarity = {}, Mods = {} }
 		o.Total += 1
-		o.Rarity[room.Rarity or "Common"] = (o.Rarity[room.Rarity or "Common"] or 0) + 1
+		if room.Modifier then
+			o.Mods[room.Modifier] = true
+		end
+		local rarity = Catalog.RoomRarity(room.Id, room)
+		o.Rarity[rarity] = (o.Rarity[rarity] or 0) + 1
 		owned[room.Id] = o
 	end
 
@@ -99,7 +105,7 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 		total += 1
 		seen += if found[id] then 1 else 0
 	end
-	P.Text(scroll, string.format("Discovered %d / %d", seen, total), Theme.TextSize.Body, Theme.TextMuted, false, nxt())
+	P.IconLine(scroll, "Trophy", string.format("%d/%d", seen, total), nxt(), Theme.Gold)
 
 	P.Section(scroll, "Rooms", nxt())
 	for _, id in roomIds do
@@ -112,30 +118,44 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 				break
 			end
 		end
-		local col = entry(scroll, nxt(), known, { Room = id, Kind = def.Kind }, best)
+		local col = entry(scroll, nxt(), known, { Room = id, Kind = def.Kind }, def.Rarity or best)
 		if known then
 			P.Text(col, def.DisplayName, Theme.TextSize.Heading, Theme.TextPrimary, true, 1)
-			P.Text(col, def.Kind .. " | " .. roomHint(def), Theme.TextSize.Caption, Theme.Gold, false, 2)
+			local kindLine = P.IconLine(col, P.KindIcon[def.Kind] or "Defender", roomHint(def), 2, Theme.Gold)
+			kindLine.Size = UDim2.new(1, 0, 0, 26)
 			P.Text(col, def.Description, Theme.TextSize.Body, Theme.TextMuted, false, 3)
+			if type(def.Ability) == "string" and def.Ability ~= "" then
+				P.Text(col, def.Ability, Theme.TextSize.Body, Theme.Accent, false, 4)
+			end
 			local o = owned[id]
-			local parts = {}
-			if o then
-				for _, tier in catalog.Rarities do
-					local r = tier.Id
-					if o.Rarity[r] then
-						table.insert(parts, P.Rich(string.format("%s x%d", r, o.Rarity[r]), r))
-					end
+			local flow = P.ChipFlow(col, 5)
+			if type(def.Exchange) == "number" then
+				P.Chip(flow, 0, function(p)
+					return Kit.Icon(p, "Exchange", UDim2.fromOffset(22, 22))
+				end, string.format("x%.2g", def.Exchange), Theme.Gold, "Vault exchange: each 1% vaulted gains this much more")
+			end
+			for mod in if o then o.Mods else {} do
+				local order = 20
+				P.Chip(flow, order, function(p)
+					return Badges.Modifier(p, mod, 24) :: any
+				end, mod, Badges.ModifierColor[mod] or Theme.TextPrimary, mod)
+			end
+			for i, tier in catalog.Rarities do
+				local r = tier.Id
+				if o and o.Rarity[r] then
+					P.Chip(flow, i, function(p)
+						return Kit.Gem(p, r, UDim2.fromOffset(22, 22))
+					end, "x" .. o.Rarity[r], P.RarityColor[r] or Theme.TextPrimary, r)
 				end
 			end
-			P.Text(col, if o then string.format("Owned: %d (%s)", o.Total, table.concat(parts, ", ")) else "Owned: 0", Theme.TextSize.Caption, Theme.TextPrimary, false, 4)
 		else
 			P.Text(col, "???", Theme.TextSize.Heading, Theme.DisabledText, true, 1)
-			P.Text(col, "Find it: " .. roomHint(def), Theme.TextSize.Body, Theme.TextMuted, false, 2)
+			local lockLine = P.IconLine(col, "Lock", roomHint(def), 2)
+			lockLine.Size = UDim2.new(1, 0, 0, 28)
 		end
 	end
 
 	P.Section(scroll, "Adventurers", nxt())
-	local dropChances = state.DropChances or {} -- server-computed, with the loot bonus
 	for _, id in visitorIds do
 		local def = catalog.Visitors[id]
 		local known = found[id] == true
@@ -146,14 +166,11 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 			for i, t in def.Traits do
 				P.Text(col, string.format("%s: %s", t.Name, t.Text), Theme.TextSize.Caption, Theme.Warning, false, 2 + i)
 			end
-			local d = dropChances[id]
-			local drops = if d and (d.Box > 0 or d.Blueprint > 0)
-				then string.format("Drops: %s Box %s, Blueprint %s (with your loot bonus)", d.BoxType, P.Pct(d.Box), P.Pct(d.Blueprint))
-				else "Drops: none"
-			P.Text(col, drops, Theme.TextSize.Caption, Theme.TextPrimary, false, 9)
+			DropCard.Fill(col, id, state, false, 9) -- coin range, XP, drops and variant chances (State.DropTables)
 		else
 			P.Text(col, "???", Theme.TextSize.Heading, Theme.DisabledText, true, 1)
-			P.Text(col, "Meet it: " .. (ARRIVAL[def.Arrival] or "Defeat adventurers"), Theme.TextSize.Body, Theme.TextMuted, false, 2)
+			local lockLine = P.IconLine(col, "Lock", ARRIVAL[def.Arrival] or "Defeat adventurers", 2)
+			lockLine.Size = UDim2.new(1, 0, 0, 28)
 		end
 	end
 	task.defer(function()
@@ -180,31 +197,35 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 	else
 		Kit.Icon(head, "Keeper", UDim2.fromOffset(48, 48)).LayoutOrder = 1
 	end
-	local title = P.Text(head, "Keeper level " .. level, Theme.TextSize.Heading, Theme.TextPrimary, true, 2)
+	local title = P.Text(head, "Lv " .. level, Theme.TextSize.Title, Theme.TextPrimary, true, 2)
 	title.Size, title.AutomaticSize = UDim2.new(1, -66, 1, 0), Enum.AutomaticSize.None
 	local bar = Kit.Bar(card, UDim2.new(1, 0, 0, 28))
 	bar.Instance.LayoutOrder = 2
-	bar.Set(xp / need, string.format("XP %d / %d", xp, need))
+	bar.Set(xp / need, string.format("%d/%d", xp, need))
 	local b = state.Bonuses or {}
-	P.Text(card, string.format("Bonuses: coins +%s, loot +%s, XP +%s", P.Pct(b.Coins or 0), P.Pct(b.Loot or 0), P.Pct(b.Xp or 0)), Theme.TextSize.Caption, Theme.TextMuted, false, 3)
+	local flow = P.ChipFlow(card, 3)
+	for i, e in { { "Coin", "Coins", "Coins" }, { "Loot", "Loot", "Loot chance" }, { "Xp", "Xp", "XP" } } do
+		P.Chip(flow, i, function(p)
+			return Kit.Icon(p, e[1], UDim2.fromOffset(24, 24))
+		end, "+" .. P.Pct(b[e[2]] or 0), Theme.TextPrimary, e[3])
+	end
 
 	P.Section(scroll, "Permanent upgrades", nxt())
-	P.Text(scroll, "Bought with banked coins. They never reset.", Theme.TextSize.Body, Theme.TextMuted, false, nxt())
 	local coins = state.Coins or 0
 	for _, def in catalog.Permanent do
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0
 		local cost = (state.PermanentNextCost or {})[id] -- nil at max
-		local text = string.format("%s\nPer level: %s\nLevel %d / %d (now %s)", def.Name, def.PerLevelText, lv, def.MaxLevel, def.EffectText[lv + 1] or "")
+		local text = string.format("%s\n%s  |  %d/%d", def.Name, def.PerLevelText, lv, def.MaxLevel)
 		local row = P.Card(scroll, nxt())
-		local _, label, buy = P.Row(row, text, { Text = if cost then "Buy " .. cost else "Max", Style = "Primary", Width = 130, OnClick = function()
+		local _, label, buy = P.Row(row, text, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "CoinStack" else nil, IconLayout = "Row", Style = "Primary", Width = 140, OnClick = function()
 			local ok, res = Net.Invoke("BuyPermanent", id)
 			if not ok then
 				Toast.Show(ReasonText.Get(res), "Bad")
 			end
 		end })
-		label.Size = UDim2.new(1, -138, 0, 44)
-		buy.SetEnabled(cost ~= nil and coins >= cost, if cost == nil then "Max" elseif coins >= cost then nil else "Need " .. (cost - coins))
+		label.Size = UDim2.new(1, -150, 0, 44)
+		buy.SetEnabled(cost ~= nil and coins >= cost)
 	end
 	task.defer(function()
 		scroll.CanvasPosition = pos
