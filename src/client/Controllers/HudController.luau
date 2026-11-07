@@ -491,7 +491,7 @@ local function build()
 	local threatButton = Kit.Button(chipBar, { Text = "", Icon = "T1", IconScale = 0.82, Style = "Secondary", Round = true, Size = UDim2.fromOffset(46, 46), LayoutOrder = 2, Tip = "Threat" })
 	local infoButton = Kit.Button(chipBar, { Text = "", Icon = "DropChance", IconScale = 0.6, Style = "Secondary", Round = true, Size = UDim2.fromOffset(46, 46), LayoutOrder = 3, Tip = "Drops" })
 
-	-- Bottom bar: three big icon buttons.
+	-- Bottom navigation.
 	local bar = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, AnchorPoint = Vector2.new(0.5, 1) }, gui)
 	hlist(bar, 14, { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom })
 	local buttons = {}
@@ -525,6 +525,10 @@ local function build()
 		closeModals()
 		Bus.OpenPanel:Fire("Index")
 	end)
+	action("Keeper", "Upgrade", "Upgrades", "Secondary", 5, function()
+		closeModals()
+		Bus.OpenPanel:Fire("Keeper")
+	end)
 	gear.Instance.Activated:Connect(function()
 		toggle(settingsPanel)
 	end)
@@ -532,9 +536,10 @@ local function build()
 		Bus.Targets[key] = { Instance = buttons[key].Instance, Stroke = buttons[key].Stroke, Button = buttons[key] }
 	end
 	Bus.Targets.Loot = { Instance = buttons.Bag.Instance, Stroke = buttons.Bag.Stroke, Button = buttons.Bag }
-	for _, key in { "Index", "Collection", "Keeper" } do
+	for _, key in { "Index", "Collection" } do
 		Bus.Targets[key] = { Instance = buttons.Index.Instance, Stroke = buttons.Index.Stroke, Button = buttons.Index }
 	end
+	Bus.Targets.Keeper = { Instance = buttons.Keeper.Instance, Stroke = buttons.Keeper.Stroke, Button = buttons.Keeper }
 	Bus.ShopRequested:Connect(function()
 		shop.Open()
 	end)
@@ -710,10 +715,13 @@ local function build()
 			bar.Position = UDim2.new(0.5, 0, 1, -16)
 			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -16, 0, 96), UDim2.fromOffset(340, 0)
 		end
-		for key, b in buttons do
-			local big = key == "Build"
-			b.Instance.Size = if phone then UDim2.fromOffset(if big then 112 else 88, 76) else UDim2.fromOffset(if big then 140 else 112, 108)
-			b.SetTextSize(if phone then 13 else 16)
+		local count = 0
+		for _ in buttons do count += 1 end
+		local available = gui.AbsoluteSize.X / math.max(Scale.Value, 0.01)
+		local width = math.min(if phone then 96 else 120, (available - 32 - 14 * (count - 1)) / count)
+		for _, b in buttons do
+			b.Instance.Size = UDim2.fromOffset(math.max(width, 44 / Scale.Value), if phone then 76 else 108)
+			b.SetTextSize(if phone then 14 else 16)
 		end
 		encName.TextSize = if phone then 20 else Theme.TextSize.Heading
 		shop.Layout()

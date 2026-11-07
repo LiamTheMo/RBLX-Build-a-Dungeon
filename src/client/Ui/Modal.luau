@@ -7,7 +7,6 @@ local Settings = require(script.Parent.Settings)
 local Theme = require(script.Parent.Theme)
 
 local make = Kit.Make
-local X = Enum.AutomaticSize.X
 
 local Modal = { All = {} :: { any } }
 
@@ -27,13 +26,15 @@ function Modal.New(gui: ScreenGui, title: string, titleIcon: string, desktop: Ve
 	glow.Name, glow.Visible = "ModalGlow", false
 	local back = Kit.Panel(group, { Sprite = "Large", Size = UDim2.fromScale(1, 1), ZIndex = 0, Active = false })
 	back:FindFirstChild("Inset"):Destroy() -- content is placed explicitly below
-	local titleBar = Kit.Panel(group, { Sprite = "TitleBar", Position = UDim2.fromOffset(24, 12), Size = UDim2.new(1, -96, 0, 52), ZIndex = 1, Active = false })
-	local head = make("Frame", { Name = "Head", BackgroundTransparency = 1, Position = UDim2.fromOffset(40, 12), Size = UDim2.new(1, -120, 0, 52) }, group)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) }, head)
+	local titleBar = Kit.Panel(group, { Sprite = "TitleBar", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.new(0.6, 0, 0, 52), ZIndex = 1, Active = false })
+	local head = make("Frame", { Name = "Head", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.new(0.6, 0, 0, 52) }, group)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10) }, head)
 	local titleImg = Kit.Icon(head, titleIcon, UDim2.fromOffset(36, 36))
 	titleImg.LayoutOrder = 1
-	local label = Kit.Label(head, title, Theme.TextSize.Heading, Theme.Gold, true)
-	label.AutomaticSize, label.Size, label.TextWrapped, label.LayoutOrder = X, UDim2.fromOffset(0, 40), false, 2
+	local label = Kit.Label(head, title, Theme.TextSize.Heading, Theme.TextPrimary, true)
+	label.Size, label.TextWrapped, label.TextScaled, label.LayoutOrder = UDim2.new(1, -46, 0, 40), false, true, 2
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Heading }, label)
 	local self: any = { Group = group, IsOpen = false, Title = label }
 	local close = Kit.CloseButton(group, UDim2.fromOffset(52, 52), function()
 		self.Close()
@@ -50,6 +51,8 @@ function Modal.New(gui: ScreenGui, title: string, titleIcon: string, desktop: Ve
 			size = Vector2.new(math.min(size.X, view.X), math.min(size.Y, view.Y))
 		end
 		group.Size = UDim2.fromOffset(size.X, size.Y)
+		local titleWidth = math.max(46, math.min(size.X * 0.6, size.X - 148))
+		titleBar.Size, head.Size = UDim2.fromOffset(titleWidth, 52), UDim2.fromOffset(titleWidth, 52)
 		glow.Size = UDim2.fromOffset(size.X * 1.3, size.Y * 1.4)
 		body.Size = UDim2.new(1, -52, 1, -72 - 26)
 	end

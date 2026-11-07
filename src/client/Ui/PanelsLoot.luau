@@ -407,12 +407,12 @@ function L.Build(scroll: ScrollingFrame, state: any)
 		return order
 	end
 	local tabs = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = nxt() }, scroll)
-	local dropTab = Kit.Button(tabs, { Text = "Drops", Icon = "DropChance", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
+	local dropTab = Kit.Button(tabs, { Text = "Loot Chests", Icon = "Box", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
 		currentTab = "Drops"
 		L.Build(scroll, State.Current or state)
 	end })
 	dropTab.SetSelected(currentTab == "Drops")
-	local itemsTab = Kit.Button(tabs, { Text = "Items", Icon = "Bag", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), Position = UDim2.new(0.5, 4, 0, 0), OnClick = function()
+	local itemsTab = Kit.Button(tabs, { Text = "Rooms", Icon = "Defender", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), Position = UDim2.new(0.5, 4, 0, 0), OnClick = function()
 		currentTab = "Items"
 		L.Build(scroll, State.Current or state)
 	end })

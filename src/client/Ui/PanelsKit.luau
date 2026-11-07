@@ -182,22 +182,23 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	Kit.Sprite(dim, "Feedback.Scrim", { Name = "Scrim", Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0.2, ScaleType = Enum.ScaleType.Stretch, ZIndex = 0 })
 	local panel = Kit.Panel(dim, { Sprite = "Large", Pad = Vector2.new(8, 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.94, 0.92) })
 	panel.Active = true
-	make("UISizeConstraint", { MaxSize = Vector2.new(820, 680) }, panel)
+	make("UISizeConstraint", { MaxSize = Vector2.new(900, 680) }, panel)
 
-	local tabHeight = if Scale.Phone then 64 else 52
-	local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, tabHeight + 4) }, panel)
-	-- The tab row names the panel, so the title stays hidden (callers still set its text).
-	local title = P.Text(head, "", Theme.TextSize.Title, Theme.TextPrimary, true)
-	title.Visible = false
+	local tabHeight = 56
+	local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, panel)
+	local titleBar = Kit.Panel(head, { Sprite = "TitleBar", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.new(0.6, -24, 1, 0) })
+	local title = Kit.Label(titleBar, if tabNames[1] == "Bag" then "Inventory" else "Index", Theme.TextSize.Title, Theme.TextPrimary, true)
+	title.Size = UDim2.fromScale(1, 1)
+	title.TextScaled, title.TextTruncate = true, Enum.TextTruncate.AtEnd
+	make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Title }, title)
 	local self = { Gui = gui, Panel = panel, Title = title, Tabs = {}, Scrolls = {} }
-	local closeSize = if Scale.Phone then 64 else 56
-	local close = Kit.CloseButton(head, UDim2.fromOffset(closeSize, closeSize), function()
+	local close = Kit.CloseButton(head, UDim2.fromOffset(52, 52), function()
 		gui.Enabled = false
 	end)
 	close.Instance.AnchorPoint = Vector2.new(1, 0)
 	close.Instance.Position = UDim2.fromScale(1, 0)
 
-	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 2), Size = UDim2.new(1, -72, 0, tabHeight) }, head)
+	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, tabHeight), Visible = #tabNames > 1 }, panel)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) }, tabs)
 	for _, name in tabNames do
 		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = TAB_ICON[name] or name, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #tabNames, -8 * (#tabNames - 1) / #tabNames - 1, 0, tabHeight), TextSize = 20, OnClick = function()
@@ -209,8 +210,8 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 		local scroll = make("ScrollingFrame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, tabHeight + 14),
-			Size = UDim2.new(1, 0, 1, -(tabHeight + 14)),
+			Position = UDim2.fromOffset(0, if #tabNames > 1 then tabHeight + 66 else 58),
+			Size = UDim2.new(1, 0, 1, -(if #tabNames > 1 then tabHeight + 66 else 58)),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			ScrollBarThickness = 10,

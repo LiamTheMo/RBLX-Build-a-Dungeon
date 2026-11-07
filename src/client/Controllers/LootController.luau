@@ -24,6 +24,7 @@ local function render()
 	if not activeShell or not activeShell.Gui.Enabled or not state then
 		return
 	end
+	activeShell.Title.Text = if current == "Bag" then "Inventory" elseif current == "Keeper" then "Upgrades" else "Index"
 	for name, scroll in activeShell.Scrolls do
 		scroll.Visible = name == current
 		activeShell.Tabs[name].SetSelected(name == current)
