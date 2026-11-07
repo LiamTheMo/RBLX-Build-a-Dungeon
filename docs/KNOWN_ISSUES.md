@@ -11,7 +11,7 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 - **Desktop layout unseen.** The last checks ran in a 1175×599 window, which uses the phone layout. Check the desktop layout and real phones.
 - **Image and model rights unconfirmed.** The icons, sprites and concept references come from AI design assistant through the owner's account. The models were made in Blender from those references. Confirm rights before release (see the Assets README).
 - **Minor UI rough edges.** Shop cards have a small notch at the top-right corner, and the build-card count pill sits tight against the frame.
-- **Four sound slots are empty.** Theft, SlimeAttack, Ambience and Music have no entry in `src/client/Ui/SoundIds.luau`.
+- **Some sound slots are empty.** Theft, Ambience and Music have no entry in `src/client/Ui/SoundIds.luau`.
 - **Sounds not listened to.** Every sound was picked from Creator Store search metadata. Rise is a weak fit (per the Assets README).
 - **Studio art only in the place file.** `ReplicatedStorage.Art` and `Workspace.Map` are not synced by Rojo. Weld and Motor6D offsets in the exported models are approximate and need a check after import (per the Assets README).
 

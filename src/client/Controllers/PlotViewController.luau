@@ -19,6 +19,7 @@ local Net = require(Ui.Net)
 local P = require(Ui.PanelsKit)
 local RarityColors = require(Ui.RarityColors)
 local RewardMotion = require(Ui.RewardMotion)
+local RoomSounds = require(Ui.RoomSounds)
 local Settings = require(Ui.Settings)
 local Sound = require(Ui.Sound)
 local Theme = require(Ui.Theme)
@@ -1411,7 +1412,12 @@ local function onFx(e: any)
 				floatText(def.Actor.Model:GetPivot().Position + Vector3.new(0, 2.5, 0), "-" .. tostring(e.Damage or ""), Theme.Warning, nil, true)
 			end
 		end
-		play(if e.By == "Defender" and def and def.Model:GetAttribute("RoomId") == "GuardRoom" then "GuardAttack" else "Hit")
+		if e.By == "Defender" then
+			local room = roomAt(view, index)
+			for _, sound in RoomSounds.Attack(room and room:GetAttribute("RoomId")) do play(sound) end
+		else
+			play("Hit")
+		end
 	elseif kind == "Trap" then
 		local trap = trapAt(view, index)
 		if trap then
@@ -1428,7 +1434,7 @@ local function onFx(e: any)
 		if e.Hit then
 			flash(v, if e.Burn then FIRE else Theme.Danger, 0.15)
 		end
-		play("SpikeStrike")
+		play(RoomSounds.Trap(room and room:GetAttribute("RoomId")))
 	elseif kind == "Slow" then
 		flash(v, Theme.Success, 0.3)
 	elseif kind == "Burn" then
@@ -1493,7 +1499,11 @@ local function onFx(e: any)
 		if nest then
 			pulseRoom(nest, "Egg", FIRE, 5, 1.4)
 		end
-		play("Heal")
+		if nest then
+			for _, sound in RoomSounds.Attack(nest:GetAttribute("RoomId")) do play(sound) end
+		else
+			play("Heal")
+		end
 	elseif kind == "Void" then
 		local room = roomAt(view, index)
 		if room then

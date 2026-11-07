@@ -70,7 +70,9 @@ Add a spec for every new rules module. Gameplay that touches Instances, remotes 
 | --- | --- | --- |
 | Room, character, prop and map models (`Art.*`, `Workspace.Map`) | Built for this game from Parts in Studio; exported to `Assets\BuildADungeon\models\` | Original, per the Assets README. Cleared for use as stated there |
 | UI icons (`src/client/Ui/IconIds.luau`) | Cut from a AI design assistant-generated sheet (owner's account), `ui\mockups\05_icon_sheet_magenta.png` | **Rights to be confirmed by the owner before release** |
-| Sounds (`src/client/Ui/SoundIds.luau`) | Creator Store audio, chosen from search metadata only, not listened to. Listed in the Assets README | **Each needs listening and a licence check before release.** Theft, SlimeAttack, Ambience and Music have no sound yet |
+| Sounds (`src/client/Ui/SoundIds.luau`) | Creator Store audio, chosen from search metadata only, not listened to. Listed in the Assets README; room effects below | **Each needs listening and a licence check before release.** Theft, Ambience and Music have no sound yet |
+
+Room combat effects use these free Creator Store assets by ProSoundEffects: [wet squish](https://create.roblox.com/store/asset/9126209045), [bird call](https://create.roblox.com/store/asset/9125598512), [fire burst](https://create.roblox.com/store/asset/9117985933), and [deep creature growl](https://create.roblox.com/store/asset/9125467848). The assets loaded in Studio, but their sound quality, availability in the published experience and licence still need review.
 | Admin panel icons (`IconIds` Admin* entries) | Generated for this game; source, PNGs and upload IDs in `Assets/BuildADungeon/ui/sprites/admin` | Uploaded to group; moderation/rendering and rights still to be confirmed |
 | UI mockups and reference images | AI design assistant-generated (owner's account), in `ui\mockups\` and `reference\` | Concept and reference only; not cleared; never uploaded to Roblox |
 | `src/shared/Core/Loader.luau` | RBLX-Flintborn, same owner | Copied unchanged |
