@@ -3,6 +3,7 @@
 local Server = game:GetService("ServerScriptService").Server
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local SessionLease = require(Server.Rules.SessionLease)
+local RoomInventory = require(Server.Rules.RoomInventory)
 
 local function migrated(mutate)
 	local stored = ProfileSchema.Default()
@@ -144,6 +145,24 @@ test("NextSerial always stays above existing instance ids", function()
 		s.NextSerial = "x"
 	end)
 	expectEq(q.NextSerial, 3, "bad value repaired")
+end)
+
+test("unsafe or exhausted room serials never freeze or overwrite a save", function()
+	local stored = ProfileSchema.Default()
+	stored.NextSerial = 1e308
+	local p, problem = ProfileSchema.Migrate(stored)
+	expectEq(p, nil, "unsafe serial rejected")
+	expectEq(problem, "Corrupt", "corrupt profile")
+	expectEq(stored.NextSerial, 1e308, "stored input untouched")
+
+	local id = "r" .. RoomInventory.MAX_SERIAL
+	local profile = ProfileSchema.Default()
+	profile.NextSerial = RoomInventory.MAX_SERIAL
+	profile.Rooms[id] = { Id = "SpikeHall", Level = 1 }
+	local ok = pcall(RoomInventory.Add, profile, "GuardRoom")
+	expectEq(ok, false, "exhausted serial rejected")
+	expectEq(profile.Rooms[id].Id, "SpikeHall", "existing room preserved")
+	expectEq(select(2, ProfileSchema.Migrate(profile)), "Corrupt", "exhausted saved id rejected")
 end)
 
 test("settings and tutorial are repaired", function()

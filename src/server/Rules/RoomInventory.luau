@@ -3,6 +3,7 @@
 local RoomInventory = {}
 
 RoomInventory.MAX_ROOMS = 30
+RoomInventory.MAX_SERIAL = 99999999999
 
 function RoomInventory.Count(profile: any): number
 	local n = 0
@@ -21,12 +22,27 @@ function RoomInventory.Owns(profile: any, roomId: string): boolean
 	return false
 end
 
+function RoomInventory.CanAdd(profile: any, count: number): boolean
+	local serial = profile.NextSerial
+	if type(serial) ~= "number" or serial < 1 or serial >= RoomInventory.MAX_SERIAL or serial % 1 ~= 0 then return false end
+	for _ = 1, count do
+		while profile.Rooms["r" .. serial] ~= nil do
+			serial += 1
+			if serial >= RoomInventory.MAX_SERIAL then return false end
+		end
+		serial += 1
+		if serial > RoomInventory.MAX_SERIAL then return false end
+	end
+	return true
+end
+
 -- Adds a level-1 instance {Id, Level, Modifier?} and returns its id ("r" ..
 -- serial). Never reuses an id. Rarity and perks come from the room definition,
 -- never from the instance. `modifier` is an event modifier id
 -- (Balance.Events.Modifiers), at most one.
 function RoomInventory.Add(profile: any, roomId: string, modifier: string?): string
 	local serial = profile.NextSerial
+	assert(RoomInventory.CanAdd(profile, 1), "Room serial exhausted")
 	while profile.Rooms["r" .. serial] ~= nil do
 		serial += 1
 	end

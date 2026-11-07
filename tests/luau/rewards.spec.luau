@@ -17,6 +17,27 @@ local function ctxWith(bonuses)
 end
 local NO_BONUS = ctxWith({ Coins = 0, Loot = 0, Xp = 0 })
 
+test("exhausted room serials reject batches and crafting without spending", function()
+	local p = ProfileSchema.Default()
+	p.NextSerial = RoomInventory.MAX_SERIAL - 1
+	p.Coins, p.BoxPity, p.Boxes.Dungeon = 123, 4, 2
+	p.Blueprints.RestlessCrypt = Loot.CraftCost("RestlessCrypt")
+	local rooms = RoomInventory.Count(p)
+	local ok, reason = Rewards.OpenBoxes(p, "Dungeon", 2, Random.new(1))
+	expectEq(ok, false, "batch refused")
+	expectEq(reason, "RoomIdsExhausted", "batch reason")
+	expectEq(p.Boxes.Dungeon, 2, "boxes preserved")
+	expectEq(p.BoxPity, 4, "pity preserved")
+	expectEq(p.Coins, 123, "coins preserved")
+	expectEq(RoomInventory.Count(p), rooms, "rooms preserved")
+	p.NextSerial = RoomInventory.MAX_SERIAL
+	local blueprints = p.Blueprints.RestlessCrypt
+	local crafted, craftReason = Rewards.Craft(p, "RestlessCrypt")
+	expectEq(crafted, false, "craft refused")
+	expectEq(craftReason, "RoomIdsExhausted", "craft reason")
+	expectEq(p.Blueprints.RestlessCrypt, blueprints, "blueprints preserved")
+end)
+
 -- An RNG that returns the given numbers in turn (then 0.5).
 local function scripted(values)
 	local i = 0

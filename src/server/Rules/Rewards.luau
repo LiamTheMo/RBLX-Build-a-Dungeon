@@ -176,6 +176,7 @@ function Rewards.OpenBox(profile, boxType: string, rng, eventId: string?)
 	if RoomInventory.Count(profile) >= RoomInventory.MAX_ROOMS then
 		return false, "TooManyRooms"
 	end
+	if not RoomInventory.CanAdd(profile, 1) then return false, "RoomIdsExhausted" end
 	-- Same pity-adjusted, gate-filtered (and event-boosted) lists the odds show.
 	local rarity, roomId = Loot.RollBox(boxType, profile.BoxPity, rng, profile.Level, Events.BoxTiers(Events.Effects(eventId), Economy.VaultLuckMultiplier(Progression.VaultBonus(profile))))
 	if rarity == nil or roomId == nil then
@@ -200,6 +201,7 @@ function Rewards.OpenBoxes(profile, boxType: string, count: number, rng, eventId
 	end
 	if (profile.Boxes[boxType] or 0) < count then return false, "NoBox" end
 	if RoomInventory.Count(profile) + count > RoomInventory.MAX_ROOMS then return false, "TooManyRooms" end
+	if not RoomInventory.CanAdd(profile, count) then return false, "RoomIdsExhausted" end
 	local opened = {}
 	for _ = 1, count do
 		local ok, reward = Rewards.OpenBox(profile, boxType, rng, eventId)
@@ -223,6 +225,7 @@ function Rewards.Craft(profile, roomId: string)
 	if RoomInventory.Count(profile) >= RoomInventory.MAX_ROOMS then
 		return false, "TooManyRooms"
 	end
+	if not RoomInventory.CanAdd(profile, 1) then return false, "RoomIdsExhausted" end
 	local left = profile.Blueprints[roomId] - cost
 	profile.Blueprints[roomId] = if left > 0 then left else nil
 	return true, RoomInventory.Add(profile, roomId)

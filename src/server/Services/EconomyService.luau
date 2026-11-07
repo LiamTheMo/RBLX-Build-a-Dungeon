@@ -63,6 +63,7 @@ function EconomyService.Buy(player: Player, roomId: string)
 	if RoomInventory.Count(profile) >= RoomInventory.MAX_ROOMS then
 		return false, "TooManyRooms"
 	end
+	if not RoomInventory.CanAdd(profile, 1) then return false, "RoomIdsExhausted" end
 	profile.Coins -= stats.Cost
 	local instanceId = RoomInventory.Add(profile, roomId)
 	ProfileService.Changed(player)

@@ -20,6 +20,7 @@ local TEXT: { [string]: string } = {
 	NotOwned = "You don't own that room.",
 	DuplicateInstance = "That room is placed twice.",
 	TooManyRooms = "You have too many rooms. Sell some unplaced rooms first.",
+	RoomIdsExhausted = "Room storage is unavailable. Please contact support.",
 	BalanceFull = "Your coin balance is full.",
 	NotEnoughCoins = "Not enough coins.",
 	NotForSale = "That isn't for sale.",

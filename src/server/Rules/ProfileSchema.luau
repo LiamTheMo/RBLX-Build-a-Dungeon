@@ -10,6 +10,7 @@ local Events = require(script.Parent.Events)
 local Loot = require(script.Parent.Loot)
 local Economy = require(script.Parent.Economy)
 local Progression = require(script.Parent.Progression)
+local RoomInventory = require(script.Parent.RoomInventory)
 local Threat = require(script.Parent.Threat)
 
 local ProfileSchema = {}
@@ -117,6 +118,9 @@ function ProfileSchema.Migrate(stored: any)
 	if stored.Version > ProfileSchema.VERSION then
 		return nil, "NewerVersion"
 	end
+	if isFinite(stored.NextSerial) and stored.NextSerial > RoomInventory.MAX_SERIAL then
+		return nil, "Corrupt"
+	end
 
 	local default = ProfileSchema.Default()
 	local coins = whole(stored.Coins, ProfileSchema.MAX_MONEY)
@@ -155,6 +159,9 @@ function ProfileSchema.Migrate(stored: any)
 		end
 	end
 	profile.Rooms = rooms
+	if highestSerial >= RoomInventory.MAX_SERIAL then
+		return nil, "Corrupt"
+	end
 	-- NextSerial must stay above every existing id, or a purchase could reuse one.
 	local nextSerial = isFinite(stored.NextSerial) and math.floor(stored.NextSerial) or 0
 	profile.NextSerial = math.max(nextSerial, highestSerial + 1, 1)

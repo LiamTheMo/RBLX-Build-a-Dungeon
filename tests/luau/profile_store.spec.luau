@@ -75,6 +75,15 @@ test("a failed load is never overwritten: newer version and corrupt data", funct
 	local _, reason2 = fake.store:Load(1)
 	expectEq(reason2, "Corrupt", "corrupt reason")
 	expectEq(fake.backing._data[KEY], "garbage", "garbage untouched")
+
+	local unsafe = ProfileSchema.Default()
+	unsafe.NextSerial, unsafe.Coins = 1e308, 71
+	fake.backing._data[KEY] = unsafe
+	local rejected, reason3 = fake.store:Load(1)
+	expectEq(rejected, nil, "unsafe serial not loaded")
+	expectEq(reason3, "Corrupt", "unsafe serial reason")
+	expectEq(fake.backing._data[KEY].Coins, 71, "unsafe save untouched")
+	expectEq(fake.backing._data[KEY].sessionLease, nil, "no lease for unsafe save")
 end)
 
 test("a DataStore outage on load fails after retries without writing", function()
