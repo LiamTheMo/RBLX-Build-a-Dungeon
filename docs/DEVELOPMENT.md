@@ -75,7 +75,7 @@ Add a spec for every new rules module. Gameplay that touches Instances, remotes 
 Room combat effects use these free Creator Store assets by ProSoundEffects: [wet squish](https://create.roblox.com/store/asset/9126209045), [bird call](https://create.roblox.com/store/asset/9125598512), [fire burst](https://create.roblox.com/store/asset/9117985933), and [deep creature growl](https://create.roblox.com/store/asset/9125467848). The assets loaded in Studio, but their sound quality, availability in the published experience and licence still need review.
 | Admin panel icons (`IconIds` Admin* entries) | Generated for this game; source, PNGs and upload IDs in `Assets/BuildADungeon/ui/sprites/admin` | Uploaded to group; moderation/rendering and rights still to be confirmed |
 | UI mockups and reference images | AI design assistant-generated (owner's account), in `ui\mockups\` and `reference\` | Concept and reference only; not cleared; never uploaded to Roblox |
-| Updated UI frames and icons | Owner-provided sheets in `Assets/BuildADungeon/ui/NEW`; cropped images uploaded for this game | Roblox IDs are recorded in the client sprite tables; moderation, rendering and release rights still need verification |
+| Updated UI frames and icons | Owner-provided sheets in `Assets/BuildADungeon/ui/NEW` | Crops were uploaded, but experience access failed in Studio; retain existing assets until sharing and rendering are verified. Release rights also need verification. |
 | `src/shared/Core/Loader.luau` | RBLX-Flintborn, same owner | Copied unchanged |
 | `src/shared/Core/Signal.luau` | RBLX-Flintborn, same owner | Copied unchanged |
 | `tests/luau/prelude.luau` | RBLX-Flintborn, same owner | Copied unchanged |

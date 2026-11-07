@@ -11,24 +11,24 @@ local function N(id: string, w: number, h: number)
 	return table.freeze({ Id = id, Size = Vector2.new(w, h) })
 end
 
-local panels_Large = S("rbxassetid://124411850654661", 574, 406, 50, 50, 524, 356)
+local panels_Large = S("rbxassetid://83520285511315", 1024, 759, 98, 98, 926, 661)
 local panels_Small = S("rbxassetid://110501062923196", 338, 334, 59, 59, 279, 275)
 local panels_Card = S("rbxassetid://125305570602753", 358, 426, 55, 55, 303, 371)
 local panels_Row = S("rbxassetid://87192296313060", 754, 116, 41, 41, 713, 75)
 local panels_HudPill = S("rbxassetid://74464604719723", 520, 152, 66, 66, 454, 86)
 local panels_Chip = S("rbxassetid://105965096211761", 252, 120, 49, 49, 203, 71)
 local panels_Tooltip = S("rbxassetid://132748851817457", 372, 184, 42, 42, 330, 142)
-local panels_TabOn = S("rbxassetid://102382588350648", 213, 118, 52, 52, 161, 66)
-local panels_TabOff = S("rbxassetid://77619164409372", 200, 86, 40, 40, 160, 46)
-local panels_TitleBar = S("rbxassetid://94679503611886", 403, 124, 65, 48, 338, 76)
-local buttons_PrimaryNormal = panels_TabOn
+local panels_TabOn = S("rbxassetid://125853962737382", 328, 168, 43, 43, 285, 125)
+local panels_TabOff = S("rbxassetid://125168716957975", 328, 168, 42, 42, 286, 126)
+local panels_TitleBar = S("rbxassetid://106376964190842", 526, 146, 43, 43, 483, 103)
+local buttons_PrimaryNormal = table.freeze({ Id = "rbxassetid://115081075639992", Size = Vector2.new(1024, 512), Stretch = true })
 local buttons_PrimaryPressed = buttons_PrimaryNormal
 local buttons_SuccessNormal = S("rbxassetid://108729837400547", 386, 214, 60, 60, 326, 154)
 local buttons_SuccessPressed = S("rbxassetid://98275259356764", 386, 216, 52, 52, 334, 164)
 local buttons_DangerNormal = S("rbxassetid://76630001681991", 388, 214, 60, 60, 328, 154)
 local buttons_DangerPressed = S("rbxassetid://117619699963794", 388, 216, 52, 52, 336, 164)
-local buttons_SecondaryNormal = panels_TabOff
-local buttons_SecondaryPressed = panels_TabOff
+local buttons_SecondaryNormal = S("rbxassetid://79207725840005", 388, 214, 60, 60, 328, 154)
+local buttons_SecondaryPressed = S("rbxassetid://84419118676363", 388, 216, 52, 52, 336, 164)
 local buttons_Round = N("rbxassetid://117210825314339", 268, 270)
 local bars_Track = S("rbxassetid://110624136948297", 764, 178, 74, 74, 690, 104)
 local bars_Fill = S("rbxassetid://71455913612341", 762, 174, 68, 68, 694, 106)

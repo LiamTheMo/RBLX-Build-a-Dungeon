@@ -778,7 +778,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		if isTab then
 			show(normalSpec)
 			img.ImageColor3 = if selected then Color3.new(1, 1, 1) elseif hover then Color3.fromRGB(215, 205, 235) else Color3.fromRGB(190, 180, 215)
-			label.TextColor3 = if selected and enabled then Theme.TextOnGold else text
+			label.TextColor3 = if selected and enabled then Theme.Gold else text
 		elseif not enabled then
 			if plainStyle then
 				show(C4.ButtonDisabled)
