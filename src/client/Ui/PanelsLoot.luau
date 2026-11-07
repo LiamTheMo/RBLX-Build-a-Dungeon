@@ -321,7 +321,7 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		local slotAtPointer = math.floor((centre - x) / pitch) + 1
 		if slotAtPointer ~= lastSlot then
 			lastSlot = slotAtPointer
-			Sound.Play("Click") -- tick as a slot passes the pointer
+			Sound.Play("ReelTick") -- tick as a slot passes the pointer
 		end
 		if t >= 1 then
 			skipReel = nil

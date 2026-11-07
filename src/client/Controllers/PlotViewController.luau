@@ -381,7 +381,7 @@ local function coinBurst(pos: Vector3, ownerId: number)
 		return
 	end
 	local template = coinModel()
-	for _ = 1, 8 do
+	for coinIndex = 1, 8 do
 		if fxCoins >= COIN_CAP then
 			return
 		end
@@ -427,11 +427,13 @@ local function coinBurst(pos: Vector3, ownerId: number)
 		end)
 		down.Completed:Once(function()
 			local origin = pos + Vector3.new(0, 0.3, 0) + spread
-			flyHome(origin, ownerId, 0.55, function(position)
-				if mover:IsA("CFrameValue") then mover.Value = CFrame.new(position) elseif mover:IsA("BasePart") then mover.Position = position end
-			end, function(arrived)
-				if arrived and ownerId == Players.LocalPlayer.UserId then Sound.Play("CoinGain") end
-				coin:Destroy(); fxCoins -= 1
+			task.delay((coinIndex - 1) * 0.08, function()
+				flyHome(origin, ownerId, 0.55, function(position)
+					if mover:IsA("CFrameValue") then mover.Value = CFrame.new(position) elseif mover:IsA("BasePart") then mover.Position = position end
+				end, function(arrived)
+					if arrived and ownerId == Players.LocalPlayer.UserId then Sound.Play("CoinCollect") end
+					coin:Destroy(); fxCoins -= 1
+				end)
 			end)
 		end)
 		up:Play()
