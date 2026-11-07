@@ -19,6 +19,6 @@ return table.freeze({
 	Purchase = { Id = "rbxassetid://120891770644830", Volume = 0.25 },
 	UpgradePurchase = { Id = "rbxassetid://103516326607012", Volume = 0.25 },
 	LootCollect = { Id = "rbxassetid://103516326607012", Volume = 0.14, Cooldown = 0.2 },
-	CoinCollect = { Id = "rbxassetid://135483737426662", Volume = 0.16, Cooldown = 0.04, MaxLive = 4 },
-	ReelTick = { Id = "rbxassetid://15675059323", Volume = 0.25, Cooldown = 0.02 },
+	CoinCollect = { Id = "rbxassetid://135483737426662", Volume = 0.16, Cooldown = 0.04, MaxLive = 8 },
+	ReelTick = { Id = "rbxassetid://15675059323", Volume = 0.15, Cooldown = 0.02, MaxLive = 8 },
 })
