@@ -247,6 +247,7 @@ function Catalog.Build(): any
 		},
 		Loot = {
 			BoxTypes = table.clone(Loot.BoxTypes),
+			SaleCoins = table.clone(Balance.Loot.SaleCoins),
 			CraftCost = craftCost, -- [tier] = blueprints to craft a room of that tier
 			ScrapReturn = scrapReturn, -- [tier] = blueprints back for scrapping one
 		},

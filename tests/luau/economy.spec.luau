@@ -54,6 +54,8 @@ test("vault rate and bonus follow the treasure's Exchange, level and Deep Vault"
 	expectNear(Economy.VaultBonus(900, 2), 50, 1e-9, "room rate scales the bonus")
 	expectEq(Economy.VaultBonus(-1, 1), 0, "bad amount")
 	expectEq(Economy.VaultBonus(0/0, 1), 0, "NaN amount")
+	expectNear(Economy.VaultLuckMultiplier(100), 1.5, 1e-9, "vault luck multiplier")
+	expectEq(Economy.VaultLuckMultiplier(-10), 1, "negative vault bonus cannot reduce luck")
 	expect(Economy.VaultBonus(200, 1) - Economy.VaultBonus(100, 1) > Economy.VaultBonus(1100, 1) - Economy.VaultBonus(1000, 1), "diminishing gains")
 	-- Treasure exchange rises with the tier.
 	local last = 0

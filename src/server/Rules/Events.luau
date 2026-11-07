@@ -43,8 +43,8 @@ end
 -- Rarity tier list for box rolls under `effects`: Weight and RareWeight of
 -- BoxRarityFrom and rarer tiers multiplied by BoxRarity. Nil when unboosted, so
 -- callers fall back to Balance.Rarities. Loot.Odds/RollRarity take this list.
-function Events.BoxTiers(effects: { [string]: number }): { any }?
-	local boost = effects.BoxRarity
+function Events.BoxTiers(effects: { [string]: number }, luck: number?): { any }?
+	local boost = (effects.BoxRarity or 1) * (luck or 1)
 	if boost == nil or boost == 1 then
 		return nil
 	end

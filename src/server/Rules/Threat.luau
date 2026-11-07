@@ -4,6 +4,7 @@
 -- Balance lists, never dictionary order.
 
 local Balance = require(script.Parent.Parent.Definitions.Balance)
+local Economy = require(script.Parent.Economy)
 
 local Threat = {}
 
@@ -80,7 +81,7 @@ end
 -- Variant multiplier from the vault bonus (in percent), the event's Variants
 -- effect and the treasure room's VariantBonus (a fraction, e.g. Dragon Hoard 0.25).
 function Threat.VariantMultiplier(vaultBonus: number?, eventMult: number?, treasureBonus: number?): number
-	return (1 + Balance.Vault.VariantPerBonus * math.max(0, vaultBonus or 0) / 100)
+	return Economy.VaultLuckMultiplier(vaultBonus)
 		* math.max(0, eventMult or 1)
 		* (1 + math.max(0, treasureBonus or 0))
 end

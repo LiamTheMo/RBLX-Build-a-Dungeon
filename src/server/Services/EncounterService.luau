@@ -46,7 +46,7 @@ local VISITOR_ATTRS = {
 
 local runs = {} -- Player -> { Id, Sim, Keys, VisitorId, Variant, Base, Threat, HasTreasure, Paid }
 local planned = {} -- Player -> visitor id announced as NextVisitorId
-local idle = {} -- Player -> { Since, Set }: when the last encounter ended and the NextVisitorAt we derived
+local idle = {} -- Timers for encounters that ended without a defeat.
 local nextRunId = 0
 local accumulator = 0
 local rng = LootService.Rng
@@ -201,8 +201,8 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	})
 	clearVisitor(plot)
 	plot:SetAttribute("State", "Idle")
-	local at = now + Progression.VisitorInterval(profile, EventService.Effects())
-	idle[player] = { Since = now, Set = at }
+	local at = if result == "Defeated" then now else now + Progression.VisitorInterval(profile, EventService.Effects())
+	idle[player] = if result == "Defeated" then nil else { Since = now, Set = at }
 	plot:SetAttribute("NextVisitorAt", at)
 	PlotService.RefreshRoomAttrs(player)
 	ProfileService.Changed(player)
@@ -263,15 +263,9 @@ local function stepRun(player: Player, plot: Instance, profile, run, dt: number,
 	end
 end
 
--- Keeps NextVisitorAt in step with the current interval (vault share, treasure,
--- Lure, Swarm). A time set by someone else (build mode resume) is only ever
--- pushed later, so lowering the vault share after a fast timer was set cannot
--- keep the fast timer without the risk.
-local function retime(player: Player, plot: Instance, profile, now: number)
+local function retime(player: Player, plot: Instance, profile)
 	local info = idle[player]
-	if info == nil then
-		return
-	end
+	if info == nil then return end
 	local at = info.Since + Progression.VisitorInterval(profile, EventService.Effects())
 	local current = plot:GetAttribute("NextVisitorAt")
 	if current == info.Set or (current ~= nil and at > current) then
@@ -284,7 +278,7 @@ local function trySpawn(player: Player, plot: Instance, profile, now: number)
 	if plot:GetAttribute("State") == "Encounter" then
 		return
 	end
-	retime(player, plot, profile, now)
+	retime(player, plot, profile)
 	if plot:GetAttribute("State") ~= "Idle" then
 		return
 	end

@@ -96,7 +96,7 @@ test("only approved display fields", function()
 		onlyKeys(p, PERMANENT_FIELDS, "permanent " .. p.Id)
 	end
 	onlyKeys(c.Grid, set({ "Columns", "Rows", "CellSize", "EntranceCell", "EntranceKey" }), "grid")
-	onlyKeys(c.Loot, set({ "BoxTypes", "CraftCost", "ScrapReturn" }), "loot")
+	onlyKeys(c.Loot, set({ "BoxTypes", "CraftCost", "ScrapReturn", "SaleCoins" }), "loot")
 end)
 
 test("rooms mirror the definitions, prices and gates", function()

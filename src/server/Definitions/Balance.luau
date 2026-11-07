@@ -31,15 +31,14 @@ Balance.Timing = table.freeze({
 -- exchange: bonus % = LogBonus * log10(1 + vaulted coins / CoinScale) * rate,
 -- where rate = RatePerPercent * the
 -- treasure room's Exchange (Balance.Rooms) * (1 + LevelBonus * (level - 1) +
--- DeepVault PerLevel * Deep Vault level). The bonus shortens the visitor interval
--- (interval / (1 + bonus / 100)) and multiplies rare-variant chances by
--- (1 + VariantPerBonus * bonus / 100).
+-- DeepVault PerLevel * Deep Vault level). Luck checks use
+-- (1 + LuckPerBonus * bonus / 100) for rare visitors, drops and chest rarity.
 Balance.Vault = table.freeze({
 	RatePerPercent = 1.0,
 	CoinScale = 100,
 	LogBonus = 25,
 	LevelBonus = 0.1,
-	VariantPerBonus = 0.5,
+	LuckPerBonus = 0.5,
 })
 
 -- Threat levels: the attackers a keeper unlocks for better loot. Tier t unlocks at
@@ -461,6 +460,7 @@ Balance.Loot = table.freeze({
 		CelestialCoffer = 0.5,
 		VoidVault = 0.5,
 	}),
+	SaleCoins = table.freeze({ Common = 25, Uncommon = 50, Rare = 100, Epic = 200, Legendary = 400, Mythic = 800, Secret = 1600 }),
 	-- After PityAfter boxes in a row below PityRarity, the next is at least PityRarity.
 	PityAfter = 9,
 	PityRarity = "Rare",

@@ -118,6 +118,51 @@ test("pity through OpenBox: the 10th box after nine low ones is Rare or better",
 	expectEq(p.BoxPity, 0, "reset")
 end)
 
+test("bulk box opening is bounded, all-or-nothing, and advances pity per box", function()
+	local p = ProfileSchema.Default()
+	p.Boxes.Dungeon = 3
+	local rng = { NextNumber = function() return 0 end }
+	local ok, opened = Rewards.OpenBoxes(p, "Dungeon", 2, rng)
+	expect(ok, "opened batch")
+	expectEq(#opened, 2, "result count")
+	expectEq(p.Boxes.Dungeon, 1, "spent exactly two")
+	expectEq(p.BoxPity, 2, "pity advanced for each")
+	local boxes, pity, rooms = p.Boxes.Dungeon, p.BoxPity, RoomInventory.Count(p)
+	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", 2, rng)), "NoBox", "insufficient stock")
+	expectEq(p.Boxes.Dungeon, boxes, "stock unchanged")
+	expectEq(p.BoxPity, pity, "pity unchanged")
+	expectEq(RoomInventory.Count(p), rooms, "rooms unchanged")
+	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", 31, rng)), "BadArgs", "request cap")
+	p.Boxes.Dungeon = 1
+	while RoomInventory.Count(p) < RoomInventory.MAX_ROOMS do RoomInventory.Add(p, "SpikeHall") end
+	local pityBeforeFull, boxesBeforeFull = p.BoxPity, p.Boxes.Dungeon
+	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", 1, rng)), "TooManyRooms", "capacity checked")
+	expectEq(p.BoxPity, pityBeforeFull, "full capacity leaves pity unchanged")
+	expectEq(p.Boxes.Dungeon, boxesBeforeFull, "full capacity leaves box")
+end)
+
+test("bulk room sale is all-or-nothing, pays rarity values, and keeps one defender", function()
+	local p = ProfileSchema.Default()
+	p.Layout = {}
+	local common = RoomInventory.Add(p, "SpikeHall")
+	local rare = RoomInventory.Add(p, "RestlessCrypt")
+	local coins = p.Coins
+	local ok, receipt = Rewards.SellRooms(p, { common, rare })
+	expect(ok, "sold batch")
+	expectEq(receipt.Coins, 125, "Common plus Rare provisional sale values")
+	expectEq(p.Coins, coins + 125, "coins credited")
+	expectEq(p.Rooms[common], nil, "common removed")
+	expectEq(p.Rooms[rare], nil, "rare removed")
+	expectEq(p.Rooms.r1 ~= nil, true, "last defender retained")
+	local guard = RoomInventory.Add(p, "GuardRoom")
+	local before = p.Coins
+	expectEq(select(2, Rewards.SellRooms(p, { guard, "missing" })), "NotOwned", "invalid batch refused")
+	expectEq(p.Rooms[guard] ~= nil, true, "valid entry retained on refusal")
+	expectEq(p.Coins, before, "no partial payout")
+	expectEq(select(2, Rewards.SellRooms(p, { "r1", guard })), "LastDefender", "last defender protected")
+	expectEq(select(2, Rewards.SellRooms(p, { guard, guard })), "BadArgs", "duplicate rejected")
+end)
+
 test("crafting costs the tier's blueprints and respects the cap", function()
 	local p = ProfileSchema.Default()
 	p.Blueprints.GuardRoom = 4

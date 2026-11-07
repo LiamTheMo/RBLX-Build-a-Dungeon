@@ -6,11 +6,13 @@ local Balance = require(Server.Definitions.Balance)
 local Rooms = require(Server.Definitions.Rooms)
 local Visitors = require(Server.Definitions.Visitors)
 local Economy = require(Server.Rules.Economy)
+local Events = require(Server.Rules.Events)
 local Loot = require(Server.Rules.Loot)
 local Progression = require(Server.Rules.Progression)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local RoomInventory = require(Server.Rules.RoomInventory)
 local StateView = require(Server.Rules.StateView)
+local Rewards = require(Server.Rules.Rewards)
 
 local function deepEqual(a, b)
 	if type(a) ~= "table" or type(b) ~= "table" then
@@ -51,6 +53,17 @@ test("pity changes the odds the snapshot shows", function()
 	local pity = StateView.Derived(profileWith(1, Balance.Loot.PityAfter)).BoxOdds.Dungeon
 	expectEq(fresh.Rarities[1].Id, "Common", "common possible without pity")
 	expect(pity.Rarities[1].Id ~= "Common", "pity removes tiers below " .. Balance.Loot.PityRarity)
+end)
+
+test("vault luck is reflected in displayed chest and drop odds", function()
+	local profile = ProfileSchema.Default()
+	profile.Coins, profile.VaultPercent = 100000, 100
+	profile.Layout["3,3"] = "r2"
+	local ctx = Rewards.Context(profile, "BlessedBoxes")
+	local view = StateView.Derived(profile, { EventId = "BlessedBoxes" })
+	expect(view.VaultLuck > 1, "placed vault improves luck")
+	expect(deepEqual(view.BoxOdds.Dungeon, Loot.Odds("Dungeon", profile.BoxPity, profile.Level, Events.BoxTiers(ctx.Effects, ctx.LuckMult))), "display matches the next roll")
+	expect(deepEqual(view.DropChances.Novice, Loot.DropChances("Novice", ctx.Bonuses.Loot, Rewards.DropScale(ctx))), "display matches drop chance")
 end)
 
 test("rooms are copies with the definition's Rarity, Perks, MaxLevel and NextUpgradeCost; the profile is untouched", function()

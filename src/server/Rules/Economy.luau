@@ -71,6 +71,11 @@ function Economy.VaultBonus(vaulted: number, rate: number): number
 	return Balance.Vault.LogBonus * math.log(1 + vaulted / Balance.Vault.CoinScale) / math.log(10) * rate
 end
 
+-- Multiplier for luck checks (drops and rare visitors) from the vault bonus.
+function Economy.VaultLuckMultiplier(bonus: number?): number
+	return 1 + Balance.Vault.LuckPerBonus * math.max(0, bonus or 0) / 100
+end
+
 -- Visitor interval: (base - Lure) / (1 + bonus / 100) * the event's Interval
 -- effect, never below MinVisitorInterval.
 function Economy.VisitorInterval(bonus: number?, reduction: number?, eventMult: number?): number

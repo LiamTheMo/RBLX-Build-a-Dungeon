@@ -67,7 +67,7 @@ Static display data, the same for every player, built once by `CatalogService` f
   Rarities = { { Id, MaxLevel, CraftCost, ScrapReturn, Rooms = { roomId... } } },  -- ordered, index = rank; Rooms = placeable rooms of that tier
   Permanent = { { Id, Name, MaxLevel, PerLevelText, EffectText = { [level + 1] = text } } },  -- shop order
   Grid = { Columns, Rows, CellSize, EntranceCell = { Column, Row }, EntranceKey },
-  Loot = { BoxTypes, CraftCost = { [tier] = n }, ScrapReturn = { [tier] = n } },
+  Loot = { BoxTypes, CraftCost = { [tier] = n }, ScrapReturn = { [tier] = n }, SaleCoins = { [tier] = n } },
   MaxKeeperLevel = 100,
   Variants = { { Id, Chance, Health, Coins, Drops, GuaranteedBox? } },        -- rarest first: Gilded, Shiny, Elite; multipliers
   Threat = { [tier] = { Tier, UnlockLevel, Health, Damage, Coins, Xp, Drops, Roster = { { Id, Chance } } } },
@@ -121,6 +121,8 @@ RemoteFunctions return `(ok: boolean, reasonOrData, extra?)`. Every handler chec
 | `OpenBox` | `boxType: "Dungeon" \| "Rare"` | LootService: rolls a tier, then a room of that tier; returns `{InstanceId, RoomId, Rarity, Perks (the definition's), Modifier?}` (during an event: boosted tier weights for Blessed Boxes and a 25% modifier roll). Refusals `NoBox`, `TooManyRooms` (box kept). Boxes earned at the 999 stack cap convert to `Balance.Loot.BoxOverflowCoins` banked coins with a "Box storage full" Notice |
 | `CraftBlueprint` | `roomId: string` | LootService: spends the room tier's craft cost (5 / 6 / 8 / 10 / 12 / 15 / 20), returns the new instance id. `NotCraftable`, `NotEnoughBlueprints`, `TooManyRooms` |
 | `ScrapRoom` | `instanceId: string` | LootService: unplaced rooms only, + the tier's scrap return (2 / 3 / 4 / 5 / 6 / 8 / 10), returns the new count. `NotOwned`, `RoomPlaced`, `NotScrappable` (the Coin Cache), `LastDefender` (would leave no Defender-kind room), `BlueprintsFull` (stack at 999) |
+| `OpenBoxes` | `boxType: string, count: integer` | Opens 1–30 owned chests if there is room for the entire batch. Pity advances after each roll; returns all rewards. |
+| `SellRooms` | `instanceIds: string[]` | Sells 1–30 distinct owned, unplaced, craftable rooms for server-defined rarity values; protects the last defender and rejects the whole request if invalid. |
 | `BuyPermanent` | `upgradeId: string` | EconomyService: returns the new level. `UnknownUpgrade`, `MaxLevel`, `NotEnoughCoins` |
 | `TutorialAction` | `action: "Next" \| "Skip" \| "DeclineTreasure"` | TutorialService |
 | `SaveSettings` | `{ReducedMotion: boolean, MusicVolume: number, SfxVolume: number}` | ProfileService |

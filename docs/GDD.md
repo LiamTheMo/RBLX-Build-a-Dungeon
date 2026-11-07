@@ -24,6 +24,10 @@ No direct dungeon-crawler combat or player-controlled troop system in the core l
 
 **Place rooms and defenses → attract NPC adventurers → watch encounters → collect rewards → acquire and improve dungeon pieces → rearrange and raise the threat level.**
 
+Defeated adventurers are replaced on the next server update; an escape or robbery retains the recovery interval. Vaulted coins increase the chance of loot drops and rarer chest rewards as well as rare adventurer variants. Identical unplaced rooms may be sold together for coins, with the final defender and placed rooms protected. A chest batch uses the pity state after each individual opening, so its displayed odds describe the next chest rather than every roll in the batch.
+
+Progression playtest targets for a consistently successful setup are threat 2 in 10–20 minutes, threat 3 in 30–60 minutes, threat 4 at about 3 hours and threat 5 at about 6 hours. These are balance targets, not verified timings; immediate respawns and the revised luck economy require fresh-session playtests before release.
+
 A new player spawns at a plot with an entrance and a slime nest. A practice adventurer arrives, fights the slime and drops coins if defeated; without a treasure room, rewards go straight to coins. The tutorial guides the player to place a free spike hall after the slime. The next visitor demonstrates that a slowed adventurer stays on spikes longer. The tutorial then offers the treasure room as an optional upgrade in risk and reward: choose a share of coins to keep in the vault for more frequent visitors and rarer variants, at the cost of possible theft. The player earns enough for a guaranteed basic room, then unlocks higher threat levels as their keeper level grows.
 
 Aim for the first encounter within roughly 15 seconds; validate with playtests. Onboarding should recover from unexpected actions, be skippable on later visits, and explain why encounters succeed or fail.

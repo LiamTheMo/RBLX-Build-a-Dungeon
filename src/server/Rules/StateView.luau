@@ -68,7 +68,7 @@ end
 function StateView.Derived(profile: any, world: any?): any
 	local w = world or {}
 	local ctx = Rewards.Context(profile, w.EventId, w.UnlockAll)
-	local tiers = Events.BoxTiers(ctx.Effects)
+	local tiers = Events.BoxTiers(ctx.Effects, ctx.LuckMult)
 
 	local boxOdds = {}
 	for _, boxType in Loot.BoxTypes do
@@ -99,6 +99,7 @@ function StateView.Derived(profile: any, world: any?): any
 		VaultRisk = risk,
 		VaultRate = Progression.VaultRate(profile),
 		VaultBonus = Progression.VaultBonus(profile), -- percent
+		VaultLuck = ctx.LuckMult,
 		VisitorInterval = Progression.VisitorInterval(profile, ctx.Effects),
 		Threat = profile.Threat,
 		ThreatActive = ctx.Threat,

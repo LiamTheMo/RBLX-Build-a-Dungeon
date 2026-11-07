@@ -15,6 +15,12 @@ local function isFraction(n)
 	return type(n) == "number" and n >= 0 and n <= 1
 end
 
+test("room sale values cover every rarity", function()
+	for _, rarity in Balance.Rarities do
+		expect(isPositive(Balance.Loot.SaleCoins[rarity.Id]), rarity.Id .. " sale value")
+	end
+end)
+
 test("room ids match their keys and appear once in Order", function()
 	local seen = {}
 	for _, id in Rooms.Order do

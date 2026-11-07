@@ -11,6 +11,7 @@ local Economy = require(script.Parent.Economy)
 local Events = require(script.Parent.Events)
 local Loot = require(script.Parent.Loot)
 local Progression = require(script.Parent.Progression)
+local ProfileSchema = require(script.Parent.ProfileSchema)
 local RoomInventory = require(script.Parent.RoomInventory)
 local Threat = require(script.Parent.Threat)
 
@@ -65,6 +66,7 @@ function Rewards.Context(profile, eventId: string?, unlockAll: boolean?)
 		Scale = Threat.Scale(tier),
 		Bonuses = Progression.Bonuses(profile),
 		Effects = effects,
+		LuckMult = Economy.VaultLuckMultiplier(Progression.VaultBonus(profile)),
 		EventId = if Events.Get(eventId) then eventId else nil,
 		VariantMult = Threat.VariantMultiplier(Progression.VaultBonus(profile), effects.Variants, Progression.VariantBonus(profile)),
 	}
@@ -83,7 +85,7 @@ end
 -- Drop-chance multiplier besides the loot bonus: threat * variant * event.
 function Rewards.DropScale(ctx, variantId: string?): number
 	local v = Threat.Variant(variantId)
-	return ctx.Scale.Drops * (v and v.Drops or 1) * ctx.Effects.Drops
+	return ctx.Scale.Drops * (v and v.Drops or 1) * ctx.Effects.Drops * (ctx.LuckMult or 1)
 end
 
 -- Effective coin range {Min, Max} for a visitor (nil if unknown).
@@ -175,7 +177,7 @@ function Rewards.OpenBox(profile, boxType: string, rng, eventId: string?)
 		return false, "TooManyRooms"
 	end
 	-- Same pity-adjusted, gate-filtered (and event-boosted) lists the odds show.
-	local rarity, roomId = Loot.RollBox(boxType, profile.BoxPity, rng, profile.Level, Events.BoxTiers(Events.Effects(eventId)))
+	local rarity, roomId = Loot.RollBox(boxType, profile.BoxPity, rng, profile.Level, Events.BoxTiers(Events.Effects(eventId), Economy.VaultLuckMultiplier(Progression.VaultBonus(profile))))
 	if rarity == nil or roomId == nil then
 		return false, "BadArgs"
 	end
@@ -188,6 +190,25 @@ function Rewards.OpenBox(profile, boxType: string, rng, eventId: string?)
 		perks[i] = { Kind = perk.Kind, Amount = perk.Amount }
 	end
 	return true, { InstanceId = instanceId, RoomId = roomId, Rarity = rarity, Perks = perks, Modifier = modifier }
+end
+
+-- Opens exactly `count` boxes, preserving pity between rolls. Stock and room
+-- capacity are checked first so a rejected batch consumes nothing.
+function Rewards.OpenBoxes(profile, boxType: string, count: number, rng, eventId: string?)
+	if Loot.Odds(boxType, 0, profile.Level) == nil or type(count) ~= "number" or count % 1 ~= 0 or count < 1 or count > RoomInventory.MAX_ROOMS then
+		return false, "BadArgs"
+	end
+	if (profile.Boxes[boxType] or 0) < count then return false, "NoBox" end
+	if RoomInventory.Count(profile) + count > RoomInventory.MAX_ROOMS then return false, "TooManyRooms" end
+	local opened = {}
+	for _ = 1, count do
+		local ok, reward = Rewards.OpenBox(profile, boxType, rng, eventId)
+		if not ok then
+			return false, "Busy" -- preflight means this should only occur if profile invariants are broken
+		end
+		table.insert(opened, reward)
+	end
+	return true, opened
 end
 
 -- The tier's CraftCost blueprints of a type -> one room of that type.
@@ -237,6 +258,45 @@ function Rewards.Scrap(profile, instanceId: string)
 	profile.Rooms[instanceId] = nil
 	addBlueprints(profile, room.Id, Loot.ScrapReturn(room.Id) :: number)
 	return true, profile.Blueprints[room.Id]
+end
+
+-- Sell selected unplaced loot rooms atomically. The starter Coin Cache and last
+-- defender stay protected.
+function Rewards.SellRooms(profile, instanceIds: { string })
+	if type(instanceIds) ~= "table" or #instanceIds < 1 or #instanceIds > RoomInventory.MAX_ROOMS then
+		return false, "BadArgs"
+	end
+	local length, keys = #instanceIds, 0
+	for key in instanceIds do
+		if type(key) ~= "number" or key % 1 ~= 0 or key < 1 or key > length then return false, "BadArgs" end
+		keys += 1
+	end
+	if keys ~= length then return false, "BadArgs" end
+	local seen, sale, defenders = {}, {}, 0
+	for id, room in profile.Rooms do
+		if isDefender(room.Id) then defenders += 1 end
+	end
+	local soldDefenders, coins = 0, 0
+	for _, instanceId in instanceIds do
+		if type(instanceId) ~= "string" or #instanceId < 1 or #instanceId > 32 or seen[instanceId] then
+			return false, "BadArgs"
+		end
+		seen[instanceId] = true
+		local room = profile.Rooms[instanceId]
+		if room == nil then return false, "NotOwned" end
+		if not Loot.Craftable(room.Id) then return false, "NotScrappable" end
+		if RoomInventory.IsPlaced(profile, instanceId) then return false, "RoomPlaced" end
+		local value = Balance.Loot.SaleCoins[Rooms.Rarity(room.Id)]
+		if value == nil then return false, "NotScrappable" end
+		coins += value
+		table.insert(sale, { InstanceId = instanceId, RoomId = room.Id, Coins = value })
+		if isDefender(room.Id) then soldDefenders += 1 end
+	end
+	if defenders - soldDefenders < 1 then return false, "LastDefender" end
+	if profile.Coins + coins > ProfileSchema.MAX_MONEY then return false, "BalanceFull" end
+	for _, item in sale do profile.Rooms[item.InstanceId] = nil end
+	profile.Coins += coins
+	return true, { Sold = sale, Coins = coins }
 end
 
 -- Buys the next level of a permanent upgrade with banked coins.
