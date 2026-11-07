@@ -51,7 +51,10 @@ function Toast.Show(text: string, kind: string?)
 	kind = if KIND_COLOR[kind or "Info"] then kind else "Info"
 	local parent = ensure()
 	-- While the Loot/Collection/Keeper panel is open, drop the stack below its header and tab row.
-	local panels = Players.LocalPlayer.PlayerGui:FindFirstChild("Panels")
+	local panels
+	for _, child in Players.LocalPlayer.PlayerGui:GetChildren() do
+		if child.Name == "Panels" and child:IsA("ScreenGui") and child.Enabled then panels = child; break end
+	end
 	local dim = panels and panels:IsA("ScreenGui") and panels.Enabled and panels:FindFirstChildWhichIsA("TextButton")
 	local panelFrame = dim and dim:FindFirstChildWhichIsA("GuiObject")
 	local toastGui = parent.Parent :: ScreenGui

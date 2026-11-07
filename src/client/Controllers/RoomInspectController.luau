@@ -64,8 +64,11 @@ function Controller.Start()
 			if plot:GetAttribute("State") == "Building" or (State.Current and State.Current.Building) then return end
 			for _, m in Modal.All do if m.IsOpen then return end end
 			local playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
-			local panels = playerGui and playerGui:FindFirstChild("Panels")
-			if panels and panels:IsA("ScreenGui") and panels.Enabled then return end
+			if playerGui then
+				for _, panels in playerGui:GetChildren() do
+					if panels.Name == "Panels" and panels:IsA("ScreenGui") and panels.Enabled then return end
+				end
+			end
 			local key = Cells.KeyAt(plot, start)
 			local state = State.Current
 			if key and state and state.Layout and state.Layout[key] then

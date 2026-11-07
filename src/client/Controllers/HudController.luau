@@ -739,8 +739,9 @@ local function build()
 		for _, m in modals do
 			covered = covered or m.Group.Visible
 		end
-		local panels = gui.Parent and gui.Parent:FindFirstChild("Panels")
-		covered = covered or (panels ~= nil and panels:IsA("ScreenGui") and panels.Enabled)
+		for _, panels in gui.Parent:GetChildren() do
+			if panels.Name == "Panels" and panels:IsA("ScreenGui") and panels.Enabled then covered = true end
+		end
 		enc.Visible = show and not covered
 		if not show then
 			return
@@ -792,12 +793,13 @@ local function build()
 	for _, m in modals do
 		m.Group:GetPropertyChangedSignal("Visible"):Connect(refreshEncounter)
 	end
-	task.spawn(function()
-		local panels = gui.Parent and gui.Parent:WaitForChild("Panels", 30)
-		if panels and panels:IsA("ScreenGui") then
+	local function watchPanels(panels)
+		if panels.Name == "Panels" and panels:IsA("ScreenGui") then
 			panels:GetPropertyChangedSignal("Enabled"):Connect(refreshEncounter)
 		end
-	end)
+	end
+	gui.Parent.ChildAdded:Connect(watchPanels)
+	for _, panels in gui.Parent:GetChildren() do watchPanels(panels) end
 
 	local lastLevel: number? = nil
 	local lastCoins = 0

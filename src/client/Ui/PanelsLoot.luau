@@ -603,15 +603,16 @@ function L.Build(scroll: ScrollingFrame, state: any)
 			local stackCount = #group.Instances
 			local chosen = selectedItems[group.Key] or 0
 			local card = P.Card(scroll, nxt(), group.Rarity)
-			local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, card)
+			local rowHeight = if group.Modifier or P.PerkText(group.Perks) ~= "" then 86 else 60
+			local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowHeight) }, card)
 			local image = P.RoomImage(row, group.Id, 46, group.Def.Kind)
 			image.Position = UDim2.fromOffset(0, 3)
 			local text = string.format("%s  %s  Lv %d  x%d%s", roomName(group.Id), P.Rich("[" .. group.Rarity .. "]", group.Rarity), group.Level, stackCount, if group.Modifier then "\n" .. tostring(group.Modifier) else "")
 			if P.PerkText(group.Perks) ~= "" then text ..= "\n" .. P.PerkText(group.Perks) end
 			local label = P.Text(row, text, Theme.TextSize.Body, Theme.TextPrimary, true)
-			label.Position, label.Size = UDim2.fromOffset(52, 0), UDim2.new(1, -158, 0, 52)
+			label.Position, label.Size, label.AutomaticSize = UDim2.fromOffset(52, 0), UDim2.new(1, -190, 1, 0), Enum.AutomaticSize.None
 			local qtyLabel = Kit.Label(row, string.format("%d/%d", chosen, stackCount), Theme.TextSize.Body, Theme.TextPrimary, true)
-			qtyLabel.AnchorPoint, qtyLabel.Position, qtyLabel.Size = Vector2.new(1, 0.5), UDim2.new(1, -44, 0.5, 0), UDim2.fromOffset(50, 40)
+			qtyLabel.AnchorPoint, qtyLabel.Position, qtyLabel.Size = Vector2.new(1, 0.5), UDim2.new(1, -44, 0.5, 0), UDim2.fromOffset(44, 40)
 			local remove = Kit.Button(row, { Text = "−", Style = "Secondary", Size = UDim2.fromOffset(40, 44), Position = UDim2.new(1, -132, 0.5, -22), OnClick = function()
 				selectedItems[group.Key] = math.max(0, chosen - 1)
 				sellConfirmUntil = 0
@@ -623,7 +624,7 @@ function L.Build(scroll: ScrollingFrame, state: any)
 				L.Build(scroll, State.Current or state)
 			end })
 			remove.Instance.Position = UDim2.new(1, -132, 0.5, -22)
-			add.Instance.Position = UDim2.new(1, -84, 0.5, -22)
+			add.Instance.Position = UDim2.new(1, -44, 0.5, -22)
 			remove.SetEnabled(chosen > 0)
 			add.SetEnabled(group.Def.Craftable and chosen < stackCount and selectedCount < 30)
 		end
