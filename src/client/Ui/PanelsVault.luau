@@ -146,8 +146,8 @@ function Vault.Build(body: Frame)
 		return l
 	end
 	local riskLabel = chip(1, "Thief", Theme.Danger, "Most a thief could steal")
-	local intervalLabel = chip(2, "Clock", Theme.TextPrimary, "Time between adventurers")
-	local rateLabel = chip(3, "Exchange", Theme.TextMuted, "Vault exchange multiplier")
+	local intervalLabel = chip(2, "Clock", Theme.TextPrimary, "Wait after an escape; defeated adventurers are replaced immediately")
+	local luckLabel = chip(3, "Exchange", Theme.TextMuted, "Vault luck multiplier for drops and rare finds")
 
 	local function locked(): boolean
 		local ok, plot = pcall(Plots.WaitOwn)
@@ -166,7 +166,7 @@ function Vault.Build(body: Frame)
 		bonusLabel.Text = if confirmed then "+" .. tostring(math.floor((s.VaultBonus or 0) * 10 + 0.5) / 10) .. "%" else "…"
 		riskLabel.Text = if confirmed then "-" .. Badges.Comma(s.VaultRisk or 0) else "…"
 		intervalLabel.Text = if confirmed then string.format("%.1fs", s.VisitorInterval or 0) else "…"
-		rateLabel.Text = string.format("x%.2g", s.VaultRate or 0)
+		luckLabel.Text = if confirmed then string.format("x%.2f luck", s.VaultLuck or 1) else "…"
 	end
 
 	function self.Layout()

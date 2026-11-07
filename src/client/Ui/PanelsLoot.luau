@@ -1,4 +1,4 @@
--- Loot tab: boxes with real odds + pity, open reveal, blueprints, scrap. The odds
+-- Bag: chest drops and owned room items. The odds
 -- are the server's (State.BoxOdds: exactly what the next open rolls from).
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -23,7 +23,14 @@ local make = Kit.Make
 local L = {}
 
 local busy = false
-local confirming: { [string]: number } = {} -- instanceId -> expiry (os.clock)
+local currentTab = "Drops"
+local selectedBox = "Dungeon"
+local selectedQty: { [string]: number } = {}
+local openConfirmUntil = 0
+local openConfirmKey = ""
+local selectedItems: { [string]: number } = {}
+local sellConfirmUntil = 0
+local sellConfirmKey = ""
 
 local function roomName(id: string): string
 	local def = Catalog.Room(id)
@@ -331,7 +338,47 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	place(0)
 end
 
-local function run(remote: string, arg: string, onOk: (any) -> (), onFail: (() -> ())?)
+local function showBatch(box: string, rewards: { any })
+	local gui = Kit.Screen("BatchRewards", 31)
+	gui.ScreenInsets = Enum.ScreenInsets.None
+	local scrim = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0 }, gui)
+	Kit.Sprite(scrim, "Feedback.Scrim", { Size = UDim2.fromScale(1, 1), ImageTransparency = 0.1, ScaleType = Enum.ScaleType.Stretch })
+	local panel = Kit.Panel(scrim, { Sprite = "Large", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.9, 0.84), Pad = Vector2.new(8, 6) })
+	make("UISizeConstraint", { MaxSize = Vector2.new(760, 620) }, panel)
+	local title = Kit.Label(panel, string.format("Opened %d %s chests", #rewards, box), Theme.TextSize.Title, Theme.TextPrimary, true)
+	title.Position, title.Size = UDim2.fromOffset(8, 4), UDim2.new(1, -76, 0, 52)
+	local closed = false
+	local function close()
+		if closed then return end
+		closed = true
+		gui:Destroy()
+		State.Hold(false)
+		for _, reward in rewards do Bus.RoomAwarded:Fire(reward) end
+	end
+	local closeButton = Kit.CloseButton(panel, UDim2.fromOffset(56, 56), close)
+	closeButton.Instance.AnchorPoint, closeButton.Instance.Position = Vector2.new(1, 0), UDim2.new(1, -4, 0, 0)
+	local list = make("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(4, 64), Size = UDim2.new(1, -8, 1, -72), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 8, ScrollingDirection = Enum.ScrollingDirection.Y }, panel)
+	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	make("UIPadding", { PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 6) }, list)
+	for i, reward in rewards do
+		local rarity = tostring(reward.Rarity or "Common")
+		local details = string.format("%s  %s", roomName(reward.RoomId), P.Rich("[" .. rarity .. "]", rarity))
+		if reward.Modifier then details ..= "\n" .. tostring(reward.Modifier) end
+		local card = P.Card(list, i, rarity)
+		local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50) }, card)
+		local image = P.RoomImage(row, reward.RoomId, 44)
+		image.Position = UDim2.fromOffset(2, 3)
+		local label = P.Text(row, details, Theme.TextSize.Body, Theme.TextPrimary, true)
+		label.Position, label.Size = UDim2.fromOffset(54, 0), UDim2.new(1, -58, 0, 50)
+		if reward.Modifier then
+			local badge = Badges.Modifier(row, reward.Modifier, 34)
+			if badge then badge.AnchorPoint, badge.Position = Vector2.new(1, 0), UDim2.new(1, -4, 0, 4) end
+		end
+	end
+	scrim.Activated:Connect(close)
+end
+
+local function run(remote: string, args: { any }, onOk: (any) -> (), onFail: (() -> ())?)
 	if busy then
 		if onFail then
 			onFail()
@@ -339,7 +386,7 @@ local function run(remote: string, arg: string, onOk: (any) -> (), onFail: (() -
 		return
 	end
 	busy = true
-	local ok, res = Net.Invoke(remote, arg)
+	local ok, res = Net.Invoke(remote, table.unpack(args))
 	busy = false
 	if ok then
 		onOk(res)
@@ -359,124 +406,228 @@ function L.Build(scroll: ScrollingFrame, state: any)
 		order += 1
 		return order
 	end
+	local tabs = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = nxt() }, scroll)
+	local dropTab = Kit.Button(tabs, { Text = "Drops", Icon = "DropChance", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
+		currentTab = "Drops"
+		L.Build(scroll, State.Current or state)
+	end })
+	dropTab.SetSelected(currentTab == "Drops")
+	local itemsTab = Kit.Button(tabs, { Text = "Items", Icon = "Bag", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), Position = UDim2.new(0.5, 4, 0, 0), OnClick = function()
+		currentTab = "Items"
+		L.Build(scroll, State.Current or state)
+	end })
+	itemsTab.Instance.Position = UDim2.new(0.5, 4, 0, 0)
+	itemsTab.SetSelected(currentTab == "Items")
 
-	P.Section(scroll, "Chests", nxt())
-	local cols = P.Columns(scroll)
-	local chestGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, if Scale.Phone then 370 else 330), SortOrder = Enum.SortOrder.LayoutOrder }, chestGrid)
-	for order, boxType in catalog.Loot.BoxTypes do
-		local count = (state.Boxes or {})[boxType] or 0
-		local card = Kit.Panel(chestGrid, { LayoutOrder = order, Pad = Vector2.new(4, 4) })
-		make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
-		Kit.Icon(card, if boxType == "Crystal" then "CrystalBox" elseif boxType == "Rare" then "RareBox" else "Box", UDim2.fromOffset(62, 62)).LayoutOrder = 1
-		local name = Kit.Label(card, string.format("%s  x%d", if boxType == "Crystal" then "Crystal Chest" elseif boxType == "Rare" then "Royal Chest" else "Dungeon Chest", count), 17, Theme.TextPrimary, true)
-		name.Size, name.LayoutOrder, name.TextScaled = UDim2.new(1, 0, 0, 25), 2, true
-		make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 17 }, name)
-		local odds = (state.BoxOdds or {})[boxType]
+	if currentTab == "Drops" then
+		P.Section(scroll, "Choose a chest", nxt())
+		local chestRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = nxt() }, scroll)
+		for i, boxType in catalog.Loot.BoxTypes do
+			local icon = if boxType == "Crystal" then "CrystalBox" elseif boxType == "Rare" then "RareBox" else "Box"
+			local count = (state.Boxes or {})[boxType] or 0
+			local button = Kit.Button(chestRow, { Text = string.format("%s x%d", boxType, count), Icon = icon, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #catalog.Loot.BoxTypes, -6, 1, 0), Position = UDim2.new((i - 1) / #catalog.Loot.BoxTypes, (i - 1) * 6, 0, 0), OnClick = function()
+				selectedBox, openConfirmUntil = boxType, 0
+				L.Build(scroll, State.Current or state)
+			end })
+			button.Instance.Position = UDim2.new((i - 1) / #catalog.Loot.BoxTypes, (i - 1) * 6, 0, 0)
+			button.SetSelected(selectedBox == boxType)
+		end
+		local boxNames = { Dungeon = "Dungeon Chest", Rare = "Royal Chest", Crystal = "Crystal Chest" }
+		P.Section(scroll, boxNames[selectedBox] or selectedBox, nxt())
+		local controlsOrder, openOrder = nxt(), nxt()
+		local odds = (state.BoxOdds or {})[selectedBox]
 		if odds then
-			local rf = P.ChipFlow(card, 3)
-			rf.AutomaticSize, rf.Size = Enum.AutomaticSize.None, UDim2.new(1, 0, 0, if Scale.Phone then 180 else 140)
-			local layout = rf:FindFirstChildOfClass("UIListLayout")
-			layout.Padding = UDim.new(0, 2)
-			layout.VerticalAlignment = Enum.VerticalAlignment.Top
-			for i, e in odds.Rarities do
-				local lines = { e.Id .. " - " .. P.Pct(e.Chance) }
+			local oddsCard = P.Card(scroll, nxt())
+			P.Text(oddsCard, "Next chest odds; pity can change later rolls in a batch.", Theme.TextSize.Body, Theme.TextMuted, true, 1)
+			for i, rarity in odds.Rarities do
+				local color = P.RarityColor[rarity.Id] or Theme.TextPrimary
+				local lines = { string.format("%s — %s", rarity.Id, P.Pct(rarity.Chance)) }
 				for _, room in odds.Rooms do
-					if room.Rarity == e.Id then table.insert(lines, roomName(room.Id) .. " " .. P.Pct(room.Chance)) end
+					if room.Rarity == rarity.Id then
+						table.insert(lines, string.format("%s  %s", roomName(room.Id), P.Pct(room.Chance)))
+					end
 				end
-				local color = P.RarityColor[e.Id] or Theme.TextPrimary
-				local chip = P.Chip(rf, i, function(p) return Kit.Gem(p, e.Id, UDim2.fromOffset(22, 22)) end, P.Pct(e.Chance), color, table.concat(lines, "\n"), color, e.Id)
-				chip.Size = UDim2.fromOffset(0, 44)
-				Kit.MinTouch(chip)
+				P.Text(oddsCard, table.concat(lines, "\n"), Theme.TextSize.Body, color, true, i + 1)
 			end
 		end
-		local open = Kit.Button(card, { Text = "Open", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, OnClick = function()
-			State.Hold(true)
-			run("OpenBox", boxType, function(res)
-				if type(res) == "table" then
-					reveal(boxType, res, function() State.Hold(false); Bus.RoomAwarded:Fire(res) end)
-				else State.Hold(false) end
-			end, function() State.Hold(false) end)
+		local stock = (state.Boxes or {})[selectedBox] or 0
+		local owned = 0
+		for _ in state.Rooms or {} do owned += 1 end
+		local maxOpen = math.min(stock, math.max(0, 30 - owned))
+		selectedQty[selectedBox] = math.clamp(selectedQty[selectedBox] or 1, if maxOpen > 0 then 1 else 0, maxOpen)
+		local controls = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.65, 0, 0, 52), LayoutOrder = controlsOrder }, scroll)
+		local qty = selectedQty[selectedBox]
+		local minus = Kit.Button(controls, { Text = "−", Style = "Secondary", Size = UDim2.fromOffset(48, 48), OnClick = function()
+			selectedQty[selectedBox] = math.max(1, qty - 1)
+			openConfirmUntil = 0
+			L.Build(scroll, State.Current or state)
 		end })
-		open.SetEnabled(count > 0)
-	end
-
-	P.Section(scroll, "Blueprints", nxt())
-	local bpGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 235), SortOrder = Enum.SortOrder.LayoutOrder }, bpGrid)
-	for order, id in catalog.RoomOrder do
-		local def = catalog.Rooms[id]
-		local cost = def and def.CraftCost
-		if def and def.Craftable and cost then
-			local n = (state.Blueprints or {})[id] or 0
-			local card = Kit.Panel(bpGrid, { LayoutOrder = order, Rarity = def.Rarity, Pad = Vector2.new(4, 3) })
-			make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
-			local art = Kit.Icon(card, "BlueprintCard", UDim2.fromOffset(90, 90))
-			art.LayoutOrder = 1
-			local room = P.RoomImage(art, id, 58, def.Kind)
-			room.AnchorPoint, room.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
-			local name = Kit.Label(card, roomName(id), 16, Theme.TextPrimary, true)
-			name.Size, name.LayoutOrder, name.TextScaled = UDim2.new(1, 0, 0, 24), 2, true
-			make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 16 }, name)
-			local count = Kit.Label(card, string.format("%d/%d", n, cost), 16, Theme.TextMuted, true)
-			count.Size, count.LayoutOrder = UDim2.new(1, 0, 0, 22), 3
-			local craft = Kit.Button(card, { Text = "Craft", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, OnClick = function()
-				run("CraftBlueprint", id, function() Toast.Show(roomName(id) .. " crafted.", "Good") end)
-			end })
-			craft.SetEnabled(n >= cost)
-		end
-	end
-
-	P.Section(scroll, "Unplaced rooms", nxt())
-	local placed = {}
-	for _, instanceId in state.Layout or {} do
-		placed[instanceId] = true
-	end
-	local list = {}
-	for instanceId, room in state.Rooms or {} do
-		local def = catalog.Rooms[room.Id]
-		if not placed[instanceId] and def and def.Craftable then
-			table.insert(list, { InstanceId = instanceId, Room = room })
-		end
-	end
-	table.sort(list, function(a, b)
-		local ra, rb = Catalog.RarityRank(a.Room.Rarity) or 0, Catalog.RarityRank(b.Room.Rarity) or 0
-		if ra ~= rb then
-			return ra > rb
-		end
-		if a.Room.Id ~= b.Room.Id then
-			return a.Room.Id < b.Room.Id
-		end
-		return a.InstanceId < b.InstanceId
-	end)
-	if #list == 0 then
-		P.Empty(scroll, "No unplaced rooms", nxt())
-	end
-	for _, e in list do
-		local room = e.Room
-		local perks = P.PerkText(room.Perks)
-		local text = string.format("%s %s  Lv %d%s", roomName(room.Id), P.Rich("[" .. tostring(room.Rarity) .. "]", room.Rarity), room.Level or 1, if perks ~= "" then "\n" .. perks else "")
-		local card = P.Card(scroll, nxt(), room.Rarity)
-		local btn
-		_, _, btn = P.Row(card, text, { Text = "Scrap", Icon = "Blueprint", IconLayout = "Row", Style = "Danger", Width = 150, Tip = string.format("+%d blueprints", (catalog.Rooms[room.Id] or {}).ScrapReturn or 0), OnClick = function()
-			if (confirming[e.InstanceId] or 0) < os.clock() then
-				confirming[e.InstanceId] = os.clock() + 3
-				btn.SetText("Tap again")
+		local qtyLabel = Kit.Label(controls, string.format("Open %d", qty), Theme.TextSize.Body, Theme.TextPrimary, true)
+		qtyLabel.AnchorPoint, qtyLabel.Position, qtyLabel.Size = Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, 0), UDim2.fromOffset(130, 48)
+		local plus = Kit.Button(controls, { Text = "+", Style = "Secondary", Size = UDim2.fromOffset(48, 48), Position = UDim2.new(1, -48, 0, 0), OnClick = function()
+			selectedQty[selectedBox] = math.min(maxOpen, qty + 1)
+			openConfirmUntil = 0
+			L.Build(scroll, State.Current or state)
+		end })
+		plus.Instance.Position = UDim2.new(1, -48, 0, 0)
+		minus.SetEnabled(qty > 1)
+		plus.SetEnabled(qty < maxOpen)
+		local openKey = selectedBox .. ":" .. tostring(qty)
+		local openButton = Kit.Button(scroll, { Text = if openConfirmUntil > os.clock() and openConfirmKey == openKey then string.format("Confirm opening %d", qty) else string.format("Open %d", qty), Style = "Primary", Size = UDim2.new(0.65, 0, 0, 48), LayoutOrder = openOrder, OnClick = function()
+			if busy or qty < 1 then return end
+			if openConfirmUntil <= os.clock() or openConfirmKey ~= openKey then
+				openConfirmKey = openKey
+				openConfirmUntil = os.clock() + 3
+				L.Build(scroll, State.Current or state)
 				task.delay(3.1, function()
-					if btn.Instance.Parent then
-						btn.SetText("Scrap")
+					if openConfirmUntil > 0 and openConfirmUntil <= os.clock() then
+						openConfirmUntil = 0
+						if scroll.Parent then L.Build(scroll, State.Current or state) end
 					end
 				end)
 				return
 			end
-			confirming[e.InstanceId] = nil
-			run("ScrapRoom", e.InstanceId, function()
-				Toast.Show(string.format("+%d blueprints", (catalog.Rooms[room.Id] or {}).ScrapReturn or 0), "Good")
+			openConfirmUntil = 0
+			State.Hold(true)
+			local box = selectedBox
+			run("OpenBoxes", { box, qty }, function(rewards)
+				if type(rewards) == "table" and #rewards == 1 then
+					reveal(box, rewards[1], function() State.Hold(false); Bus.RoomAwarded:Fire(rewards[1]) end)
+				elseif type(rewards) == "table" and #rewards > 1 then
+					showBatch(box, rewards)
+				else State.Hold(false); L.Build(scroll, State.Current or state) end
+			end, function()
+				State.Hold(false)
+				L.Build(scroll, State.Current or state)
 			end)
-		end }, { Room = room.Id, Kind = (catalog.Rooms[room.Id] or {}).Kind })
-		if (confirming[e.InstanceId] or 0) > os.clock() then
-			btn.SetText("Tap again")
+		end })
+		openButton.SetEnabled(maxOpen > 0)
+	else
+		local cols = P.Columns(scroll)
+		P.Section(scroll, "Blueprints", 1000)
+		local bpGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = 1001 }, scroll)
+		make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 235), SortOrder = Enum.SortOrder.LayoutOrder }, bpGrid)
+		for itemOrder, id in catalog.RoomOrder do
+			local def = catalog.Rooms[id]
+			local cost = def and def.CraftCost
+			if def and def.Craftable and cost and ((state.Blueprints or {})[id] or 0) > 0 then
+				local n = (state.Blueprints or {})[id] or 0
+				local card = Kit.Panel(bpGrid, { LayoutOrder = itemOrder, Rarity = def.Rarity, Pad = Vector2.new(4, 3) })
+				make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
+				local art = Kit.Icon(card, "BlueprintCard", UDim2.fromOffset(90, 90))
+				art.LayoutOrder = 1
+				local room = P.RoomImage(art, id, 58, def.Kind)
+				room.AnchorPoint, room.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+				local name = Kit.Label(card, roomName(id), 16, Theme.TextPrimary, true)
+				name.Size, name.LayoutOrder, name.TextScaled = UDim2.new(1, 0, 0, 24), 2, true
+				make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 16 }, name)
+				local count = Kit.Label(card, string.format("%d/%d", n, cost), 16, Theme.TextMuted, true)
+				count.Size, count.LayoutOrder = UDim2.new(1, 0, 0, 22), 3
+				local craft = Kit.Button(card, { Text = "Craft", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 4, OnClick = function()
+					run("CraftBlueprint", { id }, function() Toast.Show(roomName(id) .. " crafted.", "Good") end)
+				end })
+				craft.SetEnabled(n >= cost)
+			end
 		end
+
+		P.Section(scroll, "Unplaced rooms", nxt())
+		local placed = {}
+		for _, instanceId in state.Layout or {} do placed[instanceId] = true end
+		local groups, byKey = {}, {}
+		for instanceId, room in state.Rooms or {} do
+			local def = catalog.Rooms[room.Id]
+			if not placed[instanceId] and def then
+				local key = table.concat({ room.Id, tostring(room.Level or 1), tostring(room.Rarity or "Common"), tostring(room.Modifier or ""), P.PerkText(room.Perks) }, "|")
+				local group = byKey[key]
+				if not group then
+					group = { Key = key, Id = room.Id, Level = room.Level or 1, Rarity = room.Rarity or "Common", Modifier = room.Modifier, Perks = room.Perks, Def = def, Instances = {} }
+					byKey[key] = group
+					table.insert(groups, group)
+				end
+				table.insert(group.Instances, instanceId)
+			end
+		end
+		table.sort(groups, function(a, b)
+			local ra, rb = Catalog.RarityRank(a.Rarity) or 0, Catalog.RarityRank(b.Rarity) or 0
+			if ra ~= rb then return ra > rb end
+			if a.Id ~= b.Id then return a.Id < b.Id end
+			return a.Key < b.Key
+		end)
+		local selectedCount, selectedValue, selectedIds = 0, 0, {}
+		for _, group in groups do
+			table.sort(group.Instances)
+			local picked = if group.Def.Craftable then math.clamp(selectedItems[group.Key] or 0, 0, math.min(#group.Instances, 30 - selectedCount)) else 0
+			selectedItems[group.Key] = picked
+			if group.Def.Craftable then
+				for i = 1, picked do
+					if selectedCount >= 30 then break end
+					selectedCount += 1
+					selectedValue += (catalog.Loot.SaleCoins or {})[group.Rarity] or 0
+					table.insert(selectedIds, group.Instances[i])
+				end
+			end
+		end
+		local alive = {}
+		for _, group in groups do alive[group.Key] = true end
+		for key in selectedItems do if not alive[key] then selectedItems[key] = nil end end
+		local saleKey = table.concat(selectedIds, ",")
+		local sellButton = Kit.Button(scroll, { Text = if sellConfirmUntil > os.clock() and sellConfirmKey == saleKey then string.format("Confirm %d for %s coins", selectedCount, Badges.Comma(selectedValue)) else string.format("Sell %d for %s coins", selectedCount, Badges.Comma(selectedValue)), Icon = "CoinStack", IconLayout = "Row", Style = "Danger", Size = UDim2.new(1, 0, 0, 48), LayoutOrder = nxt(), OnClick = function()
+			if busy or #selectedIds == 0 then return end
+			if sellConfirmUntil <= os.clock() or sellConfirmKey ~= saleKey then
+				sellConfirmKey = saleKey
+				sellConfirmUntil = os.clock() + 3
+				L.Build(scroll, State.Current or state)
+				task.delay(3.1, function()
+					if sellConfirmUntil > 0 and sellConfirmUntil <= os.clock() then
+						sellConfirmUntil = 0
+						if scroll.Parent then L.Build(scroll, State.Current or state) end
+					end
+				end)
+				return
+			end
+			sellConfirmUntil = 0
+			State.Hold(true)
+			run("SellRooms", { selectedIds }, function(result)
+				State.Hold(false)
+				table.clear(selectedItems)
+				local sold = if type(result) == "table" then result.Sold or {} else {}
+				local coins = if type(result) == "table" then result.Coins or 0 else 0
+				Toast.Show(string.format("Sold %d rooms for %s coins.", #sold, Badges.Comma(coins)), "Good")
+			end, function()
+				State.Hold(false)
+				L.Build(scroll, State.Current or state)
+			end)
+		end })
+		sellButton.SetEnabled(selectedCount > 0)
+		for _, group in groups do
+			local stackCount = #group.Instances
+			local chosen = selectedItems[group.Key] or 0
+			local card = P.Card(scroll, nxt(), group.Rarity)
+			local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52) }, card)
+			local image = P.RoomImage(row, group.Id, 46, group.Def.Kind)
+			image.Position = UDim2.fromOffset(0, 3)
+			local text = string.format("%s  %s  Lv %d  x%d%s", roomName(group.Id), P.Rich("[" .. group.Rarity .. "]", group.Rarity), group.Level, stackCount, if group.Modifier then "\n" .. tostring(group.Modifier) else "")
+			if P.PerkText(group.Perks) ~= "" then text ..= "\n" .. P.PerkText(group.Perks) end
+			local label = P.Text(row, text, Theme.TextSize.Body, Theme.TextPrimary, true)
+			label.Position, label.Size = UDim2.fromOffset(52, 0), UDim2.new(1, -158, 0, 52)
+			local qtyLabel = Kit.Label(row, string.format("%d/%d", chosen, stackCount), Theme.TextSize.Body, Theme.TextPrimary, true)
+			qtyLabel.AnchorPoint, qtyLabel.Position, qtyLabel.Size = Vector2.new(1, 0.5), UDim2.new(1, -44, 0.5, 0), UDim2.fromOffset(50, 40)
+			local remove = Kit.Button(row, { Text = "−", Style = "Secondary", Size = UDim2.fromOffset(40, 44), Position = UDim2.new(1, -132, 0.5, -22), OnClick = function()
+				selectedItems[group.Key] = math.max(0, chosen - 1)
+				sellConfirmUntil = 0
+				L.Build(scroll, State.Current or state)
+			end })
+			local add = Kit.Button(row, { Text = "+", Style = "Secondary", Size = UDim2.fromOffset(40, 44), Position = UDim2.new(1, -84, 0.5, -22), OnClick = function()
+				selectedItems[group.Key] = math.min(stackCount, chosen + 1)
+				sellConfirmUntil = 0
+				L.Build(scroll, State.Current or state)
+			end })
+			remove.Instance.Position = UDim2.new(1, -132, 0.5, -22)
+			add.Instance.Position = UDim2.new(1, -84, 0.5, -22)
+			remove.SetEnabled(chosen > 0)
+			add.SetEnabled(group.Def.Craftable and chosen < stackCount and selectedCount < 30)
+		end
+		if #groups == 0 then P.Empty(scroll, "No unplaced rooms", nxt()) end
 	end
 	task.defer(function()
 		scroll.CanvasPosition = pos

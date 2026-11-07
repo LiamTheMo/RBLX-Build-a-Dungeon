@@ -1,4 +1,4 @@
--- Shared pieces of the Loot / Collection / Keeper panels: rarity colours,
+-- Shared pieces of the Bag / Index / Keeper panels: rarity colours,
 -- text helpers, list cards and the modal shell (title, tabs, scroll area).
 local Theme = require(script.Parent.Theme)
 local Percent = require(script.Parent.Percent)
@@ -10,6 +10,7 @@ local SpriteIds = require(script.Parent.SpriteIds)
 local make = Kit.Make
 
 local P = {}
+local TAB_ICON = { Chests = "Bag", Index = "Collection" }
 
 P.RarityColor = Theme.Rarity
 
@@ -183,21 +184,23 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	panel.Active = true
 	make("UISizeConstraint", { MaxSize = Vector2.new(820, 680) }, panel)
 
-	local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56) }, panel)
+	local tabHeight = if Scale.Phone then 64 else 52
+	local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, tabHeight + 4) }, panel)
 	-- The tab row names the panel, so the title stays hidden (callers still set its text).
 	local title = P.Text(head, "", Theme.TextSize.Title, Theme.TextPrimary, true)
 	title.Visible = false
 	local self = { Gui = gui, Panel = panel, Title = title, Tabs = {}, Scrolls = {} }
-	local close = Kit.CloseButton(head, UDim2.fromOffset(56, 56), function()
+	local closeSize = if Scale.Phone then 64 else 56
+	local close = Kit.CloseButton(head, UDim2.fromOffset(closeSize, closeSize), function()
 		gui.Enabled = false
 	end)
 	close.Instance.AnchorPoint = Vector2.new(1, 0)
 	close.Instance.Position = UDim2.fromScale(1, 0)
 
-	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 2), Size = UDim2.new(1, -72, 0, 52) }, head)
+	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 2), Size = UDim2.new(1, -72, 0, tabHeight) }, head)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) }, tabs)
 	for _, name in tabNames do
-		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = name, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #tabNames, -8 * (#tabNames - 1) / #tabNames - 1, 0, 52), TextSize = 20, OnClick = function()
+		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = TAB_ICON[name] or name, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #tabNames, -8 * (#tabNames - 1) / #tabNames - 1, 0, tabHeight), TextSize = 20, OnClick = function()
 			onTab(name)
 		end })
 		local tabLabel = self.Tabs[name].Instance:FindFirstChild("Label")
@@ -206,8 +209,8 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 		local scroll = make("ScrollingFrame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, 66),
-			Size = UDim2.new(1, 0, 1, -66),
+			Position = UDim2.fromOffset(0, tabHeight + 14),
+			Size = UDim2.new(1, 0, 1, -(tabHeight + 14)),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			ScrollBarThickness = 10,

@@ -516,10 +516,14 @@ local function build()
 	action("Shop", "Shop", "Shop", "Secondary", 2, function()
 		toggle(shop)
 	end)
-	-- The Bag opens the tabbed Loot / Collection / Keeper panel (built by LootController, Bus "OpenPanel").
+	-- Bag holds chests and owned items; Index holds rooms, visitors and Keeper.
 	action("Bag", "Bag", "Bag", "Secondary", 3, function()
 		closeModals()
-		Bus.OpenPanel:Fire("Loot")
+		Bus.OpenPanel:Fire("Bag")
+	end)
+	action("Index", "Collection", "Index", "Secondary", 4, function()
+		closeModals()
+		Bus.OpenPanel:Fire("Index")
 	end)
 	gear.Instance.Activated:Connect(function()
 		toggle(settingsPanel)
@@ -527,8 +531,9 @@ local function build()
 	for _, key in { "Build", "Shop" } do
 		Bus.Targets[key] = { Instance = buttons[key].Instance, Stroke = buttons[key].Stroke, Button = buttons[key] }
 	end
-	for _, key in { "Loot", "Collection", "Keeper" } do
-		Bus.Targets[key] = { Instance = buttons.Bag.Instance, Stroke = buttons.Bag.Stroke, Button = buttons.Bag }
+	Bus.Targets.Loot = { Instance = buttons.Bag.Instance, Stroke = buttons.Bag.Stroke, Button = buttons.Bag }
+	for _, key in { "Index", "Collection", "Keeper" } do
+		Bus.Targets[key] = { Instance = buttons.Index.Instance, Stroke = buttons.Index.Stroke, Button = buttons.Index }
 	end
 	Bus.ShopRequested:Connect(function()
 		shop.Open()
@@ -729,7 +734,7 @@ local function build()
 		local s = State.Current
 		local visitorId = plot:GetAttribute("VisitorId")
 		local show = type(visitorId) == "string" and visitorId ~= ""
-		-- Hidden while a modal panel (Shop/Settings/Loot/Collection/Keeper) is open so they never overlap.
+		-- Hidden while a modal panel (Shop/Settings/Bag/Index) is open so they never overlap.
 		local covered = false
 		for _, m in modals do
 			covered = covered or m.Group.Visible

@@ -1,5 +1,4 @@
--- Loot / Collection / Keeper panels. Opened by Bus.OpenPanel:Fire("Loot" | "Collection" | "Keeper"
--- | "Close"). Display and requests only: the server owns boxes, rooms, XP and coins.
+-- Bag and Index panels. Display and requests only: the server owns boxes, rooms, XP and coins.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Signal = require(ReplicatedStorage.Shared.Core.Signal)
@@ -14,27 +13,25 @@ local Scale = require(Ui.Scale)
 
 local Controller = {}
 
-local TABS = { "Loot", "Collection", "Keeper" }
-local TITLES = { Loot = "Loot", Collection = "Collection", Keeper = "Keeper" }
-
-local shell: any
-local current = "Loot"
+local bagShell: any
+local indexShell: any
+local activeShell: any
+local current = "Bag"
 local dirty = false
 
 local function render()
 	local state = State.Current
-	if not shell or not shell.Gui.Enabled or not state then
+	if not activeShell or not activeShell.Gui.Enabled or not state then
 		return
 	end
-	shell.Title.Text = TITLES[current]
-	for name, scroll in shell.Scrolls do
+	for name, scroll in activeShell.Scrolls do
 		scroll.Visible = name == current
-		shell.Tabs[name].SetSelected(name == current)
+		activeShell.Tabs[name].SetSelected(name == current)
 	end
-	local scroll = shell.Scrolls[current]
-	if current == "Loot" then
+	local scroll = activeShell.Scrolls[current]
+	if current == "Bag" then
 		PanelsLoot.Build(scroll, state)
-	elseif current == "Collection" then
+	elseif current == "Index" then
 		PanelsCollection.BuildCollection(scroll, state)
 	else
 		PanelsCollection.BuildKeeper(scroll, state)
@@ -43,16 +40,21 @@ end
 
 local function open(name: any)
 	if name == "Close" then
-		if shell then
-			shell.Gui.Enabled = false
-		end
+		if bagShell then bagShell.Gui.Enabled = false end
+		if indexShell then indexShell.Gui.Enabled = false end
 		return
 	end
-	if not table.find(TABS, name) then
+	if name == "Bag" or name == "Loot" or name == "Chests" then
+		activeShell, current = bagShell, "Bag"
+	elseif name == "Index" or name == "Collection" then
+		activeShell, current = indexShell, "Index"
+	elseif name == "Keeper" then
+		activeShell, current = indexShell, "Keeper"
+	else
 		return
 	end
-	current = name
-	shell.Gui.Enabled = true
+	bagShell.Gui.Enabled = activeShell == bagShell
+	indexShell.Gui.Enabled = activeShell == indexShell
 	render()
 end
 
@@ -62,12 +64,13 @@ end
 
 function Controller.Start()
 	State.Start()
-	shell = PanelsKit.Shell(TABS, open)
+	bagShell = PanelsKit.Shell({ "Bag" }, open)
+	indexShell = PanelsKit.Shell({ "Index", "Keeper" }, open)
 	Bus.OpenPanel:Connect(open)
 	Scale.Changed:Connect(render)
 	-- State arrives often (every hit of an encounter): rebuild at most once per frame, only while visible.
 	State.Changed:Connect(function()
-		if shell.Gui.Enabled and not dirty then
+		if activeShell and activeShell.Gui.Enabled and not dirty then
 			dirty = true
 			task.defer(function()
 				dirty = false
