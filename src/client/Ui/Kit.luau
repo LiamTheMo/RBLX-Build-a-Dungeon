@@ -70,10 +70,13 @@ end
 -- keeps the border near `cap` reference px (big panels). Reference px = screen px / UIScale, so desktop and phone look
 -- alike. The scale is capped at 0.5 (Roblox drops right/bottom slices above ~0.5); v4 bands are >= 24 px so 0.3-0.5 is
 -- the sweet spot.
+local fitters = setmetatable({}, { __mode = "k" })
+
 local function fit(img: GuiObject, spec: any, mode: string?, cap: number?, onScale: ((number) -> ())?)
-	local c = spec.SliceCenter
+	local activeSpec = spec
 	local nudge = 0
 	local function apply()
+		local c = activeSpec.SliceCenter
 		local a = img.AbsoluteSize / math.max(Scale.Value, 0.01)
 		if a.X < 2 or a.Y < 2 then
 			return
@@ -82,10 +85,10 @@ local function fit(img: GuiObject, spec: any, mode: string?, cap: number?, onSca
 		if mode == "Border" then
 			s = math.min((cap or 14) / ((c.Min.X + c.Min.Y) / 2), 0.5)
 		else
-			s = math.min(a.X / spec.Size.X, a.Y / spec.Size.Y, 0.5)
+			s = math.min(a.X / activeSpec.Size.X, a.Y / activeSpec.Size.Y, 0.5)
 		end
 		-- The two borders must never overlap.
-		s = math.min(s, 0.98 * a.X / (c.Min.X + spec.Size.X - c.Max.X + 0.001), 0.98 * a.Y / (c.Min.Y + spec.Size.Y - c.Max.Y + 0.001))
+		s = math.min(s, 0.98 * a.X / (c.Min.X + activeSpec.Size.X - c.Max.X + 0.001), 0.98 * a.Y / (c.Min.Y + activeSpec.Size.Y - c.Max.Y + 0.001))
 		local target: any = img
 		target.SliceScale = s
 		-- Re-assign SliceScale a moment after the last change: Studio sometimes leaves the right/bottom slices
@@ -94,12 +97,16 @@ local function fit(img: GuiObject, spec: any, mode: string?, cap: number?, onSca
 		local mine = nudge
 		task.delay(0.1, function()
 			if mine == nudge and img.Parent then
-				target.SliceScale = s + 0.001
+				target.SliceScale = math.max(0.001, s - 0.001)
 			end
 		end)
 		if onScale then
 			onScale(s)
 		end
+	end
+	fitters[img] = function(nextSpec)
+		activeSpec = nextSpec
+		apply()
 	end
 	apply()
 	img:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply)
@@ -130,7 +137,7 @@ local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: ((
 		img.SliceCenter = spec.SliceCenter
 		fit(img, spec, mode, cap, onScale)
 	else
-		img.ScaleType = Enum.ScaleType.Fit
+		img.ScaleType = if spec.Stretch then Enum.ScaleType.Stretch else Enum.ScaleType.Fit
 	end
 	Sprites.Watch(spec.Id, function()
 		neutral(img)
@@ -161,7 +168,7 @@ local function skinByHeight(img: any, spec: any)
 		local mine = nudge
 		task.delay(0.1, function()
 			if mine == nudge and img.Parent then
-				img.SliceScale = s + 0.001
+				img.SliceScale = math.max(0.001, s - 0.001)
 			end
 		end)
 	end
@@ -601,6 +608,12 @@ function Kit.Tip(obj: GuiObject, text: string | () -> string, color: Color3?)
 		tipId += 1
 		hide(tipId)
 	end)
+	obj.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			tipId += 1
+			hide(tipId)
+		end
+	end)
 	obj.InputBegan:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.Touch then
 			return
@@ -715,8 +728,9 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 			img.Image = spec.Id
 			if spec.SliceCenter then
 				img.ScaleType, img.SliceCenter = Enum.ScaleType.Slice, spec.SliceCenter
+				if fitters[img] then fitters[img](spec) else fit(img, spec, "Uniform", nil, nil) end
 			else
-				img.ScaleType = Enum.ScaleType.Fit
+				img.ScaleType = if spec.Stretch then Enum.ScaleType.Stretch else Enum.ScaleType.Fit
 			end
 		end
 	end
@@ -748,7 +762,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 			pad.PaddingLeft = UDim.new(0, 44)
 		else
 			label.TextYAlignment = Enum.TextYAlignment.Bottom
-			pad.PaddingBottom = UDim.new(0, 5)
+			pad.PaddingBottom = UDim.new(0, if opts.Style == "Primary" then 12 else 5)
 		end
 		self.Icon = icon
 	end

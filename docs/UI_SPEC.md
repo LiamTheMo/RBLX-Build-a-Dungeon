@@ -187,3 +187,11 @@ Changes made versus the generated images, and why:
 - Shop mockup shows 3 cards; real grids follow the `UIGridLayout` sizes in the Shop section above and scroll.
 - Icon sheet icons are raster art with a built-in dark outline; in Roblox they are shown as `ImageLabel`s at 32x32 (24 compact). Until sliced and uploaded (owner action, not done), keep the Frame/text fallbacks from the Icons section.
 - Clock and gear icons are cream/white in the sheet; on BgPanel they contrast well, but on Gold buttons use the dark outline only variant, or place them on a BgRaised chip.
+
+## UI polish pass (2026-11-06)
+
+The large panel, primary action, and disabled button use individually generated full elements, rather than a cut-up sprite sheet. The panel uses a calibrated nine-slice frame; the full primary button stretches as a whole so its edges remain intact. The group-owned images are 83520285511315, 115081075639992, and 132717535749322. Their original files and upload records are under `Assets/BuildADungeon/ui/sprites/ui_polish_v1/`. The prior sprites remain available in version history.
+
+Tabs share available width, and the chest reveal fits the available viewport. Desktop Studio validation was performed; phone touch behavior, release rights and narrow-screen playback still need physical-device review.
+
+Chest reveal results use the full panel art; the rarity name and gem carry the tier colour, with the Secret shimmer retained.

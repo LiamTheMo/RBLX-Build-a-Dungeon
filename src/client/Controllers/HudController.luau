@@ -691,7 +691,7 @@ local function build()
 			chipBar.AnchorPoint, chipBar.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 54)
 			chip.Size = UDim2.fromOffset(0, 38)
 			threatButton.Instance.Size, infoButton.Instance.Size = UDim2.fromOffset(44, 44), UDim2.fromOffset(44, 44)
-			bar.Position = UDim2.new(0.5, 0, 1, -8)
+			bar.Position = UDim2.new(0.5, 0, 1, -16)
 			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -8, 0, 52), UDim2.fromOffset(250, 0)
 		else
 			gear.Instance.AnchorPoint, gear.Instance.Position, gear.Instance.Size = Vector2.new(0, 0), UDim2.fromOffset(16, 8), UDim2.fromOffset(52, 52)

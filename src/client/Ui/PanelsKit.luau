@@ -197,9 +197,12 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 2), Size = UDim2.new(1, -72, 0, 52) }, head)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) }, tabs)
 	for _, name in tabNames do
-		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = name, IconLayout = "Row", Style = "Tab", Size = UDim2.fromOffset(176, 52), TextSize = 20, OnClick = function()
+		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = name, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #tabNames, -8 * (#tabNames - 1) / #tabNames - 1, 0, 52), TextSize = 20, OnClick = function()
 			onTab(name)
 		end })
+		local tabLabel = self.Tabs[name].Instance:FindFirstChild("Label")
+		tabLabel.TextScaled = true
+		make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = 20 }, tabLabel)
 		local scroll = make("ScrollingFrame", {
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,

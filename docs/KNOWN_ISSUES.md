@@ -80,3 +80,8 @@ Current gaps, checked against the code and docs on 2026-11-05. Remove an entry w
 
 - New chest-specific rooms reuse existing game-owned models and icons; distinct visual assets and polish remain to be made. The room balance and revised tier odds require playtesting. Schema v8 requires coordinated rollout because older servers reject newer profiles.
 - Confirm the compact build palette filters, room selection and move/remove popup, reduced UI scale, chest opening, touch targets and safe areas on physical devices. Reused Creator Store sounds have not been auditioned or cleared for release; verify purchase and reward-arrival sounds and volume.
+
+## UI polish pass (2026-11-06)
+
+- Three new standalone panel, primary-button, and disabled-button images were uploaded to the game group and approved. Validate their contrast, stretching, loading, and interaction states on desktop and physical mobile devices; rights still need owner confirmation.
+- Chest reveal sizing and modal tabs were adjusted for narrow viewports. Verify portrait and landscape, orientation changes during a reveal, reduced-motion behavior, and safe areas on real hardware.

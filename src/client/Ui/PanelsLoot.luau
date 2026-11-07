@@ -31,7 +31,7 @@ local function roomName(id: string): string
 end
 
 -- Reveal: shake a closed box (~0.8 s), then show room, rarity and perks. Instant when motion is reduced.
--- The result card wears the tier's card frame (Secret keeps a shimmer on top; static under reduced motion).
+-- The result card shows the tier by gem and colour (Secret keeps a shimmer; static under reduced motion).
 -- Tapping anywhere (or Esc / B) skips the shake, then closes the card. The catcher is its own full-screen
 -- ScreenGui (no safe insets), so nothing of the panel underneath can be hit while it is up.
 -- Reel pieces: weighted pick from the box's displayed odds (State.BoxOdds), so the roll looks honest.
@@ -69,12 +69,14 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local skipReel: (() -> ())? = nil
 	local keyConn: RBXScriptConnection? = nil
 	local closed = false
+	local sizeConn: any = nil
 
 	local function close()
 		if closed then
 			return
 		end
 		closed = true
+		if sizeConn then sizeConn:Disconnect() end
 		if keyConn then
 			keyConn:Disconnect()
 		end
@@ -88,8 +90,13 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	end
 
 	-- Card frame (square-ish, so the tier frame keeps its proportions) with a centred content column.
+	local view = workspace.CurrentCamera.ViewportSize / math.max(Scale.Value, 0.01)
+	local revealScale = math.min(1, math.max(0.1, (view.X - 24) / 340), math.max(0.1, (view.Y - 32) / 460))
+	local window: any = nil
+	local revealGlow: any = nil
+
 	local function makeCard(rarity: string?): (Frame, Frame)
-		local c = Kit.Panel(gui, { Sprite = "Large", Rarity = rarity, Pad = Vector2.new(6, 6), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(340, if rarity then 380 else 320), ZIndex = 11 })
+		local c = Kit.Panel(gui, { Sprite = "Large", Pad = Vector2.new(6, 6), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(340, if rarity then 380 else 320), ZIndex = 11 })
 		local col = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 12 }, c)
 		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }, col)
 		return c, col
@@ -98,12 +105,26 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local scale = make("UIScale", {})
 
 	-- "Tap" hint under the card: a pulsing check mark, no sentence.
-	local hint = make("Frame", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 190 + 20), Size = UDim2.fromOffset(120, 44), ZIndex = 12, Visible = false }, gui)
+	local hint = make("Frame", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 190 * revealScale + 4), Size = UDim2.fromOffset(120, 44), ZIndex = 12, Visible = false }, gui)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8) }, hint)
 	local hintIcon = Kit.Icon(hint, "Check", UDim2.fromOffset(36, 36), Theme.Success)
 	local hintText = Kit.Label(hint, "Tap", Theme.TextSize.Body, Theme.TextPrimary, true)
 	hintText.AutomaticSize, hintText.Size, hintText.TextWrapped = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false
+	hintIcon.ZIndex, hintText.ZIndex = 13, 13
 	hintText.TextTransparency = 0.15
+
+	local function resizeReveal()
+		view = workspace.CurrentCamera.ViewportSize / math.max(Scale.Value, 0.01)
+		revealScale = math.min(1, math.max(0.1, (view.X - 24) / 340), math.max(0.1, (view.Y - 32) / 460))
+		hint.Position = UDim2.new(0.5, 0, 0.5, 190 * revealScale + 4)
+		if card and scale.Parent then scale.Scale = revealScale end
+		if revealGlow then revealGlow.Size = UDim2.fromOffset(646 * revealScale, 722 * revealScale) end
+		if window then
+			local phone = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+			window.Size = UDim2.fromOffset(math.max(120, math.min(if phone then 520 else 660, view.X - 24)), 190)
+		end
+	end
+	sizeConn = Scale.Changed:Connect(resizeReveal)
 
 	local function show()
 		phase = "shown"
@@ -115,11 +136,11 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 			card:Destroy()
 		end
 		card, col = makeCard(result.Rarity)
-		scale = make("UIScale", {}, card)
+		scale = make("UIScale", { Scale = revealScale }, card)
 		-- Light behind the card in the tier colour, and a burst that blooms once (Reel.Burst).
-		local glow = Kit.Glow(card, color, 0.45)
-		glow.Size, glow.ZIndex = UDim2.new(1.9, 0, 1.9, 0), 11
-		glow.ClipsDescendants = false
+		revealGlow = Kit.Glow(gui, color, 0.45)
+		revealGlow.AnchorPoint, revealGlow.Position = Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, -16)
+		revealGlow.Size, revealGlow.ZIndex = UDim2.fromOffset(646 * revealScale, 722 * revealScale), 10
 		local burst = Kit.Sprite(gui, "Reel.Burst", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(300, 300), ImageColor3 = color, ImageTransparency = 0.2, ZIndex = 11 })
 		if reduced then
 			burst.ImageTransparency = 1
@@ -164,8 +185,8 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		hint.Visible = true
 		readyAt = os.clock() + 0.4
 		if not reduced then
-			scale.Scale = 0.7
-			Settings.Tween(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+			scale.Scale = 0.7 * revealScale
+			Settings.Tween(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = revealScale })
 			Settings.Tween(hintIcon, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { ImageTransparency = 0.55 })
 		end
 	end
@@ -201,8 +222,8 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local odds = State.Current and State.Current.BoxOdds and State.Current.BoxOdds[box]
 	local slotW, pitch = 112, 122
 	local phone = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
-	local winW = if phone then 520 else 660
-	local window = Kit.Panel(gui, { Sprite = "ReelWindow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(winW, 190), ZIndex = 11 })
+	local winW = math.max(120, math.min(if phone then 520 else 660, view.X - 24))
+	window = Kit.Panel(gui, { Sprite = "ReelWindow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(winW, 190), ZIndex = 11 })
 	window.Active = true
 	window.ClipsDescendants = false
 	window:FindFirstChild("Inset"):Destroy() -- pointers, selector and the skip button are placed against the whole frame
@@ -230,6 +251,7 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local selector = Kit.Sprite(window, "Reel.Slot", { Size = UDim2.fromOffset(slotW + 8, 126), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ImageTransparency = 0.6, ZIndex = 13 })
 	-- Skip button (Reel.SpinButton art) under the window.
 	local skipBtn = make("ImageButton", { Name = "Skip", BackgroundTransparency = 1, AutoButtonColor = false, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 18), Size = UDim2.fromOffset(160, 60), Image = "", ZIndex = 14 }, window)
+	Kit.MinTouch(skipBtn)
 	Kit.Skin(skipBtn, Kit.Spec("Reel.SpinButton"), "Uniform", nil, nil)
 	local skipLabel = Kit.Label(skipBtn, "Skip", Theme.TextSize.Button, Theme.TextOnGold, true)
 	skipLabel.Size, skipLabel.ZIndex = UDim2.fromScale(1, 1), 15
@@ -283,6 +305,7 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		task.delay(hold, function()
 			if not closed then
 				window:Destroy()
+				window = nil
 				show()
 			end
 		end)
