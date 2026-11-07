@@ -20,16 +20,16 @@ local Threat = {}
 local LOCKED_TINT = Color3.fromRGB(70, 64, 92)
 
 -- body: the modal body Frame. Returns { Refresh, Layout }.
-function Threat.Build(body: Frame)
+function Threat.Build(body: GuiObject)
 	local focus: number? = nil
 	local self: any = {}
 
-	local root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, body)
+	local root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, body)
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, root)
 
 	local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 1 }, root)
-	make("UIGridLayout", {
-		CellPadding = UDim2.fromOffset(8, 0),
+	local tierGrid = make("UIGridLayout", {
+		CellPadding = UDim2.fromOffset(8, 8),
 		CellSize = UDim2.new(1 / 6, -7, 1, 0),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
@@ -79,12 +79,10 @@ function Threat.Build(body: Frame)
 	-- Multiplier chips of the focused tier.
 	local chipPanel = Kit.Panel(root, { Sprite = "Pill", Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 2 })
 	local chipRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, chipPanel)
-	make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
+	local chipGrid = make("UIGridLayout", {
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 16),
+		CellPadding = UDim2.fromOffset(4, 4),
 	}, chipRow)
 	local CHIPS = { { "Coin", "Coins", "Coins" }, { "Xp", "Xp", "XP" }, { "DropChance", "Drops", "Drop chance" }, { "Heal", "Health", "Adventurer health" }, { "Sword", "Damage", "Adventurer damage" } }
 	local chipLabels = {}
@@ -110,8 +108,16 @@ function Threat.Build(body: Frame)
 
 	function self.Layout()
 		local phone = Scale.Phone
-		row.Size = UDim2.new(1, 0, 0, if phone then 112 else 156)
-		chipPanel.Size = UDim2.new(1, 0, 0, if phone then 44 else 54)
+		local narrow = body.AbsoluteSize.X / math.max(Scale.Value, 0.01) < 440
+		local tierHeight = if phone then 112 else 156
+		local tierColumns = if narrow then 3 else 6
+		row.Size = UDim2.new(1, 0, 0, if narrow then tierHeight * 2 + 8 else tierHeight)
+		tierGrid.FillDirectionMaxCells = tierColumns
+		tierGrid.CellSize = UDim2.new(1 / tierColumns, -8 * (tierColumns - 1) / tierColumns, 0, tierHeight)
+		local chipColumns = if narrow then 2 else 5
+		chipPanel.Size = UDim2.new(1, 0, 0, if narrow then 116 elseif phone then 44 else 54)
+		chipGrid.FillDirectionMaxCells = chipColumns
+		chipGrid.CellSize = UDim2.new(1 / chipColumns, -4 * (chipColumns - 1) / chipColumns, 0, 36)
 		for _, c in cards do
 			c.Level.Size = UDim2.fromOffset(0, if phone then 20 else 24)
 		end
@@ -147,17 +153,12 @@ function Threat.Build(body: Frame)
 		if nextTier then
 			goalTier.Name = "T" .. nextTier.Tier
 			if goalTier:IsA("ImageLabel") then
-				goalTier.Image = Kit.Sprites3["T" .. nextTier.Tier] or ""
+				Kit.SetIcon(goalTier, "T" .. nextTier.Tier)
 			end
 			goalText.Text = "Lv " .. nextTier.Level
 		end
 	end
 
-	State.Changed:Connect(function()
-		if body.Parent and body.Parent.Visible then
-			self.Refresh()
-		end
-	end)
 	self.Layout()
 	return self
 end

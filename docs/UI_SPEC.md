@@ -4,6 +4,8 @@ Implementable client UI spec. Text only. Sources: `docs/GDD.md` (Interface and o
 
 ## AI design assistant design pass and device validation
 
+The updated reference direction uses group-owned sprite sheets for the HUD, shared frames, buttons, chest and threat art. Inventory keeps Rooms and Loot Chests tabs fixed above a scrollable card grid; Upgrades has Permanent and Threat tabs. The existing shop and vault actions still display server-provided values. Desktop, phone and published-place checks remain open.
+
 The 2026-11-05 pass consulted AI design assistant in the signed-in browser for a compact purple-and-gold design, then adapted existing game sprites and generated admin icons. The implemented admin, room inspector, loot, and combat changes need desktop and phone validation in Studio. Older screen descriptions below include superseded mechanics; the GDD and current implementation take precedence.
 
 ## Style

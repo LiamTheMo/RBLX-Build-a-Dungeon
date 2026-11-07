@@ -18,7 +18,6 @@ local Sprites = require(Ui.Sprites)
 local SpriteIds = require(Ui.SpriteIds)
 local IconIds = require(Ui.IconIds)
 local P = require(Ui.PanelsKit)
-local PanelsThreat = require(Ui.PanelsThreat)
 local PanelsVault = require(Ui.PanelsVault)
 local Settings = require(Ui.Settings)
 local Sound = require(Ui.Sound)
@@ -468,7 +467,7 @@ local function build()
 	local bonusSig = ""
 
 	-- Settings gear: small, top-left under the Roblox menu buttons.
-	local gear = Kit.Button(gui, { Text = "", Icon = "Gear", IconScale = 0.7, Style = "Secondary", Round = true, Size = UDim2.fromOffset(52, 52), Tip = "Settings", Shadow = true })
+	local gear = Kit.Button(gui, { Text = "", Icon = "Settings", IconScale = 0.7, Style = "Secondary", Round = true, Size = UDim2.fromOffset(52, 52), Tip = "Settings", Shadow = true })
 
 	-- Next visitor chip: clock + countdown, portrait and trait icons.
 	local chipBar = make("Frame", { Name = "ChipBar", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0) }, gui)
@@ -548,10 +547,7 @@ local function build()
 	settingsPanel = buildSettings(gui)
 
 	-- Threat picker, vault slider and drop card popups (bodies in Ui/PanelsThreat, PanelsVault, DropCard).
-	local threatModal = modal(gui, "Threat", "T1", Vector2.new(760, 430), Vector2.new(660, 330))
-	local threatPanel = PanelsThreat.Build(threatModal.Body)
-	threatModal.OnOpen = threatPanel.Refresh
-	local vaultModal = modal(gui, "Vault", "Vault", Vector2.new(700, 340), Vector2.new(640, 300))
+	local vaultModal = modal(gui, "Vault", "Vault", Vector2.new(900, 430), Vector2.new(640, 300))
 	local vaultPanel = PanelsVault.Build(vaultModal.Body)
 	vaultModal.OnOpen = vaultPanel.Refresh
 	Bus.VaultRequested:Connect(function()
@@ -604,7 +600,8 @@ local function build()
 		end
 	end)
 	threatButton.Instance.Activated:Connect(function()
-		toggle(threatModal)
+		closeModals()
+		Bus.OpenPanel:Fire("Threat")
 	end)
 	infoButton.Instance.Activated:Connect(function()
 		showDrops(nextInfoId)
@@ -726,8 +723,6 @@ local function build()
 		encName.TextSize = if phone then 20 else Theme.TextSize.Heading
 		shop.Layout()
 		settingsPanel.Layout()
-		threatModal.Layout()
-		threatPanel.Layout()
 		vaultModal.Layout()
 		vaultPanel.Layout()
 		dropModal.Layout()
@@ -737,6 +732,15 @@ local function build()
 	end
 	Scale.Changed:Connect(layout)
 	layout()
+
+	local function syncChipVisibility()
+		local covered = false
+		for _, m in modals do covered = covered or m.Group.Visible end
+		for _, panels in gui.Parent:GetChildren() do
+			if panels.Name == "Panels" and panels:IsA("ScreenGui") and panels.Enabled then covered = true end
+		end
+		chipBar.Visible = not covered and not (State.Current and State.Current.Building)
+	end
 
 	local function refreshEncounter()
 		local s = State.Current
@@ -776,7 +780,7 @@ local function build()
 		tier = if type(tier) == "number" then tier else 1
 		encTier.Visible = tier > 1
 		if encTier:IsA("ImageLabel") then
-			encTier.Image = Kit.Sprites3["T" .. math.clamp(tier, 1, 6)] or ""
+			Kit.SetIcon(encTier, "T" .. math.clamp(tier, 1, 6))
 		end
 		local variant = plot:GetAttribute("VisitorVariant")
 		variant = if type(variant) == "string" then variant else ""
@@ -800,10 +804,12 @@ local function build()
 	end
 	for _, m in modals do
 		m.Group:GetPropertyChangedSignal("Visible"):Connect(refreshEncounter)
+		m.Group:GetPropertyChangedSignal("Visible"):Connect(syncChipVisibility)
 	end
 	local function watchPanels(panels)
 		if panels.Name == "Panels" and panels:IsA("ScreenGui") then
 			panels:GetPropertyChangedSignal("Enabled"):Connect(refreshEncounter)
+			panels:GetPropertyChangedSignal("Enabled"):Connect(syncChipVisibility)
 		end
 	end
 	gui.Parent.ChildAdded:Connect(watchPanels)
@@ -864,7 +870,7 @@ local function build()
 		local tier = s.ThreatActive or s.Threat or 1
 		threatButton.Instance.Visible = s.Tutorial ~= nil and s.Tutorial.Done == true
 		if threatButton.Icon and threatButton.Icon:IsA("ImageLabel") then
-			threatButton.Icon.Image = Kit.Sprites3["T" .. math.clamp(tier, 1, 6)] or ""
+			Kit.SetIcon(threatButton.Icon, "T" .. math.clamp(tier, 1, 6))
 		end
 
 		-- Next goal: an affordable permanent upgrade, else the nearest threat tier or shop room.
@@ -952,7 +958,7 @@ local function build()
 
 		bar.Visible = not s.Building
 		gear.Instance.Visible = not s.Building
-		chipBar.Visible = not s.Building
+		syncChipVisibility()
 		goal.Visible = goal.Visible and not s.Building
 		levelPanel.Visible = not (s.Building and Scale.Phone)
 		refreshEncounter()
@@ -965,7 +971,8 @@ local function build()
 		elseif goalKind == "Room" then
 			toggle(shop)
 		elseif goalKind == "Threat" then
-			toggle(threatModal)
+			closeModals()
+			Bus.OpenPanel:Fire("Threat")
 		end
 	end)
 
@@ -1000,11 +1007,11 @@ local function build()
 	task.spawn(function()
 		while true do
 			local s = State.Current
-			local text, upcoming, icon = "", nil, IconIds.Clock
+			local text, upcoming, icon = "", nil, "Clock"
 			if s and s.Building then
 				text = ""
 			elseif plot:GetAttribute("State") == "Encounter" or (plot:GetAttribute("VisitorId") or "") ~= "" then
-				text, icon = "", IconIds.Sword -- a visitor is inside: crossed swords instead of the countdown
+				text, icon = "", "Sword" -- a visitor is inside: crossed swords instead of the countdown
 			else
 				local at = plot:GetAttribute("NextVisitorAt")
 				text = if type(at) == "number" and at > 0 then formatTime(at - workspace:GetServerTimeNow()) else "-:--"
@@ -1013,11 +1020,7 @@ local function build()
 			end
 			status.Text = text
 			status.Visible = text ~= ""
-			if chipIcon:IsA("ImageLabel") and icon ~= IconIds.Clock then
-				chipIcon.Image = icon
-			elseif chipIcon:IsA("ImageLabel") then
-				chipIcon.Image = (SpriteIds.Icons :: any).Clock or IconIds.Clock
-			end
+			if chipIcon:IsA("ImageLabel") then Kit.SetIcon(chipIcon, icon) end
 			showNext(upcoming)
 			infoButton.Instance.Visible = upcoming ~= nil
 			nextInfoId = upcoming

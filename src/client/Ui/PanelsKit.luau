@@ -10,7 +10,7 @@ local SpriteIds = require(script.Parent.SpriteIds)
 local make = Kit.Make
 
 local P = {}
-local TAB_ICON = { Chests = "Bag", Index = "Collection" }
+local TAB_ICON = { Chests = "Bag", Index = "Collection", Keeper = "Upgrade", Threat = "T1" }
 
 P.RarityColor = Theme.Rarity
 
@@ -59,7 +59,7 @@ function P.RoomImage(parent: Instance, roomId: string, size: number, kind: strin
 		local img = make("ImageLabel", { Name = "RoomImage", BackgroundTransparency = 1, Image = id, Size = UDim2.fromOffset(size, size), ScaleType = Enum.ScaleType.Fit }, parent)
 		Sprites.Watch(id, function()
 			Kit.Neutral(img)
-		end)
+		end, img)
 		return img
 	end
 	return Kit.Icon(parent, P.KindIcon[kind or ""] or "Defender", UDim2.fromOffset(size, size))
@@ -180,7 +180,7 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	gui.Enabled = false
 	local dim = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0 }, gui)
 	Kit.Sprite(dim, "Feedback.Scrim", { Name = "Scrim", Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0.2, ScaleType = Enum.ScaleType.Stretch, ZIndex = 0 })
-	local panel = Kit.Panel(dim, { Sprite = "Large", Pad = Vector2.new(8, 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.94, 0.92) })
+	local panel = Kit.Panel(dim, { Sprite = "Large", Pad = Vector2.new(8, 4), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -66), Size = UDim2.new(0.94, 0, 1, -132) })
 	panel.Active = true
 	make("UISizeConstraint", { MaxSize = Vector2.new(900, 680) }, panel)
 
@@ -201,7 +201,7 @@ function P.Shell(tabNames: { string }, onTab: (string) -> ())
 	local tabs = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, tabHeight), Visible = #tabNames > 1 }, panel)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8) }, tabs)
 	for _, name in tabNames do
-		self.Tabs[name] = Kit.Button(tabs, { Text = name, Icon = TAB_ICON[name] or name, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #tabNames, -8 * (#tabNames - 1) / #tabNames - 1, 0, tabHeight), TextSize = 20, OnClick = function()
+		self.Tabs[name] = Kit.Button(tabs, { Text = if name == "Keeper" then "Permanent" else name, Icon = TAB_ICON[name] or name, IconLayout = "Row", Style = "Tab", Size = UDim2.new(1 / #tabNames, -8 * (#tabNames - 1) / #tabNames - 1, 0, tabHeight), TextSize = 20, OnClick = function()
 			onTab(name)
 		end })
 		local tabLabel = self.Tabs[name].Instance:FindFirstChild("Label")

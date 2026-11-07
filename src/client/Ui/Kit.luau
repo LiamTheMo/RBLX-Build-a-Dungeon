@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local IconIds = require(script.Parent.IconIds)
+local Atlas = require(script.Parent.Atlas)
 local RarityColors = require(script.Parent.RarityColors)
 local SpriteIds = require(script.Parent.SpriteIds)
 local SpriteIds3 = require(script.Parent.SpriteIds3)
@@ -115,6 +116,7 @@ end
 -- Neutral image shown in place of an unusable sprite.
 local function neutral(img: any)
 	img.Image = Sprites.FallbackId
+	img.ImageRectOffset, img.ImageRectSize = Vector2.zero, Vector2.zero
 	local f = Sprites.Fallback
 	if f and f.SliceCenter then
 		img.ScaleType, img.SliceCenter = Enum.ScaleType.Slice, f.SliceCenter
@@ -125,6 +127,38 @@ local function neutral(img: any)
 end
 Kit.Neutral = neutral
 
+local atlasImages: { [string]: any } = {}
+local function checkAtlas(img: any, id: string, offset: Vector2)
+	local images = atlasImages[id]
+	if not images then images = setmetatable({}, { __mode = "k" }); atlasImages[id] = images end
+	images[img] = true
+	task.spawn(function()
+		local visibleSince: number? = nil
+		repeat
+			task.wait(2)
+			local visible = img.Parent ~= nil and img.AbsoluteSize.X > 1 and img.AbsoluteSize.Y > 1
+			local low, high = img.AbsolutePosition, img.AbsolutePosition + img.AbsoluteSize
+			local viewport = workspace.CurrentCamera.ViewportSize
+			visible = visible and high.X > 0 and high.Y > 0 and low.X < viewport.X and low.Y < viewport.Y
+			local ancestor: Instance? = img
+			while ancestor do
+				if (ancestor:IsA("GuiObject") and not ancestor.Visible) or (ancestor:IsA("ScreenGui") and not ancestor.Enabled) then visible = false; break end
+				if ancestor:IsA("GuiObject") and ancestor.ClipsDescendants then
+					local a, b = ancestor.AbsolutePosition, ancestor.AbsolutePosition + ancestor.AbsoluteSize
+					if high.X <= a.X or high.Y <= a.Y or low.X >= b.X or low.Y >= b.Y then visible = false; break end
+				end
+				ancestor = ancestor.Parent
+			end
+			visibleSince = if visible then (visibleSince or os.clock()) else nil
+			if visibleSince and os.clock() - visibleSince >= 5 and img.Image == id and img.ImageRectOffset == offset and not img.IsLoaded then
+				for other in images do if other.Image == id and other.IsLoaded then return end end
+				Sprites.Fail(id)
+				return
+			end
+		until not img.Parent or img.Image ~= id or img.ImageRectOffset ~= offset or img.IsLoaded
+	end)
+end
+
 -- Draws spec on img (ImageLabel/ImageButton). A missing or unloadable id shows the neutral image and returns false.
 local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: (() -> ())?, onScale: ((number) -> ())?): boolean
 	if not spec or not Sprites.Ok(spec.Id) then
@@ -132,6 +166,7 @@ local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: ((
 		return false
 	end
 	img.Image = spec.Id
+	img.ImageRectOffset, img.ImageRectSize = spec.Offset or Vector2.zero, if spec.Offset then spec.Size else Vector2.zero
 	if spec.SliceCenter then
 		img.ScaleType = Enum.ScaleType.Slice
 		img.SliceCenter = spec.SliceCenter
@@ -140,11 +175,12 @@ local function skin(img: any, spec: any, mode: string?, cap: number?, onFail: ((
 		img.ScaleType = if spec.Stretch then Enum.ScaleType.Stretch else Enum.ScaleType.Fit
 	end
 	Sprites.Watch(spec.Id, function()
-		neutral(img)
-		if onFail then
-			onFail()
+		if img.Image == spec.Id then
+			neutral(img)
+			if onFail then onFail() end
 		end
-	end)
+	end, img)
+	if spec.Offset then checkAtlas(img, spec.Id, spec.Offset) end
 	return true
 end
 Kit.Skin = skin
@@ -176,7 +212,7 @@ local function skinByHeight(img: any, spec: any)
 	img:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply)
 	Sprites.Watch(spec.Id, function()
 		neutral(img)
-	end)
+	end, img)
 end
 Kit.SkinByHeight = skinByHeight
 
@@ -233,13 +269,13 @@ end
 -- kind = { spec, mode, cap, noInset }.
 local P4, F4, C4 = V4.Panels, V4.Feedback, V4.Controls
 local PANELS: { [string]: { any } } = {
-	Large = { P4.Large, "Border", 22 },
+	Large = { Atlas.PanelLarge, "Border", 22 },
 	Small = { P4.Small, "Border", 18 },
 	Pill = { P4.HudPill, "Uniform", nil, true },
 	Row = { P4.Row, "Border", 12 },
 	Chip = { P4.Chip, "Uniform", nil, true },
 	Tooltip = { P4.Tooltip, "Border", 9 },
-	TitleBar = { P4.TitleBar, "Border", 14, true },
+	TitleBar = { Atlas.TitleBar, "Border", 14, true },
 	ToastInfo = { F4.ToastInfo, "Border", 18 },
 	ToastGood = { F4.ToastGood, "Border", 18 },
 	ToastBad = { F4.ToastBad, "Border", 18 },
@@ -439,19 +475,31 @@ local ICON_ALIAS = { Loot = "Box", Cross = false }
 
 -- Icon by name as an ImageLabel: a SpriteIds.Icons entry, a SpriteIds3 one, a v4 icon, else an IconIds one ("Coin",
 -- "Vault", ...). Nothing usable shows the neutral image.
-function Kit.Icon(parent: Instance, name: string, size: UDim2?, color: Color3?): any
-	local sz = size or UDim2.fromOffset(32, 32)
+function Kit.SetIcon(img: ImageLabel, name: string)
 	local alias = ICON_ALIAS[name]
-	local id = if name == "Cross" then SpriteIds.Kit.Close.Id else ((SpriteIds.Icons :: any)[if alias == nil then name else alias] or FLAT3[name] or V4ICONS[name] or (IconIds :: any)[name])
-	local img = make("ImageLabel", { Name = name, BackgroundTransparency = 1, Size = sz, ScaleType = Enum.ScaleType.Fit, Image = "" }, parent)
+	local candidate = (Atlas :: any)[if type(alias) == "string" then alias else name]
+	local atlas = if candidate and Sprites.Ok(candidate.Id) then candidate else nil
+	local id = if atlas then atlas.Id elseif name == "Cross" then SpriteIds.Kit.Close.Id else ((SpriteIds.Icons :: any)[if alias == nil then name else alias] or FLAT3[name] or V4ICONS[name] or (IconIds :: any)[name])
 	if id and Sprites.Ok(id) then
+		if img.Image == id and img.ImageRectOffset == (if atlas then atlas.Offset else Vector2.zero) then return end
 		img.Image = id
+		img.ImageRectOffset, img.ImageRectSize = if atlas then atlas.Offset else Vector2.zero, if atlas then atlas.Size else Vector2.zero
 		Sprites.Watch(id, function()
-			neutral(img)
-		end)
+			if img.Image == id and (not atlas or img.ImageRectOffset == atlas.Offset) then
+				if atlas then Kit.SetIcon(img, name) else neutral(img) end
+			end
+		end, img)
+		if atlas then checkAtlas(img, id, atlas.Offset) end
 	else
 		neutral(img)
 	end
+	img.ScaleType = Enum.ScaleType.Fit
+end
+
+function Kit.Icon(parent: Instance, name: string, size: UDim2?, color: Color3?): any
+	local sz = size or UDim2.fromOffset(32, 32)
+	local img = make("ImageLabel", { Name = name, BackgroundTransparency = 1, Size = sz, ScaleType = Enum.ScaleType.Fit, Image = "" }, parent)
+	Kit.SetIcon(img, name)
 	return img
 end
 
@@ -524,11 +572,11 @@ end
 -- Buttons -----------------------------------------------------------------------
 local B4 = V4.Buttons
 local STYLES = {
-	Primary = { Theme.Gold, Theme.TextOnGold, B4.Primary },
-	Secondary = { Theme.BgRaised, Theme.TextPrimary, B4.Secondary },
+	Primary = { Theme.Gold, Theme.TextOnGold, { Normal = Atlas.ButtonPrimary, Pressed = Atlas.ButtonPrimary } },
+	Secondary = { Theme.BgRaised, Theme.TextPrimary, { Normal = Atlas.ButtonSecondary, Pressed = Atlas.ButtonSecondary } },
 	Success = { Theme.Success, Theme.DangerText, B4.Success },
 	Danger = { Theme.Danger, Theme.DangerText, B4.Danger },
-	Cancel = { Theme.BgRaised, Theme.TextPrimary, B4.Secondary },
+	Cancel = { Theme.BgRaised, Theme.TextPrimary, { Normal = Atlas.ButtonSecondary, Pressed = Atlas.ButtonSecondary } },
 	Tab = { Theme.BgRaised, Theme.TextPrimary, nil },
 }
 
@@ -703,15 +751,18 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		elseif isRound then
 			return B4.Round, nil
 		elseif isTab then
-			return (if selected then P4.TabOn else P4.TabOff), nil
+			return (if Sprites.Ok(Atlas.ButtonPrimary.Id) then (if selected then Atlas.ButtonPrimary else Atlas.ButtonSecondary) else (if selected then P4.TabOn else P4.TabOff)), nil
 		end
+		if style[3].Normal == Atlas.ButtonPrimary and not Sprites.Ok(Atlas.ButtonPrimary.Id) then return B4.Primary.Normal, B4.Primary.Pressed end
+		if style[3].Normal == Atlas.ButtonSecondary and not Sprites.Ok(Atlas.ButtonSecondary.Id) then return B4.Secondary.Normal, B4.Secondary.Pressed end
 		return style[3].Normal, style[3].Pressed
 	end
 	local normalSpec, pressedSpec = specs()
 
 	-- Layers: Skin (z1) under Icon (z2) under Label (z3); Ring above all.
 	local img = make("ImageLabel", { Name = "Skin", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, Image = "", Active = false }, b)
-	skin(img, normalSpec, "Uniform", nil, nil)
+	local paint
+	skin(img, normalSpec, "Uniform", nil, function() if paint then paint() end end)
 	for _, s in { pressedSpec, C4.ButtonDisabled } do
 		if s and Sprites.Ok(s.Id) then
 			task.spawn(function() -- warm the other states so the first press does not flash
@@ -723,9 +774,12 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 	end
 	local ring = Kit.Ring(b, if isTab then 2 else 8)
 
+	local shownSpec = normalSpec
 	local function show(spec: any)
-		if spec and Sprites.Ok(spec.Id) and img.Image ~= spec.Id then
+		if spec and Sprites.Ok(spec.Id) and shownSpec ~= spec then
+			shownSpec = spec
 			img.Image = spec.Id
+			img.ImageRectOffset, img.ImageRectSize = spec.Offset or Vector2.zero, if spec.Offset then spec.Size else Vector2.zero
 			if spec.SliceCenter then
 				img.ScaleType, img.SliceCenter = Enum.ScaleType.Slice, spec.SliceCenter
 				if fitters[img] then fitters[img](spec) else fit(img, spec, "Uniform", nil, nil) end
@@ -767,7 +821,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		self.Icon = icon
 	end
 
-	local function paint()
+	paint = function()
 		local text = style[2]
 		normalSpec, pressedSpec = specs()
 		local plainStyle = not opts.Rarity and not isRound and not isTab
@@ -778,7 +832,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		if isTab then
 			show(normalSpec)
 			img.ImageColor3 = if selected then Color3.new(1, 1, 1) elseif hover then Color3.fromRGB(215, 205, 235) else Color3.fromRGB(190, 180, 215)
-			label.TextColor3 = if selected and enabled then Theme.Gold else text
+			label.TextColor3 = if selected and enabled then (if Sprites.Ok(Atlas.ButtonPrimary.Id) then Theme.TextOnGold else Theme.Gold) else text
 		elseif not enabled then
 			if plainStyle then
 				show(C4.ButtonDisabled)
@@ -970,7 +1024,7 @@ function Kit.Toggle(parent: Instance, initial: boolean, onChange: (boolean) -> (
 		label.TextColor3 = if on then Theme.DangerText else Theme.TextPrimary
 	end
 	for _, spec in { V4.Bars.ToggleOn, V4.Bars.ToggleOff } do
-		Sprites.Watch(spec.Id, paint)
+		Sprites.Watch(spec.Id, paint, b)
 	end
 	paint()
 	b.Activated:Connect(function()

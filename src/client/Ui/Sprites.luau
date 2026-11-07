@@ -8,6 +8,7 @@ local RunService = game:GetService("RunService")
 local Ids = require(script.Parent.SpriteIds)
 local Ids3 = require(script.Parent.SpriteIds3)
 local IconIds = require(script.Parent.IconIds)
+local Atlas = require(script.Parent.Atlas)
 local ids4Module = script.Parent:FindFirstChild("SpriteIds4") -- v4 frames and reel art (optional until it lands)
 local Ids4 = if ids4Module then require(ids4Module) else {}
 
@@ -60,7 +61,7 @@ function Sprites.Ok(id: any): boolean
 end
 
 -- Runs onFail when the id fails to load (now if it already has).
-function Sprites.Watch(id: string, onFail: () -> ())
+function Sprites.Watch(id: string, onFail: () -> (), owner: Instance?)
 	if Sprites.Failed[id] then
 		task.defer(onFail)
 		return
@@ -71,6 +72,12 @@ function Sprites.Watch(id: string, onFail: () -> ())
 		watchers[id] = list
 	end
 	table.insert(list, onFail)
+	if owner then
+		owner.Destroying:Once(function()
+			local i = table.find(list, onFail)
+			if i then table.remove(list, i) end
+		end)
+	end
 end
 
 local function markFailed(id: string)
@@ -80,16 +87,18 @@ local function markFailed(id: string)
 	Sprites.Failed[id] = true
 	local list = watchers[id]
 	watchers[id] = nil
-	for _, fn in list or {} do
+	for _, fn in table.clone(list or {}) do
 		task.spawn(fn)
 	end
 end
+Sprites.Fail = markFailed
 
 task.spawn(function()
 	local ids = {}
 	collect(Ids, ids)
 	collect(Ids3, ids)
 	collect(IconIds, ids)
+	collect(Atlas, ids)
 	collect(Ids4, ids)
 	local seen, unique = {}, {}
 	for _, id in ids do

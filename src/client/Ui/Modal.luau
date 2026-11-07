@@ -46,7 +46,7 @@ function Modal.New(gui: ScreenGui, title: string, titleIcon: string, desktop: Ve
 
 	function self.Layout()
 		local size = if Scale.Phone then phone else desktop
-		local view = (gui.AbsoluteSize / math.max(Scale.Value, 0.01)) - Vector2.new(12, 12)
+		local view = (gui.AbsoluteSize / math.max(Scale.Value, 0.01)) - Vector2.new(12, 144)
 		if view.X > 50 and view.Y > 50 then
 			size = Vector2.new(math.min(size.X, view.X), math.min(size.Y, view.Y))
 		end
@@ -73,9 +73,9 @@ function Modal.New(gui: ScreenGui, title: string, titleIcon: string, desktop: Ve
 		self.IsOpen = true
 		self.Layout()
 		group.Visible = true
-		group.Position = UDim2.new(0.5, 0, 0.5, 24)
+		group.Position = UDim2.new(0.5, 0, 0.5, -42)
 		Settings.Tween(group, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Position = UDim2.fromScale(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0.5, -66),
 			GroupTransparency = 0,
 		})
 		if self.OnOpen then
@@ -90,7 +90,7 @@ function Modal.New(gui: ScreenGui, title: string, titleIcon: string, desktop: Ve
 		local mine = gen
 		self.IsOpen = false
 		local t = Settings.Tween(group, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Position = UDim2.new(0.5, 0, 0.5, 24),
+			Position = UDim2.new(0.5, 0, 0.5, -42),
 			GroupTransparency = 1,
 		})
 		if t then
