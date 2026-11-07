@@ -669,16 +669,6 @@ local function build()
 	encRisk.AutomaticSize, encRisk.Size, encRisk.LayoutOrder, encRisk.TextWrapped = X, UDim2.fromOffset(0, 26), 2, false
 	Kit.Tip(riskRow, "Stolen if it reaches the vault")
 
-	-- Blocking load failure.
-	local fail = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, ZIndex = 100, Active = true }, gui)
-	Kit.Sprite(fail, "Feedback.Scrim", { Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0, ScaleType = Enum.ScaleType.Stretch, ZIndex = 100 })
-	Kit.Sprite(fail, "Feedback.Scrim", { Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0, ScaleType = Enum.ScaleType.Stretch, ZIndex = 100 })
-	local failPanel = Kit.Panel(fail, { Sprite = "LoadFail", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(520, 260), ZIndex = 101 })
-	local failIcon = Kit.Icon(failPanel, "Warn", UDim2.fromOffset(64, 64))
-	failIcon.AnchorPoint, failIcon.Position, failIcon.ZIndex = Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), 102
-	local failText = Kit.Label(failPanel, "Your progress could not load. Please rejoin.", Theme.TextSize.Heading, Theme.TextPrimary, true)
-	failText.Position, failText.Size, failText.ZIndex = UDim2.fromOffset(0, 72), UDim2.new(1, 0, 1, -72), 102
-
 	local plot = Plots.WaitOwn()
 
 	local function layout()
@@ -852,7 +842,6 @@ local function build()
 		if not s then
 			return
 		end
-		fail.Visible = s.LoadState == "Failed"
 		local coins = s.Coins or 0
 		banked.Set(coins)
 		if coins > lastCoins and lastCoins > 0 then
@@ -1041,6 +1030,36 @@ function Hud.Start()
 	local spinConn = game:GetService("RunService").RenderStepped:Connect(function(dt)
 		spin.Rotation = (spin.Rotation + dt * 360) % 360
 	end)
+	local failGui = Kit.Screen("LoadFailure", 100)
+	failGui.Enabled = false
+	local fail = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 100, Active = true }, failGui)
+	Kit.Sprite(fail, "Feedback.Scrim", { Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0, ScaleType = Enum.ScaleType.Stretch, ZIndex = 100 })
+	local failPanel = Kit.Panel(fail, { Sprite = "LoadFail", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(520, 260), ZIndex = 101 })
+	local failIcon = Kit.Icon(failPanel, "Warn", UDim2.fromOffset(64, 64))
+	failIcon.AnchorPoint, failIcon.Position, failIcon.ZIndex = Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), 102
+	local failText = Kit.Label(failPanel, "Your progress could not load. Please rejoin.", Theme.TextSize.Heading, Theme.TextPrimary, true)
+	failText.Position, failText.Size, failText.ZIndex = UDim2.fromOffset(0, 72), UDim2.new(1, 0, 1, -72), 102
+	local function layoutFailure()
+		local view = failGui.AbsoluteSize / math.max(Scale.Value, 0.01)
+		if view.X > 32 and view.Y > 32 then
+			failPanel.Size = UDim2.fromOffset(math.min(520, view.X - 16), math.min(260, view.Y - 16))
+		end
+	end
+	Scale.Changed:Connect(layoutFailure)
+	failGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutFailure)
+	layoutFailure()
+	local function stopSpinner()
+		spinConn:Disconnect()
+		if spinGui.Parent then spinGui:Destroy() end
+	end
+	local function showFailure(snapshot: any)
+		if snapshot and snapshot.LoadState == "Failed" then
+			failGui.Enabled = true
+			stopSpinner()
+		end
+	end
+	State.Changed:Connect(showFailure)
+	showFailure(State.Current)
 	task.spawn(function()
 		Catalog.Wait() -- open to every player, so the load-failure screen still appears
 		build()
@@ -1048,8 +1067,7 @@ function Hud.Start()
 		while not State.Current and os.clock() - t0 < 15 do
 			task.wait(0.1)
 		end
-		spinConn:Disconnect()
-		spinGui:Destroy()
+		stopSpinner()
 	end)
 end
 
