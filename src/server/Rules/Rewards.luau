@@ -17,6 +17,12 @@ local Threat = require(script.Parent.Threat)
 
 local Rewards = {}
 
+local function addCoins(profile, amount: number): number
+	local credited = math.min(amount, math.max(0, ProfileSchema.MAX_MONEY - profile.Coins))
+	profile.Coins += credited
+	return credited
+end
+
 local function isDefender(roomId: string): boolean
 	local def = Rooms.Get(roomId)
 	return def ~= nil and def.Kind == "Defender"
@@ -24,14 +30,13 @@ end
 
 -- Adds one box. At the stack cap the box converts to banked coins instead of
 -- being lost; returns true when it was converted (callers send "Box storage full").
-local function addBox(profile, boxType: string): boolean
+local function addBox(profile, boxType: string): (boolean, number)
 	local held = profile.Boxes[boxType] or 0
 	if held >= Balance.Loot.MaxStack then
-		profile.Coins += Balance.Loot.BoxOverflowCoins[boxType] or 0
-		return true
+		return true, addCoins(profile, Balance.Loot.BoxOverflowCoins[boxType] or 0)
 	end
 	profile.Boxes[boxType] = held + 1
-	return false
+	return false, 0
 end
 
 local function addBlueprints(profile, roomId: string, n: number)
@@ -45,11 +50,11 @@ function Rewards.GrantXp(profile, amount: number)
 	local drops = {}
 	for _, reached in gained do
 		local boxType = Progression.LevelReward(reached)
-		local overflow = addBox(profile, boxType)
-		table.insert(drops, { Kind = "Box", Type = boxType, Source = "LevelUp", Overflow = overflow or nil })
+		local overflow, credited = addBox(profile, boxType)
+		table.insert(drops, { Kind = "Box", Type = boxType, Source = "LevelUp", Overflow = overflow or nil, OverflowCoins = if overflow then credited else nil })
 		if reached % Balance.Progression.CrystalBoxEvery == 0 then
-			local crystalOverflow = addBox(profile, "Crystal")
-			table.insert(drops, { Kind = "Box", Type = "Crystal", Source = "LevelUp", Overflow = crystalOverflow or nil })
+			local crystalOverflow, crystalCoins = addBox(profile, "Crystal")
+			table.insert(drops, { Kind = "Box", Type = "Crystal", Source = "LevelUp", Overflow = crystalOverflow or nil, OverflowCoins = if crystalOverflow then crystalCoins else nil })
 		end
 	end
 	return if #gained > 0 then level else nil, drops
@@ -128,8 +133,8 @@ end
 -- RoomId?, Source, Overflow?, Guaranteed?}}, Xp, LevelUp = level?}.
 -- Overflow = true: the box stack was full and it was converted to coins.
 function Rewards.Defeat(profile, visitorId: string, rng, ctx, base: number, variantId: string?)
-	local amount = Economy.WinPayout(base, Rewards.CoinMultiplier(ctx, variantId))
-	profile.Coins += amount
+	local requested = Economy.WinPayout(base, Rewards.CoinMultiplier(ctx, variantId))
+	local amount = addCoins(profile, requested)
 	local drops = Loot.RollDrops(visitorId, ctx.Bonuses.Loot, rng, profile.Level, Rewards.DropScale(ctx, variantId))
 	local v = Threat.Variant(variantId)
 	if v and v.GuaranteedBox then
@@ -138,7 +143,8 @@ function Rewards.Defeat(profile, visitorId: string, rng, ctx, base: number, vari
 	for _, drop in drops do
 		drop.Source = "Visitor"
 		if drop.Kind == "Box" then
-			drop.Overflow = addBox(profile, drop.Type) or nil
+			local overflow, credited = addBox(profile, drop.Type)
+			drop.Overflow, drop.OverflowCoins = overflow or nil, if overflow then credited else nil
 		elseif drop.RoomId then
 			addBlueprints(profile, drop.RoomId, 1)
 		end
@@ -146,19 +152,21 @@ function Rewards.Defeat(profile, visitorId: string, rng, ctx, base: number, vari
 	local xp = Progression.XpFor(visitorId, ctx.Bonuses.Xp, ctx.Scale.Xp)
 	local levelUp, levelDrops = Rewards.GrantXp(profile, xp)
 	table.move(levelDrops, 1, #levelDrops, #drops + 1, drops)
-	return { Amount = amount, Drops = drops, Xp = xp, LevelUp = levelUp }
+	return { Amount = amount, Capped = if amount < requested then true else nil, Drops = drops, Xp = xp, LevelUp = levelUp }
 end
 
 -- Admin grant: `n` boxes (each one past the stack cap converts to coins).
 -- Returns how many were converted.
-function Rewards.GiveBoxes(profile, boxType: string, n: number): number
-	local converted = 0
+function Rewards.GiveBoxes(profile, boxType: string, n: number): (number, number)
+	local converted, credited = 0, 0
 	for _ = 1, n do
-		if addBox(profile, boxType) then
+		local overflow, coins = addBox(profile, boxType)
+		if overflow then
 			converted += 1
+			credited += coins
 		end
 	end
-	return converted
+	return converted, credited
 end
 
 -- Opens one box: a rolled tier (pity applies), then a room of that tier (gated

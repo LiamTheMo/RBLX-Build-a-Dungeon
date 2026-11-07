@@ -186,12 +186,13 @@ end
 Kit.Skin = skin
 
 -- Sliced image whose SliceScale follows its HEIGHT only (bar fills / slider fills: their width changes with the value).
-local function skinByHeight(img: any, spec: any)
+local function skinByHeight(img: any, spec: any, fallback: any?)
 	if not Sprites.Ok(spec.Id) then
-		neutral(img)
+		if fallback then skinByHeight(img, fallback) else neutral(img) end
 		return
 	end
 	img.Image, img.ScaleType, img.SliceCenter = spec.Id, Enum.ScaleType.Slice, spec.SliceCenter
+	img.ImageRectOffset, img.ImageRectSize = spec.Offset or Vector2.zero, if spec.Offset then spec.Size else Vector2.zero
 	local nudge = 0
 	local function apply()
 		local h = img.AbsoluteSize.Y / math.max(Scale.Value, 0.01)
@@ -211,8 +212,11 @@ local function skinByHeight(img: any, spec: any)
 	apply()
 	img:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply)
 	Sprites.Watch(spec.Id, function()
-		neutral(img)
+		if img.Image == spec.Id then
+			if fallback then skinByHeight(img, fallback) else neutral(img) end
+		end
 	end, img)
+	if spec.Offset then checkAtlas(img, spec.Id, spec.Offset) end
 end
 Kit.SkinByHeight = skinByHeight
 
@@ -362,7 +366,9 @@ function Kit.CloseButton(parent: Instance, size: UDim2?, onClick: () -> ())
 	local b = make("ImageButton", { Name = "Close", BackgroundTransparency = 1, AutoButtonColor = false, Size = sz, Image = "" }, parent)
 	Kit.MinTouch(b)
 	local scale = make("UIScale", {}, b)
-	skin(b, SpriteIds.Kit.Close, nil, nil, nil)
+	if not skin(b, Atlas.Close, nil, nil, function() skin(b, SpriteIds.Kit.Close, nil, nil, nil) end) then
+		skin(b, SpriteIds.Kit.Close, nil, nil, nil)
+	end
 	b.MouseButton1Down:Connect(function()
 		Settings.Tween(scale, TweenInfo.new(0.06), { Scale = 0.92 })
 	end)
@@ -471,15 +477,15 @@ V4ICONS.Info, V4ICONS.Good, V4ICONS.Warn = F4.IconInfo.Id, F4.IconGood.Id, F4.Ic
 Kit.Icons4 = V4ICONS
 
 -- Icon-name aliases onto SpriteIds.Icons.
-local ICON_ALIAS = { Loot = "Box", Cross = false }
+local ICON_ALIAS = { Loot = "DropChance", Rooms = "Defender", Cross = false }
 
 -- Icon by name as an ImageLabel: a SpriteIds.Icons entry, a SpriteIds3 one, a v4 icon, else an IconIds one ("Coin",
 -- "Vault", ...). Nothing usable shows the neutral image.
 function Kit.SetIcon(img: ImageLabel, name: string)
 	local alias = ICON_ALIAS[name]
-	local candidate = (Atlas :: any)[if type(alias) == "string" then alias else name]
+	local candidate = (Atlas :: any)[name] or (if type(alias) == "string" then (Atlas :: any)[alias] else nil)
 	local atlas = if candidate and Sprites.Ok(candidate.Id) then candidate else nil
-	local id = if atlas then atlas.Id elseif name == "Cross" then SpriteIds.Kit.Close.Id else ((SpriteIds.Icons :: any)[if alias == nil then name else alias] or FLAT3[name] or V4ICONS[name] or (IconIds :: any)[name])
+	local id = if atlas then atlas.Id elseif name == "Cross" then SpriteIds.Kit.Close.Id else ((SpriteIds.Icons :: any)[if alias == nil then name else alias] or FLAT3[if type(alias) == "string" then alias else name] or V4ICONS[name] or (IconIds :: any)[name] or SpriteIds.Rooms[name])
 	if id and Sprites.Ok(id) then
 		if img.Image == id and img.ImageRectOffset == (if atlas then atlas.Offset else Vector2.zero) then return end
 		img.Image = id
@@ -572,11 +578,11 @@ end
 -- Buttons -----------------------------------------------------------------------
 local B4 = V4.Buttons
 local STYLES = {
-	Primary = { Theme.Gold, Theme.TextOnGold, { Normal = Atlas.ButtonPrimary, Pressed = Atlas.ButtonPrimary } },
-	Secondary = { Theme.BgRaised, Theme.TextPrimary, { Normal = Atlas.ButtonSecondary, Pressed = Atlas.ButtonSecondary } },
+	Primary = { Theme.Gold, Theme.TextOnGold, { Normal = Atlas.ButtonPrimary, Pressed = Atlas.ButtonPrimaryPressed } },
+	Secondary = { Theme.BgRaised, Theme.TextPrimary, { Normal = Atlas.ButtonSecondary, Pressed = Atlas.ButtonSecondaryPressed } },
 	Success = { Theme.Success, Theme.DangerText, B4.Success },
 	Danger = { Theme.Danger, Theme.DangerText, B4.Danger },
-	Cancel = { Theme.BgRaised, Theme.TextPrimary, { Normal = Atlas.ButtonSecondary, Pressed = Atlas.ButtonSecondary } },
+	Cancel = { Theme.BgRaised, Theme.TextPrimary, { Normal = Atlas.ButtonSecondary, Pressed = Atlas.ButtonSecondaryPressed } },
 	Tab = { Theme.BgRaised, Theme.TextPrimary, nil },
 }
 
@@ -763,7 +769,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 	local img = make("ImageLabel", { Name = "Skin", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 1, Image = "", Active = false }, b)
 	local paint
 	skin(img, normalSpec, "Uniform", nil, function() if paint then paint() end end)
-	for _, s in { pressedSpec, C4.ButtonDisabled } do
+	for _, s in { pressedSpec, Atlas.ButtonDisabled, C4.ButtonDisabled } do
 		if s and Sprites.Ok(s.Id) then
 			task.spawn(function() -- warm the other states so the first press does not flash
 				pcall(function()
@@ -786,6 +792,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 			else
 				img.ScaleType = if spec.Stretch then Enum.ScaleType.Stretch else Enum.ScaleType.Fit
 			end
+			if spec.Offset then checkAtlas(img, spec.Id, spec.Offset) end
 		end
 	end
 
@@ -835,7 +842,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 			label.TextColor3 = if selected and enabled then (if Sprites.Ok(Atlas.ButtonPrimary.Id) then Theme.TextOnGold else Theme.Gold) else text
 		elseif not enabled then
 			if plainStyle then
-				show(C4.ButtonDisabled)
+				show(if Sprites.Ok(Atlas.ButtonDisabled.Id) then Atlas.ButtonDisabled else C4.ButtonDisabled)
 				img.ImageColor3 = Color3.new(1, 1, 1)
 			else
 				show(normalSpec)
@@ -855,6 +862,7 @@ function Kit.Button(parent: Instance, opts: { [string]: any })
 		local target = if not enabled then 1 elseif pressed then 0.96 elseif hover then 1.03 else 1
 		Settings.Tween(scale, TweenInfo.new(pressed and 0.06 or 0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = target })
 	end
+	Sprites.Watch(Atlas.ButtonDisabled.Id, function() if paint then paint() end end, img)
 
 	b.MouseEnter:Connect(function()
 		if UserInputService.MouseEnabled then
@@ -956,10 +964,14 @@ end
 -- Color3, or true for the danger red.
 function Kit.Bar(parent: Instance, size: UDim2, color: Color3?)
 	local bar = make("ImageLabel", { Name = "Bar", BackgroundTransparency = 1, Size = size, Image = "", BorderSizePixel = 0 }, parent)
-	skin(bar, V4.Bars.Track, "Uniform", nil, nil)
+	if color then
+		skin(bar, V4.Bars.Track, "Uniform", nil, nil)
+	elseif not skin(bar, Atlas.BarTrack, "Uniform", nil, function() skin(bar, V4.Bars.Track, "Uniform", nil, nil) end) then
+		skin(bar, V4.Bars.Track, "Uniform", nil, nil)
+	end
 	local track = make("Frame", { Name = "Track", BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8), ClipsDescendants = true }, bar)
 	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(0, 1), Visible = false, Image = "", ZIndex = 2 }, track)
-	skinByHeight(fill, V4.Bars.Fill)
+	if color then skinByHeight(fill, V4.Bars.Fill) else skinByHeight(fill, Atlas.BarFill, V4.Bars.Fill) end
 	local minW = make("UISizeConstraint", {}, fill)
 	local function measure()
 		-- The track follows the bar's height (about 14% of it each side); the fill is never narrower than it is tall.

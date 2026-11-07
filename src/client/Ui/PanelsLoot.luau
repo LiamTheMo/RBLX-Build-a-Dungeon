@@ -410,7 +410,7 @@ function L.Build(scroll: ScrollingFrame, state: any)
 	local tabs = inventoryTabs[scroll]
 	if not tabs then
 		local row = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 52) }, scroll.Parent)
-		local rooms = Kit.Button(row, { Text = "Rooms", Icon = "Defender", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
+		local rooms = Kit.Button(row, { Text = "Rooms", Icon = "Rooms", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
 			currentTab = "Items"
 			scroll.CanvasPosition = Vector2.zero
 			L.Build(scroll, State.Current or state)

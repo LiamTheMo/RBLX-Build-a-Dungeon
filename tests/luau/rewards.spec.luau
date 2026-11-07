@@ -8,6 +8,7 @@ local Loot = require(Server.Rules.Loot)
 local ProfileSchema = require(Server.Rules.ProfileSchema)
 local RoomInventory = require(Server.Rules.RoomInventory)
 local Rewards = require(Server.Rules.Rewards)
+local Progression = require(Server.Rules.Progression)
 
 -- A threat-1, no-event reward context with the given bonuses.
 local function ctxWith(bonuses)
@@ -48,6 +49,33 @@ local function scripted(values)
 		end,
 	}
 end
+
+test("coin rewards and overflow conversions respect the saved balance cap", function()
+	local p = ProfileSchema.Default()
+	p.Coins = ProfileSchema.MAX_MONEY - 5
+	local result = Rewards.Defeat(p, "Novice", scripted({ 0.99, 0.99 }), NO_BONUS, 20)
+	expectEq(result.Amount, 5, "actual reward")
+	expectEq(result.Capped, true, "cap reported")
+	expectEq(p.Coins, ProfileSchema.MAX_MONEY, "balance capped")
+	expectEq(ProfileSchema.Migrate(p).Coins, p.Coins, "rejoin keeps balance")
+	expectEq(Rewards.Defeat(p, "Novice", scripted({ 0.99, 0.99 }), NO_BONUS, 20).Amount, 0, "full wallet")
+
+	local q = ProfileSchema.Default()
+	q.Coins, q.Boxes.Dungeon = ProfileSchema.MAX_MONEY - 150, Balance.Loot.MaxStack
+	local converted, credited = Rewards.GiveBoxes(q, "Dungeon", 2)
+	expectEq(converted, 2, "both stacks overflowed")
+	expectEq(credited, 150, "actual converted coins")
+	expectEq(q.Coins, ProfileSchema.MAX_MONEY, "conversion capped")
+
+	local level = ProfileSchema.Default()
+	level.Level, level.Xp = 9, Progression.XpToNext(9) - 1
+	level.Coins = ProfileSchema.MAX_MONEY - 50
+	level.Boxes.Rare, level.Boxes.Crystal = Balance.Loot.MaxStack, Balance.Loot.MaxStack
+	local _, drops = Rewards.GrantXp(level, 1)
+	expectEq(#drops, 2, "level and crystal rewards")
+	expectEq(drops[1].OverflowCoins + drops[2].OverflowCoins, 50, "actual level conversions")
+	expectEq(level.Coins, ProfileSchema.MAX_MONEY, "level conversions capped")
+end)
 
 test("a defeat grants XP and drops; level-ups grant boxes (Rare every 5th)", function()
 	local p = ProfileSchema.Default()

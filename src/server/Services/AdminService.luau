@@ -74,11 +74,12 @@ local function run(admin: Player, cmd): (boolean, string)
 	end
 	local what
 	if cmd.Action == "GiveCoins" then
+		local before = profile.Coins
 		profile.Coins = math.min(ProfileSchema.MAX_MONEY, profile.Coins + cmd.Amount)
-		what = `{cmd.Amount} coins`
+		what = `{profile.Coins - before} coins`
 	elseif cmd.Action == "GiveBox" then
-		local converted = Rewards.GiveBoxes(profile, cmd.Box, cmd.Amount)
-		what = `{cmd.Amount} {cmd.Box} Box(es){if converted > 0 then ` ({converted} converted to coins)` else ""}`
+		local converted, coins = Rewards.GiveBoxes(profile, cmd.Box, cmd.Amount)
+		what = `{cmd.Amount} {cmd.Box} Box(es){if converted > 0 then ` ({converted} converted to {coins} coins)` else ""}`
 	elseif cmd.Action == "GiveXp" then
 		local level = Rewards.GrantXp(profile, cmd.Amount)
 		what = `{cmd.Amount} XP{if level then ` (now level {level})` else ""}`

@@ -4,6 +4,7 @@ local Theme = require(script.Parent.Theme)
 local Percent = require(script.Parent.Percent)
 local Scale = require(script.Parent.Scale)
 local Kit = require(script.Parent.Kit)
+local Atlas = require(script.Parent.Atlas)
 local Sprites = require(script.Parent.Sprites)
 local SpriteIds = require(script.Parent.SpriteIds)
 
@@ -54,6 +55,11 @@ end
 
 -- Image for a room id (its sprite, else a kind icon); parent gets it at `size`.
 function P.RoomImage(parent: Instance, roomId: string, size: number, kind: string?): any
+	if (Atlas :: any)[roomId] then
+		local img = Kit.Icon(parent, roomId, UDim2.fromOffset(size, size))
+		img.Name = "RoomImage"
+		return img
+	end
 	local id = SpriteIds.Rooms[roomId]
 	if id and Sprites.Ok(id) then
 		local img = make("ImageLabel", { Name = "RoomImage", BackgroundTransparency = 1, Image = id, Size = UDim2.fromOffset(size, size), ScaleType = Enum.ScaleType.Fit }, parent)

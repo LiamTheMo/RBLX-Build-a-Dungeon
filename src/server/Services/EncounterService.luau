@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 
 local Economy = require(script.Parent.Parent.Rules.Economy)
 local Progression = require(script.Parent.Parent.Rules.Progression)
+local ProfileSchema = require(script.Parent.Parent.Rules.ProfileSchema)
 local Threat = require(script.Parent.Parent.Rules.Threat)
 local Visitors = require(script.Parent.Parent.Definitions.Visitors)
 local Rooms = require(script.Parent.Parent.Definitions.Rooms)
@@ -160,7 +161,7 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 		reward = Rewards.Defeat(profile, visitorId, rng, runContext(player, profile, run), run.Base, run.Variant)
 		amount, destination = reward.Amount, "Bank"
 		stats.Wins += 1
-		stats.Earned += amount
+		stats.Earned = math.min(ProfileSchema.MAX_MONEY, stats.Earned + amount)
 	elseif result == "Robbed" then
 		amount = Economy.Theft(visitorId, Progression.Vaulted(profile), run.VaultSnapshot, Progression.TheftScale(profile))
 		profile.Coins -= amount
@@ -171,6 +172,7 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	end
 
 	local name = displayName(visitorId, run.Variant)
+	if reward.Capped then notice(player, "Coin balance full: some reward could not be added.", "Info") end
 	if result == "Robbed" then
 		notice(player, `The {name} reached your treasure and stole {amount} coins!`, "Bad")
 	elseif result ~= "Defeated" then
@@ -179,7 +181,7 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	for _, drop in reward.Drops do
 		if drop.Overflow then
 			local chest = if drop.Type == "Crystal" then "Crystal Chest" elseif drop.Type == "Rare" then "Royal Chest" else "Dungeon Chest"
-			notice(player, `Storage full: {chest} converted to {Balance.Loot.BoxOverflowCoins[drop.Type]} coins.`, "Info")
+			notice(player, `Storage full: {chest} converted to {drop.OverflowCoins or 0} coins.`, "Info")
 		end
 	end
 	if reward.LevelUp then

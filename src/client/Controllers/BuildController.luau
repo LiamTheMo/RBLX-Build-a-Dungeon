@@ -551,8 +551,7 @@ function Build.Refresh()
 	if room then
 		local def = Catalog.Room(room.Id)
 		ui.CalloutName.Text = if def then def.DisplayName else room.Id
-		local rid = SpriteIds.Rooms[room.Id]
-		ui.CalloutIcon.Image = if Sprites.Ok(rid) then rid else ""
+		Kit.SetIcon(ui.CalloutIcon, room.Id)
 	end
 end
 
