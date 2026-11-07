@@ -112,7 +112,7 @@ RemoteFunctions return `(ok: boolean, reasonOrData, extra?)`. Every handler chec
 | --- | --- | --- |
 | `GetCatalog` | — | CatalogService: returns the frozen catalog (above). No loaded profile needed, so the load-failure screen still works |
 | `PreviewLayout` | `layout: {[cellKey]: instanceId}` (≤ 19 entries, same check as `CommitLayout`) | BuildService: `LayoutRules.Validate` without applying anything (no build-mode or cooldown check). Returns `(true, routeCells, offRouteCells)` or `(false, reason, cellKey?)`; idle (off-route) rooms are in `offRouteCells`. The client calls it about 0.15 s after each draft change and shows "Checking route..." meanwhile; `CommitLayout` re-validates |
-| `SetBuilding` | `on: boolean` | BuildService. Refused with `EncounterActive` while a visitor is inside |
+| `SetBuilding` | `on: boolean` | BuildService. Starting build mode cancels an active visitor without payout or theft; spawning pauses until the player exits build mode. |
 | `CommitLayout` | `layout: {[cellKey]: instanceId}` (≤ 19 entries) | BuildService: ownership, each instance once, `Route.Build` (any shape), no encounter running. Returns `(true, routeCells, offRouteCells)` |
 | `SetVaultPercent` | `percent: integer 0..100` | EconomyService: sets `VaultPercent`; returns the percent. `EncounterActive` while a visitor is inside (no dodging a theft). Rate limit is the `Net` guard; the client should debounce a slider. Advances the tutorial's BankVault step (`VaultSet`) |
 | `SetThreat` | `tier: integer 1..6` | EncounterService: sets `Threat`; returns the tier. `ThreatLocked` above the unlocked tier, `EncounterActive` during an encounter. Re-rolls the announced next visitor |

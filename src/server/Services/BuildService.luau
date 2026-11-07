@@ -4,6 +4,7 @@
 local Grid = require(script.Parent.Parent.Definitions.Grid)
 local Net = require(script.Parent.Parent.Infrastructure.Net)
 local LayoutRules = require(script.Parent.Parent.Rules.LayoutRules)
+local EncounterService = require(script.Parent.EncounterService)
 local PlotService = require(script.Parent.PlotService)
 local ProfileService = require(script.Parent.ProfileService)
 local TutorialService = require(script.Parent.TutorialService)
@@ -44,8 +45,8 @@ function BuildService.SetBuilding(player: Player, on: boolean)
 		return false, "ProfileNotLoaded"
 	end
 	if on then
-		if plot:GetAttribute("State") == "Encounter" then
-			return false, "EncounterActive"
+		if EncounterService.InEncounter(player) then
+			EncounterService.CancelForBuild(player)
 		end
 		building[player] = true
 		plot:SetAttribute("State", "Building")
@@ -54,6 +55,7 @@ function BuildService.SetBuilding(player: Player, on: boolean)
 		plot:SetAttribute("State", "Idle")
 		local previous = plot:GetAttribute("NextVisitorAt") or 0
 		plot:SetAttribute("NextVisitorAt", math.max(previous, workspace:GetServerTimeNow() + RESUME_DELAY))
+		EncounterService.Reannounce(player, false)
 	end
 	ProfileService.SetTransient(player, "Building", on)
 	return true, nil

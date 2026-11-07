@@ -377,11 +377,11 @@ local function tick(dt: number)
 end
 
 -- Re-rolls the announced visitor after the active tier changed (not mid-encounter).
-function EncounterService.Reannounce(player: Player)
+function EncounterService.Reannounce(player: Player, reroll: boolean?)
 	local plot = PlotService.GetPlot(player)
 	local profile = ProfileService.Get(player)
 	if plot and profile and runs[player] == nil then
-		announce(player, plot, profile, true)
+		announce(player, plot, profile, reroll ~= false)
 	end
 end
 
@@ -410,6 +410,15 @@ end
 -- Whether a visitor is inside the player's dungeon (server truth).
 function EncounterService.InEncounter(player: Player): boolean
 	return runs[player] ~= nil
+end
+
+-- Build mode discards an active visit before layout editing; cancel() removes
+-- the run before any result can be resolved, so it cannot pay or steal.
+function EncounterService.CancelForBuild(player: Player)
+	if runs[player] then
+		cancel(player)
+		PlotService.RefreshRoomAttrs(player)
+	end
 end
 
 function EncounterService.Init()

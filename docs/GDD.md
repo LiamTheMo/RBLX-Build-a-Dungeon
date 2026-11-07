@@ -40,6 +40,8 @@ Each player owns an isolated plot. Start with a 5 × 4 grid as a tunable prototy
 
 An angled overview camera makes the dungeon readable. In build mode, players select an inventory piece, preview its position and connections, then place, move or remove it. Rooms are not rotated in the MVP. A placed instance returns to inventory when removed. No instance can be placed twice.
 
+Players can enter build mode during a visit. The active visitor is removed without rewards or theft and defenders reset; visits remain paused until the player exits build mode. The next visitor arrives after the existing resume delay.
+
 ### Room roster (item model owner-approved 2026-11-05)
 
 Every room type has **one fixed rarity**. A room's stats, perks and ability come from its type; an owned room only records its level (and an optional event modifier). Common and Uncommon rooms are sold in the shop for coins (with keeper-level gates); Rare and rarer rooms come only from boxes and blueprints. Only **one treasure room** (of any tier) can be placed. Numbers are starting values in `Balance.luau` ([PHASE0.md](PHASE0.md)).
