@@ -69,7 +69,7 @@ These are the rules the placeholder numbers assume. Phase 2 implements and tunes
   - **Defeated:** the reward is paid once, straight to coins: the base rolled at spawn in the visitor's coin range, times the threat, variant, coin-bonus and event multipliers, rounded down.
   - **Reaches the end, no treasure room:** the visitor leaves. No reward, no loss.
   - **Reaches the treasure room:** it steals its theft fraction of the vaulted coins (`floor(Coins × VaultPercent / 100)` at that moment), rounded down. Unvaulted coins and rooms are never affected. A 0% share loses nothing.
-- **Assumption (owner review):** changing the vault share is refused (`EncounterActive`) while an encounter is running on that plot, so a theft cannot be dodged at the last second. Build mode and the threat level are also locked during an encounter.
+- **Vault:** changing the vault share is refused (`EncounterActive`) while an encounter is running on that plot, so a theft cannot be dodged at the last second. Threat can be changed during an encounter for the next visitor; build mode interrupts the current visit.
 - **Assumption (owner review):** the tutorial's Skip is locked until the player has finished one encounter (`Stats.Encounters >= 1`; later sessions satisfy this), so the first session always sees the practice fight.
 - **Assumption:** removing the treasure room puts nothing at risk (vaulted coins are 0 without it) and removes the spawn-rate bonus. While idle, the next-visitor time follows the current interval, so lowering the share or removing the treasure room after a fast timer was set makes the wait longer again.
 - **Assumption:** rewards and theft round down to whole coins.

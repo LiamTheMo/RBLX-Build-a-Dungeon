@@ -569,6 +569,7 @@ local function build()
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, dropScroll)
 	make("UIPadding", { PaddingRight = UDim.new(0, 12), PaddingBottom = UDim.new(0, 4) }, dropScroll)
 	local dropId: string? = nil
+	local dropEncounterTier: number? = nil
 	local function fillDrops()
 		for _, c in dropScroll:GetChildren() do
 			if c:IsA("GuiObject") then
@@ -578,19 +579,25 @@ local function build()
 		local def = dropId and Catalog.Visitor(dropId)
 		dropModal.Title.Text = def and def.DisplayName or "Drops"
 		if dropId and State.Current then
+			local selectedTier = State.Current.ThreatActive
+			if dropEncounterTier and selectedTier and dropEncounterTier ~= selectedTier then
+				local note = Kit.Label(dropScroll, `These details use T{selectedTier} for upcoming visitors; the inspected visitor is T{dropEncounterTier}.`, Theme.TextSize.Body, Theme.TextPrimary, true)
+				note.Size, note.AutomaticSize, note.LayoutOrder = UDim2.new(1, 0, 0, 0), Enum.AutomaticSize.Y, 0
+			end
 			DropCard.Fill(dropScroll, dropId, State.Current, true)
 		end
 	end
 	dropModal.OnOpen = fillDrops
-	local function showDrops(visitorId: any)
+	local function showDrops(visitorId: any, encounterTier: number?)
 		if type(visitorId) ~= "string" or visitorId == "" then
 			return
 		end
-		if dropModal.IsOpen and dropId == visitorId then
+		if dropModal.IsOpen and dropId == visitorId and dropEncounterTier == encounterTier then
 			dropModal.Close()
 			return
 		end
 		dropId = visitorId
+		dropEncounterTier = encounterTier
 		Bus.OpenPanel:Fire("Close")
 		dropModal.Open()
 	end
@@ -787,7 +794,7 @@ local function build()
 		end
 	end
 	encInfo.Instance.Activated:Connect(function()
-		showDrops(plot:GetAttribute("VisitorId"))
+		showDrops(plot:GetAttribute("VisitorId"), plot:GetAttribute("Threat"))
 	end)
 	for _, attr in { "VisitorId", "VisitorHealth", "VisitorMaxHealth", "VisitorSlowed", "VisitorSpored", "VisitorRewardMin", "VisitorRewardMax", "VisitorVariant", "Threat", "VisitorTheft" } do
 		plot:GetAttributeChangedSignal(attr):Connect(refreshEncounter)

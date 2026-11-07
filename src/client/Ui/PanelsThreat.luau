@@ -1,6 +1,6 @@
 -- Threat picker body: six tier cards (lock + "Lv N" when locked, ring + check when selected), the
 -- multiplier chips of the focused tier and the next tier to unlock. Display and requests only: SetThreat
--- is validated by the server (ThreatLocked / EncounterActive come back as reason toasts).
+-- is validated by the server (locked tiers come back as reason toasts).
 local Badges = require(script.Parent.Badges)
 local Catalog = require(script.Parent.Catalog)
 local Kit = require(script.Parent.Kit)
@@ -52,6 +52,8 @@ function Threat.Build(body: GuiObject)
 				if not ok then
 					Toast.Show(ReasonText.Get(reason), "Bad")
 					Sound.Play("Error")
+				else
+					Toast.Show("Threat selection saved for upcoming visitors.", "Info")
 				end
 				self.Refresh()
 			end,

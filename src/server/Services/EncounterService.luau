@@ -385,17 +385,13 @@ function EncounterService.Reannounce(player: Player, reroll: boolean?)
 	end
 end
 
--- SetThreat: picks the active threat tier. Whole number 1..Count, at most the
--- unlocked tier (ThreatLocked), never during an encounter (EncounterActive).
+-- SetThreat selects the tier for the next visitor; a running encounter keeps its own tier.
 function EncounterService.SetThreat(player: Player, tier: number)
 	local profile = ProfileService.Get(player)
 	if profile == nil then
 		return false, "ProfileNotLoaded"
 	end
-	local plot = PlotService.GetPlot(player)
-	if runs[player] or (plot and plot:GetAttribute("State") == "Encounter") then
-		return false, "EncounterActive"
-	end
+	if not Threat.Valid(tier) then return false, "BadArgs" end
 	if tier > Progression.ThreatUnlocked(profile, unlockAll(player)) then
 		return false, "ThreatLocked"
 	end
