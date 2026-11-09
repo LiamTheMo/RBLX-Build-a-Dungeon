@@ -217,13 +217,16 @@ M.Toggle = table.freeze({
 	Off = S("rbxassetid://89952357635516", 278, 148),
 	On = S("rbxassetid://73052069610157", 278, 148),
 })
--- Room art for inventory/shop/index tiles (whole 512x512 images). Variants reuse a sibling room's art.
+-- Room art for inventory/shop/index tiles (whole 512x512 images). Every room has its own art.
 M.RoomIcons = table.freeze({
 	ArcaneBarricade = S("rbxassetid://115288978373278", 512, 512),
 	ArrowGallery = S("rbxassetid://79639818475694", 512, 512),
 	BatRoost = S("rbxassetid://79566406545376", 512, 512),
 	CelestialCoffer = S("rbxassetid://136535079073870", 512, 512),
+	CrystalBarricade = S("rbxassetid://127455416938669", 512, 512),
+	CrystalGuard = S("rbxassetid://123445622737032", 512, 512),
 	CrystalSentinel = S("rbxassetid://127466329241734", 512, 512),
+	CrystalSentry = S("rbxassetid://95002116829939", 512, 512),
 	DragonHoard = S("rbxassetid://130966553174051", 512, 512),
 	DragonLair = S("rbxassetid://117277836838985", 512, 512),
 	EclipseBastion = S("rbxassetid://97098760329380", 512, 512),
@@ -239,7 +242,12 @@ M.RoomIcons = table.freeze({
 	MonsterDen = S("rbxassetid://129723880342230", 512, 512),
 	MushroomCavern = S("rbxassetid://110011981383990", 512, 512),
 	PhoenixNest = S("rbxassetid://128877038598021", 512, 512),
+	PrismBastion = S("rbxassetid://108366341215640", 512, 512),
+	PrismGallery = S("rbxassetid://102638076067878", 512, 512),
+	PrismSanctum = S("rbxassetid://111579678264244", 512, 512),
+	PrismSentinel = S("rbxassetid://75406784596511", 512, 512),
 	RestlessCrypt = S("rbxassetid://103042109220494", 512, 512),
+	RoyalGuard = S("rbxassetid://100425833982826", 512, 512),
 	RoyalVault = S("rbxassetid://107628426462591", 512, 512),
 	SlimeNest = S("rbxassetid://70861828103018", 512, 512),
 	SpikeHall = S("rbxassetid://132751948679953", 512, 512),
@@ -250,13 +258,5 @@ M.RoomIcons = table.freeze({
 	Treasury = S("rbxassetid://138297619522795", 512, 512),
 	VoidGate = S("rbxassetid://99256546060944", 512, 512),
 	VoidVault = S("rbxassetid://104724027242505", 512, 512),
-	CrystalBarricade = S("rbxassetid://115288978373278", 512, 512), -- alias of ArcaneBarricade
-	CrystalGuard = S("rbxassetid://111091204437374", 512, 512), -- alias of GuardRoom
-	CrystalSentry = S("rbxassetid://92046899946076", 512, 512), -- alias of EmeraldGuardroom
-	PrismBastion = S("rbxassetid://97098760329380", 512, 512), -- alias of EclipseBastion
-	PrismGallery = S("rbxassetid://121415823132049", 512, 512), -- alias of StormGallery
-	PrismSanctum = S("rbxassetid://73804914953856", 512, 512), -- alias of SunfireSanctum
-	PrismSentinel = S("rbxassetid://127466329241734", 512, 512), -- alias of CrystalSentinel
-	RoyalGuard = S("rbxassetid://111091204437374", 512, 512), -- alias of GuardRoom
 })
 return table.freeze(M)
