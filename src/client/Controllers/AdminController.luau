@@ -18,7 +18,7 @@ function Controller.Start()
 		if button.Icon then button.Icon.Position = UDim2.fromScale(0.5, 0.5) end
 		button.Instance.AnchorPoint = Vector2.new(1, 1)
 		button.Instance.Position = UDim2.new(1, -12, 1, -12)
-		local panel = Modal.New(gui, "Admin", "AdminShield", Vector2.new(580, 500), Vector2.new(560, 430))
+		local panel = Modal.New(gui, "Admin", "AdminShield", Vector2.new(780, 0), Vector2.new(640, 0))
 		button.Instance.Activated:Connect(function() if panel.IsOpen then panel.Close() else panel.Open() end end)
 		local function newScroll()
 			local f = make("ScrollingFrame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 54), Size = UDim2.new(1, 0, 1, -54), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 8, BorderSizePixel = 0 }, panel.Body)

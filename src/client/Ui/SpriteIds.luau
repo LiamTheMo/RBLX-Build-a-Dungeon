@@ -1,5 +1,5 @@
 -- Generated from AI design assistant sprite sheets cut by tools/cut_sheet.py (Assets repo). Origin: owner's AI design assistant account;
--- rights to be confirmed by the owner before release. SliceCenter is in image pixels (SliceScale 1).
+-- rights to be confirmed by the owner before release.
 local base = {
 	Icons = {
 		Box = "rbxassetid://86254209003880",
@@ -47,13 +47,13 @@ local base = {
 		Keeper = "rbxassetid://112744299318368",
 	},
 	Rarity = {
-		Common = { Frame = { Id = "rbxassetid://128125810296453", SliceCenter = Rect.new(47, 49, 322, 320), Size = Vector2.new(369, 369) }, Gem = "rbxassetid://79690765609745" },
-		Uncommon = { Frame = { Id = "rbxassetid://132193431650503", SliceCenter = Rect.new(47, 49, 326, 321), Size = Vector2.new(373, 370) }, Gem = "rbxassetid://97676534001469" },
-		Rare = { Frame = { Id = "rbxassetid://129308799301998", SliceCenter = Rect.new(100, 100, 271, 269), Size = Vector2.new(371, 369) }, Gem = "rbxassetid://98204477230967" },
-		Epic = { Frame = { Id = "rbxassetid://92482086603214", SliceCenter = Rect.new(100, 98, 271, 264), Size = Vector2.new(371, 362) }, Gem = "rbxassetid://71880120213177" },
-		Legendary = { Frame = { Id = "rbxassetid://99431034627830", SliceCenter = Rect.new(103, 109, 277, 294), Size = Vector2.new(380, 403) }, Gem = "rbxassetid://126060381199006" },
-		Secret = { Frame = { Id = "rbxassetid://78179547574337", SliceCenter = Rect.new(107, 105, 288, 285), Size = Vector2.new(395, 390) }, Gem = "rbxassetid://123345850137737" },
-		Mythic = { Frame = { Id = "rbxassetid://89463632045840", SliceCenter = Rect.new(153, 154, 358, 358), Size = Vector2.new(511, 512) }, Gem = "rbxassetid://114231824191237" },
+		Common = { Gem = "rbxassetid://79690765609745" },
+		Uncommon = { Gem = "rbxassetid://97676534001469" },
+		Rare = { Gem = "rbxassetid://98204477230967" },
+		Epic = { Gem = "rbxassetid://71880120213177" },
+		Legendary = { Gem = "rbxassetid://126060381199006" },
+		Secret = { Gem = "rbxassetid://123345850137737" },
+		Mythic = { Gem = "rbxassetid://114231824191237" },
 	},
 }
 

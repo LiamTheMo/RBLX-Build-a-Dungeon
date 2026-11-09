@@ -89,19 +89,34 @@ end
 
 local function layout()
 	local phone = Scale.Phone
-	-- Above the bottom bar (3 buttons: 76 / 108 px tall) and its margin.
-	-- The bubble sprite's tail stretches, so the bubble stays near its native width (<= ~1.4x at the 0.5 slice scale).
+	-- Bubble.Wide is one whole image (590:214, tail along the bottom), so its height follows its width. It sits above the
+	-- bottom bar; the text fills the art's Inner rect (above the tail band).
+	local spec = Kit.Spec("Bubble.Wide")
 	local available = ui.Root.AbsoluteSize.X / math.max(Scale.Value, 0.01)
-	local width = math.max(220, math.min(if phone then 460 else 520, available - 40))
-	ui.Bubble.Position = UDim2.new(0.5, 0, 1, if phone then -118 else -196)
-	ui.Bubble.Size = UDim2.fromOffset(width, if phone then 178 else 230)
-	ui.Buttons.Size = UDim2.fromOffset(width, 76)
-	ui.TextLimit.MaxTextSize = if phone then 24 else 28
+	local width = math.max(240, math.min(if phone then 420 else 560, available - 40))
+	ui.Bubble.Position = UDim2.new(0.5, 0, 1, if phone then -104 else -190)
+	ui.Bubble.Size = UDim2.fromOffset(width, width * spec.Size.Y / spec.Size.X)
+	-- The buttons stack in a column beside the bubble (bottom aligned with it): they never sit over the player or the player's
+	-- name tag above the bubble, the visitor card or the buff chips.
+	ui.Buttons.Size = UDim2.fromOffset(if phone then 128 else 170, 3 * (if phone then 64 else 76) + 16)
+	ui.Buttons.AnchorPoint = Vector2.new(0, 1)
+	ui.Buttons.Position = UDim2.new(1, 14, 1, -34)
+	local lay = ui.Buttons:FindFirstChildOfClass("UIListLayout")
+	if lay then
+		lay.FillDirection, lay.HorizontalAlignment, lay.VerticalAlignment = Enum.FillDirection.Vertical, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Bottom
+	end
+	for _, b in ui.Buttons:GetChildren() do
+		if b:IsA("GuiButton") then b.Size = UDim2.fromOffset(if phone then 128 else 170, if phone then 64 else 76) end
+	end
+	ui.Text.TextSize = Theme.TextSize.Body
 	local m = if phone then 64 else 84
 	ui.Mascot.Size = UDim2.fromOffset(m, m)
-	-- Text sits inside the bubble body: ~29 px of border at the sides, 27 px at the top, 38 px at the bottom (tail band).
-	ui.Text.Position = UDim2.fromOffset(34, 24)
-	ui.Text.Size = UDim2.new(1, -68, 1, -(24 + 52))
+	local l, t, r, b = Kit.InnerPadding(spec)
+	ui.Text.Position = UDim2.fromScale(l, t)
+	ui.Text.Size = UDim2.fromScale(1 - l - r, 1 - t - b)
+	-- The text sits inside the Inner rect with its own padding (never against the art's edge).
+	local pad = ui.Text:FindFirstChildOfClass("UIPadding") or make("UIPadding", {}, ui.Text)
+	pad.PaddingLeft, pad.PaddingRight = UDim.new(0, if phone then 16 else 20), UDim.new(0, if phone then 16 else 20)
 end
 
 local function refresh()
@@ -145,8 +160,8 @@ local function buildUi()
 	local gui = Kit.Screen("Tutorial", 3)
 	ui = {}
 	ui.Root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, gui)
-	-- Bubble.Tutorial sprite (cream, dark text) with the Keeper portrait as the mascot at the left.
-	ui.Bubble = Kit.Panel(ui.Root, { Sprite = "Bubble", AnchorPoint = Vector2.new(0.5, 1), Visible = false })
+	-- Bubble.Wide sprite (cream, dark text) with the Keeper portrait as the mascot at the left.
+	ui.Bubble = Kit.Panel(ui.Root, { Sprite = "BubbleWide", AnchorPoint = Vector2.new(0.5, 1), Visible = false })
 	ui.Bubble:FindFirstChild("Inset"):Destroy() -- text and buttons are placed explicitly
 	ui.Bubble.ClipsDescendants = false
 	-- The Keeper mascot stands left of the bubble.
@@ -165,8 +180,8 @@ local function buildUi()
 	ui.Text.ZIndex = 3
 	ui.Text.TextXAlignment = Enum.TextXAlignment.Left
 	ui.Text.TextYAlignment = Enum.TextYAlignment.Center
-	ui.Text.TextScaled = true -- long steps shrink to fit instead of running out of the bubble
-	ui.TextLimit = make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 20 }, ui.Text)
+	ui.Text.TextWrapped = true -- a fixed size; a long step wraps (the bubble holds two lines)
+	Kit.FixedText(ui.Text, Theme.TextSize.Body)
 
 	-- Buttons sit just above the bubble, right-aligned.
 	ui.Buttons = make("Frame", {

@@ -4,9 +4,6 @@
 local function N(id: string, w: number, h: number)
 	return table.freeze({ Id = id, Size = Vector2.new(w, h) })
 end
-local function S(id: string, w: number, h: number, l: number, t: number, r: number, b: number)
-	return table.freeze({ Id = id, SliceCenter = Rect.new(l, t, r, b), Size = Vector2.new(w, h) })
-end
 
 local feedback_IconInfo = N("rbxassetid://89688564912456", 354, 356)
 local feedback_IconGood = N("rbxassetid://85787218264621", 354, 356)
@@ -33,8 +30,6 @@ local world_RouteDot = N("rbxassetid://96600629257510", 158, 156)
 local world_RouteArrow = N("rbxassetid://70803787260885", 240, 286)
 local world_GhostOk = N("rbxassetid://140261644918209", 298, 300)
 local world_GhostBad = N("rbxassetid://131074565202538", 300, 304)
-local world_SignBoardOwned = S("rbxassetid://125171418630241", 406, 266, 55, 55, 351, 211)
-local world_SignBoardFree = S("rbxassetid://105037912850813", 396, 266, 49, 49, 347, 217)
 local world_HitBurst = N("rbxassetid://130323322701518", 322, 318)
 local world_VfxSparkle = N("rbxassetid://112527185382960", 256, 270)
 local world_VfxPuff = N("rbxassetid://90106257758601", 272, 282)
@@ -71,8 +66,6 @@ return table.freeze({
 		RouteArrow = world_RouteArrow,
 		GhostOk = world_GhostOk,
 		GhostBad = world_GhostBad,
-		SignBoardOwned = world_SignBoardOwned,
-		SignBoardFree = world_SignBoardFree,
 		HitBurst = world_HitBurst,
 		VfxSparkle = world_VfxSparkle,
 		VfxPuff = world_VfxPuff,

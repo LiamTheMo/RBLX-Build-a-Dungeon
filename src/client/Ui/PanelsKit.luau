@@ -4,11 +4,11 @@ local Theme = require(script.Parent.Theme)
 local Percent = require(script.Parent.Percent)
 local Scale = require(script.Parent.Scale)
 local Kit = require(script.Parent.Kit)
-local Atlas = require(script.Parent.Atlas)
 local Sprites = require(script.Parent.Sprites)
 local SpriteIds = require(script.Parent.SpriteIds)
 
 local make = Kit.Make
+local V6: any = Sprites.Ids6
 
 local P = {}
 local TAB_ICON = { Chests = "Bag", Index = "Collection", Keeper = "Upgrade", Threat = "T1" }
@@ -38,25 +38,27 @@ function P.Spaced(id: string): string
 	return (string.gsub(id, "(%l)(%u)", "%1 %2"))
 end
 
--- Auto-height card with a vertical list inside (PanelSmall, or the tier's card frame when
--- `rarity` names one) .
-function P.Card(parent: Instance, order: number?, rarity: string?, sprite: string?): Frame
-	local f = Kit.Panel(parent, {
-		Sprite = sprite or "Small",
-		BackgroundColor3 = Theme.BgPanel,
-		Size = UDim2.new(1, 0, 0, 56),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = order or 0,
-		Rarity = rarity,
-		Pad = Vector2.new(6, 4),
-	})
-	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, f)
+-- Auto-height container with a vertical list inside. It has NO art of its own (a sprite cannot grow with its content without
+-- being stretched): put sprite rows (Kit.Panel Sprite = "Row" / "Small" with Fit = "Width") or whole cards inside it.
+function P.Card(parent: Instance, order: number?): Frame
+	local f = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order or 0 }, parent)
+	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, f)
 	return f
 end
 
 -- Image for a room id (its sprite, else a kind icon); parent gets it at `size`.
 function P.RoomImage(parent: Instance, roomId: string, size: number, kind: string?): any
-	if (Atlas :: any)[roomId] then
+	-- The owner's room icons come first: whole square images, Fit (never stretched).
+	local spec = (V6.RoomIcons :: any)[roomId]
+	local owner = spec and spec.Id
+	if owner and Sprites.Ok(owner) then
+		local img = make("ImageLabel", { Name = "RoomImage", BackgroundTransparency = 1, Image = owner, Size = UDim2.fromOffset(size, size), ScaleType = Enum.ScaleType.Fit }, parent)
+		Sprites.Watch(owner, function()
+			Kit.Neutral(img)
+		end, img)
+		return img
+	end
+	if (V6.Icons :: any)[roomId] then
 		local img = Kit.Icon(parent, roomId, UDim2.fromOffset(size, size))
 		img.Name = "RoomImage"
 		return img
@@ -185,31 +187,61 @@ function P.IconLine(parent: Instance, icon: string, text: string, order: number,
 	return f
 end
 
--- The one tab component (Tab.On / Tab.Off): icon and label centred together, same text size everywhere.
+-- The one tab component (Tab.On / Tab.Off, or Tab.WideOn / Tab.WideOff with opts.Wide): icon and label centred together, one
+-- whole sprite per state. opts.Size is the hit box (the art fits inside it, centred); the label size follows the art's height.
 function P.TabButton(parent: Instance, opts: { [string]: any })
-	local btn = Kit.Button(parent, { Text = opts.Text, Icon = opts.Icon, IconLayout = "Row", Style = "Tab", Size = opts.Size, TextSize = if Scale.Phone then 22 else 28, OnClick = opts.OnClick })
-	local label = btn.Instance:FindFirstChild("Label") :: TextLabel
+	local btn = Kit.Button(parent, { Text = opts.Text, Icon = opts.Icon, IconLayout = "Row", Style = "Tab", Variant = if opts.Wide then "Wide" else nil, Size = opts.Size, TextSize = 28, OnClick = opts.OnClick })
+	local label = btn.Instance:FindFirstChild("Label", true) :: TextLabel
 	local icon = btn.Icon
+	local content = btn.Content
 	local pad = label:FindFirstChildOfClass("UIPadding") :: UIPadding
+	label.TextScaled, label.TextWrapped = false, false
+	local limit = label:FindFirstChildOfClass("UITextSizeConstraint")
+	if limit then
+		limit:Destroy()
+	end
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	local function place()
 		local sc = math.max(Scale.Value, 0.01)
-		local w, iw, tw = btn.Instance.AbsoluteSize.X / sc, icon.AbsoluteSize.X / sc, label.TextBounds.X / sc
-		local x = math.max(10, (w - iw - 10 - tw) / 2)
+		local w, h = content.AbsoluteSize.X / sc, content.AbsoluteSize.Y / sc
+		if w < 2 or h < 2 then
+			return
+		end
+		label.TextSize = 24 -- one fixed tab label size (the tab art is the band's height)
+		local iw = icon.AbsoluteSize.X / sc
+		local tw = label.TextBounds.X / sc
+		local x = math.max(0, (w - iw - 8 - tw) / 2)
 		icon.Position = UDim2.new(0, x, 0.5, 0)
-		pad.PaddingLeft = UDim.new(0, x + iw + 10)
+		pad.PaddingLeft = UDim.new(0, x + iw + 8)
 	end
-	for _, signal in { btn.Instance:GetPropertyChangedSignal("AbsoluteSize"), label:GetPropertyChangedSignal("TextBounds"), label:GetPropertyChangedSignal("TextSize") } do
+	for _, signal in { content:GetPropertyChangedSignal("AbsoluteSize"), label:GetPropertyChangedSignal("TextBounds") } do
 		signal:Connect(place)
 	end
 	task.defer(place)
 	return btn
 end
 
--- Modal shell (Bag / Index / Upgrades): the shared chrome (Kit.ModalChrome), a tab row of Tab.On / Tab.Off buttons and
--- one scroll area per tab inside a Panel.Section well. reserveRow keeps the tab row for a caller-made sub-tab row
--- (P.TabRow(scroll)). Returns { Gui, Panel, Title, Show(bool), Tabs, Scrolls, Layout }.
-local PAD_X, PAD_TOP, PAD_BOTTOM, TAB_H = 22, 64, 26, 78
+-- Two wide tabs side by side, centred with a small gap (like the reference): each hit box is the band's height times the
+-- Tab.Wide* aspect, so the art is never stretched. `row` holds a centred horizontal UIListLayout.
+function P.CentreTabs(row: GuiObject, tabs: { any })
+	local function fit()
+		local h = row.AbsoluteSize.Y / math.max(Scale.Value, 0.01)
+		if h < 2 then
+			return
+		end
+		for _, t in tabs do
+			t.Instance.Size = UDim2.fromOffset(math.floor(h * 4.15), h)
+		end
+	end
+	row:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	Scale.Changed:Connect(fit)
+	task.defer(fit)
+end
+
+-- Modal shell (Bag / Index / Upgrades): the shared chrome (Kit.ModalChrome: Panel.Modal, one whole image at its own aspect), a
+-- tab row of Tab buttons in the art's header band and one scroll area per tab inside the art's Inner rect (the dark well).
+-- reserveRow keeps the tab row for a caller-made sub-tab row (P.TabRow(scroll)). Returns { Gui, Panel, Title, Show(bool),
+-- Tabs, Scrolls, Layout }.
 local tabRows = setmetatable({}, { __mode = "k" })
 
 -- The tab row frame above the well of this shell's scroll area (for sub-tabs of a single-tab shell).
@@ -235,45 +267,49 @@ function P.Shell(tabNames: { string }, onTab: (string) -> (), reserveRow: boolea
 		gui.Enabled = false
 	end)
 	local self: any
+	local hasRowEarly = reserveRow == true or #tabNames > 1
 	local chrome = Kit.ModalChrome(dim, if tabNames[1] == "Bag" then "Inventory" else "Index", function()
 		gui.Enabled = false
-	end)
+	end, if hasRowEarly then "Tabbed" else "Plain")
 	local panel = chrome.Root
 	panel.Name = "Modal"
 	panel.AnchorPoint = Vector2.new(0.5, 0)
 	local hasRow = reserveRow == true or #tabNames > 1
-	-- The tab row sits in the header band of Panel.Modal; the content rect is the dark well below it.
-	local tabs = make("Frame", { Name = "Tabs", BackgroundTransparency = 1, Position = UDim2.fromOffset(PAD_X, 8), Size = UDim2.new(1, -PAD_X * 2, 0, TAB_H), Visible = hasRow }, panel)
+	-- The tab row sits in the header band of Panel.Modal (above the Inner rect); the content rect is the dark well below it.
+	local tabs = make("Frame", { Name = "Tabs", BackgroundTransparency = 1, Visible = hasRow }, panel)
 	if #tabNames > 1 then
-		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, tabs)
+		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 14) }, tabs)
 	end
-	local well = make("Frame", { Name = "Well", BackgroundTransparency = 1, ClipsDescendants = true, Position = UDim2.fromOffset(PAD_X, PAD_TOP), Size = UDim2.new(1, -PAD_X * 2, 1, -PAD_TOP - PAD_BOTTOM) }, panel)
+	local well = make("Frame", { Name = "Well", BackgroundTransparency = 1, ClipsDescendants = true }, panel)
 	self = { Gui = gui, Panel = panel, Title = chrome.Title, Tabs = {}, Scrolls = {}, Well = well, TabRow = tabs }
 
 	function self.Layout()
 		local view = gui.AbsoluteSize / math.max(Scale.Value, 0.01)
-		local width = math.min(if Scale.Phone then 1000 else math.max(1080, view.X * 0.63), view.X - 24)
-		local overhang = chrome.Layout(width)
-		-- Plate + modal sit between a small top margin and the navigation row.
-		-- Phones start below the currency pill so the title plate never covers it.
+		local reserve = if Scale.Phone then 116 else 170
 		local top = if Scale.Phone then 64 else 100
-		local available = view.Y - (if Scale.Phone then 116 else 170) - top
-		local height = math.max(math.min(if Scale.Phone then 640 else math.max(720, view.Y * 0.66), available - overhang), 150)
+		local available = view.Y - reserve - top
+		local width = math.min(if Scale.Phone then 1000 else math.max(1080, view.X * 0.66), view.X - 24)
+		local overhang = chrome.Layout(width)
+		width = math.min(width, (available - overhang) * chrome.Ratio)
+		overhang = chrome.Layout(width)
+		width = math.min(width, (available - overhang) * chrome.Ratio)
+		local height = width / chrome.Ratio
 		panel.Size = UDim2.fromOffset(width, height)
 		panel.Position = UDim2.new(0.5, 0, 0, top + overhang + math.max(0, (available - overhang - height) / 2))
-		local rowH = if Scale.Phone then 50 else TAB_H
-		-- The tab row sits just below the title plate's lower half, over the top of the well.
-		local tabY = if Scale.Phone then 28 else 44
-		tabs.Position, tabs.Size = UDim2.fromOffset(PAD_X, tabY), UDim2.new(1, -PAD_X * 2, 0, rowH)
-		local y = if hasRow then tabY + rowH + 8 else (if Scale.Phone then PAD_TOP - 4 else PAD_TOP)
-		well.Position, well.Size = UDim2.fromOffset(PAD_X, y), UDim2.new(1, -PAD_X * 2, 1, -y - PAD_BOTTOM)
+		local bx, by, bw, bh = chrome.BodyRect(width, height)
+		-- Header band: from just under the title plate's lower half to the top of the well.
+		local k = width / chrome.Spec.Size.X
+		local tabY, tabH = 48 * k, 66 * k
+		tabs.Position, tabs.Size = UDim2.fromOffset(bx, tabY), UDim2.fromOffset(bw, tabH)
+		well.Position, well.Size = UDim2.fromOffset(bx, by), UDim2.fromOffset(bw, bh)
 	end
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(self.Layout)
 	Scale.Changed:Connect(self.Layout)
 
+	local wide = #tabNames == 2
 	for _, name in tabNames do
 		if #tabNames > 1 then
-			self.Tabs[name] = P.TabButton(tabs, { Text = if name == "Keeper" then "Permanent Upgrades" else name, Icon = TAB_ICON[name] or name, Size = UDim2.new(1 / #tabNames, -10 * (#tabNames - 1) / #tabNames - 1, 1, 0), OnClick = function()
+			self.Tabs[name] = P.TabButton(tabs, { Text = if name == "Keeper" then "Permanent" else name, Icon = TAB_ICON[name] or name, Wide = wide, Size = UDim2.new(1 / #tabNames, 0, 1, 0), OnClick = function()
 				onTab(name)
 			end })
 		else
@@ -285,14 +321,17 @@ function P.Shell(tabNames: { string }, onTab: (string) -> (), reserveRow: boolea
 			Size = UDim2.fromScale(1, 1),
 			CanvasSize = UDim2.new(),
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
-			ScrollBarThickness = 12,
+			ScrollBarThickness = 10,
 			ScrollingDirection = Enum.ScrollingDirection.Y,
 			Visible = false,
 		}, well)
 		make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, scroll)
-		make("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 16), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 70) }, scroll)
+		make("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 12) }, scroll)
 		self.Scrolls[name] = scroll
 		tabRows[scroll] = tabs
+	end
+	if wide then
+		P.CentreTabs(tabs, { self.Tabs[tabNames[1]], self.Tabs[tabNames[2]] })
 	end
 	self.Layout()
 	return self

@@ -18,30 +18,66 @@ local Toast = require(script.Parent.Toast)
 local make = Kit.Make
 local C = {}
 
--- Left badge: the room image / portrait (in the best owned tier's card frame) when discovered,
--- a "?" silhouette otherwise. `image` = { Room = id, Kind = kind } | { Portrait = id } | nil.
--- Returns the text column.
-local function entry(parent: Instance, order: number, known: boolean, image: { [string]: any }?, rarity: string?, compact: boolean?): Frame
-	local card = P.Card(parent, order, nil, "Card")
-	if compact then card.AutomaticSize = Enum.AutomaticSize.None end
-	card:FindFirstChildOfClass("UIListLayout"):Destroy()
-	local badge = Kit.Panel(card, { BackgroundColor3 = if known then Theme.BgRaised else Theme.BgDeep, Size = UDim2.fromOffset(64, 64), Rarity = if known then rarity else nil, Pad = 0 })
+-- Every entry is ONE whole Panel.Section sprite (706x248) at its own aspect: `w` reference px wide, 2.85 times as wide as tall.
+-- The content area is the sprite's Inner rect: innerSize(w) gives its size in px.
+local SEC = Kit.Spec("Panel.Section")
+local SEC_R = SEC.Size.X / SEC.Size.Y
+local function sectionH(w: number): number
+	return w / SEC_R
+end
+local function innerSize(w: number): (number, number)
+	local i = SEC.Inner :: Rect
+	return w * (i.Max.X - i.Min.X) / SEC.Size.X, sectionH(w) * (i.Max.Y - i.Min.Y) / SEC.Size.Y
+end
+
+-- Width (px, reference) the scroll area offers its children.
+local function availWidth(scroll: GuiObject): number
+	local w = scroll.AbsoluteSize.X / math.max(Scale.Value, 0.01) - 20
+	if w < 200 then
+		w = 900
+	end
+	return w
+end
+
+-- Left badge: the room image / portrait (in the best owned tier's card frame, a whole rarity sprite) when discovered, an empty
+-- slot with "?" otherwise. `image` = { Room = id, Kind = kind } | { Portrait = id } | nil. `w` = the entry's width, badgeCap =
+-- tallest badge. Returns (text column, entry): the column is a clipped frame beside the badge inside the entry's content area.
+local function entry(parent: Instance, order: number, known: boolean, image: { [string]: any }?, rarity: string?, w: number, badgeCap: number?): (Frame, any)
+	local card = Kit.Panel(parent, { Sprite = "Small", Size = UDim2.fromOffset(w, sectionH(w)), LayoutOrder = order, Active = true })
+	local iw, ih = innerSize(w)
+	local bh = math.min(ih, badgeCap or ih)
+	local badge
+	if known and image and image.Room then
+		-- Room rows: a square card frame the height of the row; the owner's icon fills it (the rarity shows as the gem).
+		badge = Kit.Panel(card, { Sprite = "Card", Size = UDim2.fromOffset(bh, bh), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+	elseif known and rarity and Kit.Spec("Rarity." .. rarity) then
+		local rs = Kit.Spec("Rarity." .. rarity)
+		badge = Kit.Panel(card, { Rarity = rarity, Size = UDim2.fromOffset(bh * rs.Size.X / rs.Size.Y, bh), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+	else
+		badge = Kit.Panel(card, { Sprite = if known then "Card" else "Slot", Size = UDim2.fromOffset(bh, bh), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+	end
+	local bw = badge.Size.X.Offset
 	if known and image then
 		local img
 		if image.Room then
-			img = P.RoomImage(badge, image.Room, 44, image.Kind)
+			img = P.RoomImage(card, image.Room, bh, image.Kind)
+			img.ZIndex = 3
 			local def = Catalog.Room(image.Room)
 			badge.Active = true
 			Kit.Tip(badge, def and def.DisplayName or image.Room, Theme.Rarity[rarity])
 		else
 			local id = SpriteIds.Portraits[image.Portrait]
 			if id and Sprites.Ok(id) then
-				img = make("ImageLabel", { BackgroundTransparency = 1, Image = id, Size = UDim2.fromOffset(44, 44), ScaleType = Enum.ScaleType.Fit }, badge)
+				img = make("ImageLabel", { BackgroundTransparency = 1, Image = id, ScaleType = Enum.ScaleType.Fit }, badge)
 			else
 				img = Kit.Icon(badge, "Visitor", UDim2.fromOffset(36, 36))
 			end
 		end
-		img.AnchorPoint, img.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+		if image.Room then
+			img.AnchorPoint, img.Position, img.Size = Vector2.new(0, 0.5), UDim2.new(0, bh * 0.03, 0.5, 0), UDim2.fromOffset(bh * 0.94, bh * 0.94)
+		else
+			img.AnchorPoint, img.Position, img.Size = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1)
+		end
 		if rarity then
 			local gem = Kit.Gem(badge, rarity, UDim2.fromOffset(18, 18))
 			gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, 0, 0, 0), 4
@@ -50,11 +86,9 @@ local function entry(parent: Instance, order: number, known: boolean, image: { [
 		local q = Kit.Label(badge, "?", 34, Theme.DisabledText, true)
 		q.Size = UDim2.fromScale(1, 1)
 	end
-	local col = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(76, 0), Size = UDim2.new(1, -76, 0, 64), AutomaticSize = Enum.AutomaticSize.Y }, card)
-	make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, col)
-	-- The card grows with the text column; keep the badge row at least 64 tall.
-	card.Size = UDim2.new(1, 0, 0, 88)
-	return col
+	local col = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(bw + 12, 0), Size = UDim2.fromOffset(iw - bw - 12, ih), ClipsDescendants = true }, card)
+	make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, col)
+	return col, card
 end
 
 local function roomHint(def: any): string
@@ -113,19 +147,26 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 		total += 1
 		seen += if found[id] then 1 else 0
 	end
-	-- Collection counter: a gold-rimmed pill with the trophy.
-	local counter = Kit.Panel(scroll, { Sprite = "PillGold", Size = UDim2.fromOffset(190, 52), LayoutOrder = nxt() })
+	-- Collection counter: Hud.PillGold (540x150, one whole sprite) with the trophy.
+	local avail = availWidth(scroll)
+	make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, if Scale.Phone then 2 else 6), LayoutOrder = nxt() }, scroll)
+	local counter = Kit.Panel(scroll, { Sprite = "PillGold", Size = if Scale.Phone then UDim2.fromOffset(140, 36) else UDim2.fromOffset(200, 56), LayoutOrder = nxt() })
 	local counterRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, counter)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10) }, counterRow)
-	Kit.Icon(counterRow, "Trophy", UDim2.fromOffset(38, 38))
-	local counterText = Kit.Label(counterRow, string.format("%d/%d", seen, total), Theme.TextSize.Heading, Theme.TextPrimary, true)
-	counterText.AutomaticSize, counterText.Size, counterText.TextWrapped = Enum.AutomaticSize.X, UDim2.fromOffset(0, 40), false
+	Kit.Icon(counterRow, "Trophy", if Scale.Phone then UDim2.fromOffset(26, 26) else UDim2.fromOffset(38, 38))
+	local counterText = Kit.Label(counterRow, string.format("%d/%d", seen, total), if Scale.Phone then 22 else 26, Theme.TextPrimary, true)
+	counterText.AutomaticSize, counterText.Size, counterText.TextWrapped = Enum.AutomaticSize.X, UDim2.fromOffset(0, if Scale.Phone then 30 else 40), false
 	Kit.Stroke(counterText, Theme.Stroke, 2)
 
-	P.Section(scroll, "Rooms", nxt())
-	local roomCols = if P.Columns(scroll) >= 3 then 2 else 1
+	local phone = Scale.Phone
+	-- No heading: the counter row is the header, so two whole rows of rooms show at once (the well is short on both layouts).
+	-- Two columns when there is room (always on a phone, so two whole rows show at once), else one; each cell is exactly one
+	-- whole sprite (no stretching).
+	local roomCols = if avail >= 900 or phone then 2 else 1
+	local cellW = math.floor(math.min((avail - 8 * (roomCols - 1)) / roomCols, if phone then 284 else 440))
+
 	local roomGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / roomCols, -8 * (roomCols - 1) / roomCols - 1, 0, 136), SortOrder = Enum.SortOrder.LayoutOrder }, roomGrid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.fromOffset(cellW, sectionH(cellW)), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, roomGrid)
 	for _, id in roomIds do
 		local def = catalog.Rooms[id]
 		local known = found[id] == true
@@ -136,14 +177,20 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 				break
 			end
 		end
-		local col = entry(roomGrid, nxt(), known, { Room = id, Kind = def.Kind }, def.Rarity or best, true)
+		local col = entry(roomGrid, nxt(), known, { Room = id, Kind = def.Kind }, def.Rarity or best, cellW)
 		if known then
-			P.Text(col, def.DisplayName, Theme.TextSize.Heading, Theme.TextPrimary, true, 1)
-			local kindLine = P.IconLine(col, P.KindIcon[def.Kind] or "Defender", roomHint(def), 2, Theme.Gold)
-			kindLine.Size = UDim2.new(1, 0, 0, 26)
+			local nameLine = P.Text(col, def.DisplayName, if phone then 20 else Theme.TextSize.Heading, Theme.TextPrimary, true, 1)
+			nameLine.TextTruncate = Enum.TextTruncate.AtEnd
+			local kindLine
+			if phone then
+				kindLine = nameLine -- no room for the source line: it shows as the name's tip
+			else
+				kindLine = P.IconLine(col, P.KindIcon[def.Kind] or "Defender", roomHint(def), 2, Theme.Gold)
+				kindLine.Size = UDim2.new(1, 0, 0, 26)
+			end
 			-- Keep special mechanics discoverable on the room art without crowding every card.
 			kindLine.Active = true
-			Kit.Tip(kindLine, (def.Description or "") .. (if def.Ability and def.Ability ~= "" then "\n" .. def.Ability else ""))
+			Kit.Tip(kindLine, (if phone then roomHint(def) .. "\n" else "") .. (def.Description or "") .. (if def.Ability and def.Ability ~= "" then "\n" .. def.Ability else ""))
 			local o = owned[id]
 			local flow = P.ChipFlow(col, 5)
 			P.RoomStats(flow, def)
@@ -172,7 +219,8 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 	for _, id in visitorIds do
 		local def = catalog.Visitors[id]
 		local known = found[id] == true
-		local col = entry(scroll, nxt(), known, { Portrait = id })
+		local advW = math.floor(math.min(avail, 760))
+		local col = entry(scroll, nxt(), known, { Portrait = id }, nil, advW, 150)
 		if known then
 			P.Text(col, def.DisplayName, Theme.TextSize.Heading, Theme.TextPrimary, true, 1)
 			P.Text(col, def.Description, Theme.TextSize.Body, Theme.TextMuted, false, 2)
@@ -186,12 +234,33 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 			lockLine.Size = UDim2.new(1, 0, 0, 28)
 		end
 	end
+	make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = nxt() }, scroll)
 	task.defer(function()
 		scroll.CanvasPosition = pos
 	end)
 end
 
+local keeperHooked = setmetatable({}, { __mode = "k" })
+local keeperState = setmetatable({}, { __mode = "k" })
 function C.BuildKeeper(scroll: ScrollingFrame, state: any)
+	keeperState[scroll] = state
+	-- The card grid is sized from the well; rebuild once the well has its real size.
+	if not keeperHooked[scroll] then
+		keeperHooked[scroll] = true
+		local pending = false
+		scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if pending then
+				return
+			end
+			pending = true
+			task.delay(0.1, function()
+				pending = false
+				if scroll.Parent and scroll.Visible and keeperState[scroll] then
+					C.BuildKeeper(scroll, keeperState[scroll])
+				end
+			end)
+		end)
+	end
 	local catalog = Catalog.Wait()
 	local pos = P.Reset(scroll)
 	local order = 0
@@ -199,60 +268,101 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 		order += 1
 		return order
 	end
-
-	if not Scale.Phone then
-		local card = P.Card(scroll, nxt())
-		local level, xp, need = state.Level or 1, state.Xp or 0, math.max(state.XpToNext or 1, 1)
-		local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 1 }, card)
-		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, head)
-		local portrait = SpriteIds.Portraits.Keeper
-		if Sprites.Ok(portrait) then
-			make("ImageLabel", { BackgroundTransparency = 1, Image = portrait, Size = UDim2.fromOffset(56, 56), ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1 }, head)
-		else
-			Kit.Icon(head, "Keeper", UDim2.fromOffset(48, 48)).LayoutOrder = 1
-		end
-		local title = P.Text(head, "Lv " .. level, Theme.TextSize.Title, Theme.TextPrimary, true, 2)
-		title.Size, title.AutomaticSize = UDim2.new(1, -66, 1, 0), Enum.AutomaticSize.None
-		local bar = Kit.Bar(card, UDim2.new(1, 0, 0, 28))
-		bar.Instance.LayoutOrder = 2
-		bar.Set(xp / need, string.format("%d/%d", xp, need))
-		local b = state.Bonuses or {}
-		local flow = P.ChipFlow(card, 3)
-		for i, e in { { "Coin", "Coins", "Coins" }, { "Loot", "Loot", "Loot chance" }, { "Xp", "Xp", "XP" } } do
-			P.Chip(flow, i, function(p)
-				return Kit.Icon(p, e[1], UDim2.fromOffset(24, 24))
-			end, "+" .. P.Pct(b[e[2]] or 0), Theme.TextPrimary, e[3])
-		end
-
+	local phone = Scale.Phone
+	local avail = availWidth(scroll)
+	local sc = math.max(Scale.Value, 0.01)
+	local visH = scroll.AbsoluteSize.Y / sc
+	if visH < 100 then
+		visH = if phone then 190 else 430
 	end
-	P.Section(scroll, "Permanent upgrades", nxt())
+	local function spacer(h: number, o: number)
+		make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, h), LayoutOrder = o }, scroll)
+	end
+	spacer(4, nxt())
+
+	-- Compact header: ONE Row.Well line with portrait, level and the XP bar (the perk totals live in the HUD chips).
+	local level, xp, need = state.Level or 1, state.Xp or 0, math.max(state.XpToNext or 1, 1)
+	local ROW = Kit.Spec("Row.Well")
+	local hw = math.floor(math.min(avail, if phone then 300 else 320))
+	local hh = hw * ROW.Size.Y / ROW.Size.X
+	local head = Kit.Panel(scroll, { Sprite = "Row", Size = UDim2.fromOffset(hw, hh), LayoutOrder = nxt() })
+	local hc = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, head)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, hc)
+	local ihh = hh * 0.6
+	local portrait = SpriteIds.Portraits.Keeper
+	local pic
+	if Sprites.Ok(portrait) then
+		pic = make("ImageLabel", { BackgroundTransparency = 1, Image = portrait, Size = UDim2.fromOffset(ihh, ihh), ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1 }, hc)
+	else
+		pic = Kit.Icon(hc, "Keeper", UDim2.fromOffset(ihh, ihh))
+		pic.LayoutOrder = 1
+	end
+	local title = Kit.Label(hc, "Lv " .. level, Theme.TextSize.Heading, Theme.TextPrimary, true)
+	title.Size, title.TextWrapped, title.LayoutOrder, title.TextXAlignment = UDim2.fromOffset(ihh * 1.5, ihh), false, 2, Enum.TextXAlignment.Left
+	Kit.Stroke(title, Theme.Stroke, 2)
+	Kit.FixedText(title, Theme.TextSize.Heading)
+	local bw = hw * 0.9 - ihh * 2.5 - 24
+	local bar = Kit.Bar(hc, UDim2.fromOffset(math.max(bw, 90), ihh * 1.1))
+	bar.Instance.LayoutOrder = 3
+	bar.Set(xp / need, string.format("%d/%d", xp, need))
+
+	if phone then
+		-- No room for the level line on a phone well (the HUD already shows level and XP): the cards get the space.
+		head.Visible, head.Size, hh = false, UDim2.fromOffset(0, 0), 0
+	end
 	local coins = state.Coins or 0
-	local cols = math.min(P.Columns(scroll), 3)
-	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, if Scale.Phone then 150 else 270), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
-	for order, def in catalog.Permanent do
+	-- Grid of whole Card.Shop cards (294:272), 3 across: icon, effect, level chip, ButtonPrice. Desktop shows 2 rows; on a phone
+	-- one full row and a visible part of the next as a scroll hint.
+	local CARD = Kit.Spec("Card.Shop")
+	local ratio = CARD.Size.X / CARD.Size.Y
+	local gap = 10
+	local widthCell = math.floor((avail - gap * 2) / 3)
+	local freeH = visH - 12 - hh - 6 - 14
+	local fromH
+	if phone then
+		fromH = math.max(freeH - 40, 150) -- leaves ~40 px of the next row visible
+	else
+		fromH = (freeH - gap) / 2
+	end
+	-- Desktop: the three columns fill the well's width (big cards; the second row scrolls into view). Phone: sized so one
+	-- whole row plus a hint of the next shows.
+	local cellW = math.floor(if phone then math.min(widthCell, fromH * ratio) else widthCell)
+	cellW = math.max(cellW, 120)
+	local cellH = math.floor(cellW / ratio)
+	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.fromOffset(cellW * 3 + gap * 2, 0), LayoutOrder = nxt() }, scroll)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(gap, gap), CellSize = UDim2.fromOffset(cellW, cellH), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Left }, grid)
+	local ci = CARD.Inner :: Rect
+	local innerW = cellW * (ci.Max.X - ci.Min.X) / CARD.Size.X
+	local innerH = cellH * (ci.Max.Y - ci.Min.Y) / CARD.Size.Y
+	local btnW = math.floor(innerW * 0.94)
+	local btnH = math.floor(math.min(innerH * 0.32, btnW / 3))
+	for index, def in catalog.Permanent do
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0
 		local cost = (state.PermanentNextCost or {})[id]
 		local icon = ({ Coins = "Coin", Loot = "DropChance", Xp = "Xp", DefenderHealth = "Heal", VariantChance = "Crown", VaultRate = "Exchange" })[def.Effect] or "Upgrade"
-		-- Card well (Panel.Section): art, effect line, level chip (Chip.Dark "1/10") and the yellow price button.
-		local card = Kit.Panel(grid, { Sprite = "Card", LayoutOrder = order, Pad = Vector2.new(6, 4) })
-		make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
-		Kit.Icon(card, icon, UDim2.fromOffset(if Scale.Phone then 34 else 78, if Scale.Phone then 34 else 78)).LayoutOrder = 1
-		local label = Kit.Label(card, def.PerLevelText, 26, Theme.TextPrimary, true)
-		label.Size, label.LayoutOrder, label.TextScaled, label.Active = UDim2.new(1, 0, 0, if Scale.Phone then 26 else 34), 2, true, true
-		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 28 }, label)
-		Kit.Stroke(label, Theme.Stroke, 2)
-		Kit.Tip(label, def.Name .. ": " .. def.PerLevelText)
-		local lvChip = Kit.Pill(card, string.format("%d/%d", lv, def.MaxLevel), Theme.BgDeep, Theme.TextPrimary, if Scale.Phone then 26 else 32)
-		Kit.PillLabel(lvChip).TextSize = 21
-		lvChip.LayoutOrder = 3
-		local buy = Kit.Button(card, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "Coin" else nil, IconLayout = "Row", Style = "Primary", TextSize = 26, Size = UDim2.new(1, 0, 0, if Scale.Phone then 46 else 54), LayoutOrder = 4, OnClick = function()
+		local card = Kit.Panel(grid, { Sprite = "CardShop", LayoutOrder = index, Active = true })
+		card.ClipsDescendants = false
+		local content = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, card)
+		make("UIListLayout", { Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center }, content)
+		local isz = math.floor(innerH * (if phone then 0.2 else 0.3))
+		local art = Kit.Icon(content, icon, UDim2.fromOffset(isz, isz))
+		art.LayoutOrder = 1
+		local label = Kit.Label(content, def.PerLevelText, 22, Theme.TextPrimary, true)
+		-- The upgrade name: one fixed size on every card, two lines allowed (the row is sized for two).
+		label.Size, label.LayoutOrder, label.TextWrapped = UDim2.fromOffset(innerW, 50), 2, true
+		Kit.FixedText(label, 20)
+		Kit.Stroke(label, Theme.Stroke, 1.5)
+		Kit.Tip(content, def.Name .. ": " .. def.PerLevelText)
+		local chip = Kit.Tag(content, string.format("%d/%d", lv, def.MaxLevel), if lv >= def.MaxLevel then "Chip.Gold" else "Chip.Purple", if lv >= def.MaxLevel then Theme.TextOnGold else Theme.TextPrimary, math.max(26, math.floor(innerH * 0.17)))
+		chip.LayoutOrder = 3
+		local buy = Kit.Button(content, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "Coin" else nil, IconLayout = "Row", Style = "Primary", Price = true, TextSize = 26, Size = UDim2.fromOffset(btnW, btnH), LayoutOrder = 4, OnClick = function()
 			local ok, res = Net.Invoke("BuyPermanent", id)
 			if not ok then Toast.Show(ReasonText.Get(res), "Bad") else Sound.Play("UpgradePurchase") end
 		end })
 		buy.SetEnabled(cost ~= nil and coins >= cost)
 	end
+	spacer(24, nxt())
 	task.defer(function()
 		scroll.CanvasPosition = pos
 	end)

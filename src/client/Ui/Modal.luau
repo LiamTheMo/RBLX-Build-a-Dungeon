@@ -10,15 +10,16 @@ local make = Kit.Make
 
 local Modal = { All = {} :: { any } }
 
-local PAD_X, PAD_TOP, PAD_BOTTOM = 22, 64, 26
 local function topMargin(): number
 	return if Scale.Phone then 64 else 100
 end
 
--- Sizes are reference px (before UIScale) of the modal rectangle; `phone` is used when Scale.Phone. The group never
--- exceeds the screen (clamped in Layout) so small windows keep the close button reachable. titleIcon is kept for
--- callers; the plate carries the title only.
-function Modal.New(gui: ScreenGui, title: string, _titleIcon: string, desktop: Vector2, phone: Vector2, wideFrac: number?)
+-- The modal back is ONE whole image (Panel.Modal 890x494, or Panel.ModalCompact 394x270 when `compact`), so its height
+-- always follows its width at the art's aspect. desktop / phone .X is the preferred width (reference px, before UIScale;
+-- .Y is ignored); `phone` is used when Scale.Phone, wideFrac widens it to that fraction of the view on desktop. The width
+-- shrinks until the modal and its title plate fit between the top margin and the navigation row, so small windows keep the
+-- close button reachable. The body is the art's Inner rect (px, relative to the modal). titleIcon is kept for callers.
+function Modal.New(gui: ScreenGui, title: string, _titleIcon: string, desktop: Vector2, phone: Vector2, wideFrac: number?, compact: boolean?)
 	local group = make("CanvasGroup", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		BackgroundTransparency = 1,
@@ -36,8 +37,8 @@ function Modal.New(gui: ScreenGui, title: string, _titleIcon: string, desktop: V
 	local lastView, lastHeight = 0, 0
 	local chrome = Kit.ModalChrome(group, title, function()
 		self.Close()
-	end)
-	local body = make("Frame", { Name = "Body", BackgroundTransparency = 1, Position = UDim2.fromOffset(PAD_X, PAD_TOP), ClipsDescendants = true }, chrome.Root)
+	end, if compact then "PlainCompact" else "Plain")
+	local body = make("Frame", { Name = "Body", BackgroundTransparency = 1, ClipsDescendants = true }, chrome.Root)
 	self = { Group = group, IsOpen = false, Title = chrome.Title, Body = body, Chrome = chrome }
 
 	function self.Layout()
@@ -45,22 +46,24 @@ function Modal.New(gui: ScreenGui, title: string, _titleIcon: string, desktop: V
 		local reserve = if Scale.Phone then 116 else 170
 		local top = topMargin()
 		local view = (gui.AbsoluteSize / math.max(Scale.Value, 0.01)) - Vector2.new(12, reserve + top)
+		local width = size.X
 		if not Scale.Phone and wideFrac then
-			size = Vector2.new(math.max(size.X, view.X * wideFrac), size.Y)
+			width = math.max(width, view.X * wideFrac)
 		end
-		local overhang = chrome.Layout(size.X)
+		local overhang = chrome.Layout(width)
 		if view.X > 50 and view.Y > 50 then
-			size = Vector2.new(math.min(size.X, view.X), math.min(size.Y, view.Y - overhang))
-			overhang = chrome.Layout(size.X)
+			width = math.min(width, view.X, (view.Y - overhang) * chrome.Ratio)
+			overhang = chrome.Layout(width)
+			width = math.min(width, (view.Y - overhang) * chrome.Ratio)
 		end
+		local height = width / chrome.Ratio
 		dismiss.Size = UDim2.new(1, 0, 1, -reserve)
 		lastView = view.Y
-		lastHeight = size.Y + overhang
-		group.Size = UDim2.fromOffset(size.X, size.Y + overhang)
-		chrome.Root.Position, chrome.Root.Size = UDim2.fromOffset(0, overhang), UDim2.fromOffset(size.X, size.Y)
-		local bodyTop = if Scale.Phone then PAD_TOP - 14 else PAD_TOP
-		body.Position = UDim2.fromOffset(PAD_X, bodyTop)
-		body.Size = UDim2.new(1, -PAD_X * 2, 1, -bodyTop - PAD_BOTTOM)
+		lastHeight = height + overhang
+		group.Size = UDim2.fromOffset(width, height + overhang)
+		chrome.Root.Position, chrome.Root.Size = UDim2.fromOffset(0, overhang), UDim2.fromOffset(width, height)
+		local bx, by, bw, bh = chrome.BodyRect(width, height)
+		body.Position, body.Size = UDim2.fromOffset(bx, by), UDim2.fromOffset(bw, bh)
 		lastOverhang = overhang
 		group.Position = UDim2.new(0.5, 0, 0, top + math.max(0, (lastView - lastHeight) / 2))
 	end

@@ -7,6 +7,7 @@ local Kit = require(script.Parent.Kit)
 local P = require(script.Parent.PanelsKit)
 local Sprites = require(script.Parent.Sprites)
 local SpriteIds = require(script.Parent.SpriteIds)
+local Scale = require(script.Parent.Scale)
 local Theme = require(script.Parent.Theme)
 
 local make = Kit.Make
@@ -39,30 +40,55 @@ local function hrow(parent: Instance, padding: number, props: { [string]: any }?
 	return f
 end
 
--- A tinted band: leading art, chance icon and percent.
-local function band(parent: Instance, order: number, color: Color3, art: (Instance) -> GuiObject, chance: number, tip: string)
-	local f = make("ImageLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = order, Active = true, Image = "" }, parent)
-	Kit.Skin(f, Kit.Spec("Chip.Dark"), "Uniform", nil, nil)
-	local _ = color -- the tier colour shows in the chance text, the plate is the dark chip
-	make("UIPadding", { PaddingLeft = UDim.new(0, 26), PaddingRight = UDim.new(0, 30) }, f)
+-- Row.Well (one whole sprite, 514x126): a row of `rowW` reference px wide; its content area (Inner) is returned as the panel itself.
+local ROW = Kit.Spec("Row.Well")
+local function rowPanel(parent: Instance, order: number, rowW: number): any
+	local row = Kit.Panel(parent, { Sprite = "Row", Size = UDim2.fromOffset(rowW, rowW * ROW.Size.Y / ROW.Size.X), LayoutOrder = order, Active = true })
+	return row
+end
+-- Height (px) of the content area of a Row.Well that is rowW wide.
+local function rowInnerH(rowW: number): number
+	return rowW * ROW.Size.Y / ROW.Size.X * (ROW.Inner.Max.Y - ROW.Inner.Min.Y) / ROW.Size.Y
+end
+
+-- Row width for the full card: the parent's width (capped), 480 before it is measured.
+local function widthOf(parent: Instance): number
+	local w = if parent:IsA("GuiObject") then parent.AbsoluteSize.X / math.max(Scale.Value, 0.01) - 16 else 0
+	if w < 120 then
+		w = 480
+	end
+	return math.min(w, 520)
+end
+
+-- A Row.Well band: leading art, chance icon and percent.
+local function band(parent: Instance, order: number, color: Color3, art: (Instance) -> GuiObject, chance: number, tip: string, rowW: number)
+	local f = rowPanel(parent, order, rowW)
+	local _ = color -- the tier colour shows in the chance text, the plate is the dark well
+	local ih = rowInnerH(rowW)
 	local left = hrow(f, 6, { BackgroundTransparency = 1, Size = UDim2.new(0.5, 0, 1, 0) })
-	art(left).LayoutOrder = 1
+	local a = art(left)
+	a.Size = UDim2.fromOffset(ih * 0.9, ih * 0.9)
+	a.LayoutOrder = 1
 	local right = hrow(f, 8, { BackgroundTransparency = 1, Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.5, 1) })
-	Kit.Icon(right, "DropChance", UDim2.fromOffset(30, 30)).LayoutOrder = 1
+	Kit.Icon(right, "DropChance", UDim2.fromOffset(ih * 0.6, ih * 0.6)).LayoutOrder = 1
 	local l = Kit.Label(right, P.Pct(chance), Theme.TextSize.Number - 2, Theme.TextPrimary, true)
-	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, 40), false, 2
+	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, ih * 0.8), false, 2
 	Kit.Stroke(l, Theme.Stroke, 2)
 	Kit.Tip(f, tip)
 	return f
 end
 
+-- Hud.Pill (one whole sprite, 3.6:1) with icon + text inside its Inner rect.
+local PILL = Kit.Spec("Hud.Pill")
 local function statChip(parent: Instance, order: number, icon: string, text: string, tip: string)
-	local c = Kit.Panel(parent, { Sprite = "Pill", AutomaticSize = X, Size = UDim2.fromOffset(0, 36), LayoutOrder = order, Active = true })
-	local row = hrow(c, 6, { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromScale(0, 1) })
-	make("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }, row)
-	Kit.Icon(row, icon, UDim2.fromOffset(26, 26)).LayoutOrder = 1
+	local h = 64
+	local c = Kit.Panel(parent, { Sprite = "Pill", Size = UDim2.fromOffset(h * PILL.Size.X / PILL.Size.Y, h), LayoutOrder = order, Active = true })
+	local row = hrow(c, 6, { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
+	local ih = h * (PILL.Inner.Max.Y - PILL.Inner.Min.Y) / PILL.Size.Y
+	Kit.Icon(row, icon, UDim2.fromOffset(ih * 0.9, ih * 0.9)).LayoutOrder = 1
 	local l = Kit.Label(row, text, Theme.TextSize.Body, Theme.TextPrimary, true)
-	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, 30), false, 2
+	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, ih), false, 2
+	Kit.FixedText(l, Theme.TextSize.Label)
 	Kit.Tip(c, tip)
 	return c
 end
@@ -130,7 +156,8 @@ function DropCard.Fill(parent: Instance, visitorId: string, state: any, full: bo
 		return
 	end
 
-	local head = hrow(parent, 10, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = base + 1 })
+	local rowW = widthOf(parent)
+	local head = hrow(parent, 10, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 68), LayoutOrder = base + 1 })
 	local pid = SpriteIds.Portraits[visitorId]
 	if Sprites.Ok(pid) then
 		make("ImageLabel", { BackgroundTransparency = 1, Image = pid, Size = UDim2.fromOffset(52, 52), ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1 }, head)
@@ -144,13 +171,13 @@ function DropCard.Fill(parent: Instance, visitorId: string, state: any, full: bo
 		order2 += 1
 		band(parent, order2, BAND[d.Type] or BAND.Dungeon, function(p)
 			return Kit.Icon(p, boxIcon(d.Type), UDim2.fromOffset(34, 34))
-		end, d.Chance or 0, boxName(d.Type))
+		end, d.Chance or 0, boxName(d.Type), rowW)
 	end
 	if #blueprints > 0 then
 		order2 += 1
 		band(parent, order2, BAND.Blueprint, function(p)
 			return Kit.Icon(p, "Blueprint", UDim2.fromOffset(34, 34))
-		end, blueprintTotal, "Blueprint")
+		end, blueprintTotal, "Blueprint", rowW)
 		order2 += 1
 		local rooms = P.ChipFlow(parent, order2)
 		for i, d in blueprints do
@@ -161,26 +188,27 @@ function DropCard.Fill(parent: Instance, visitorId: string, state: any, full: bo
 	end
 	for _, v in t.Variants or {} do
 		order2 += 1
-		local row = Kit.Panel(parent, { Sprite = "Row", Size = UDim2.new(1, 0, 0, 56), LayoutOrder = order2, Active = true })
+		local row = rowPanel(parent, order2, rowW)
+		local ih = rowInnerH(rowW)
 		local cells = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, row)
 		local function at(obj, x)
 			obj.AnchorPoint, obj.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(x, 0.5)
 		end
-		local badge = Badges.Variant(cells, v.Id, 36)
+		local badge = Badges.Variant(cells, v.Id, ih * 0.8)
 		if badge then at(badge, 0.10) end
-		at(Kit.Icon(cells, "DropChance", UDim2.fromOffset(26, 26)), 0.25)
+		at(Kit.Icon(cells, "DropChance", UDim2.fromOffset(ih * 0.55, ih * 0.55)), 0.25)
 		local chance = Kit.Label(cells, P.Pct(v.Chance or 0), Theme.TextSize.Body, Theme.TextPrimary, true)
-		chance.Size, chance.TextWrapped = UDim2.new(0.15, 0, 0, 36), false
+		chance.Size, chance.TextWrapped = UDim2.new(0.15, 0, 0, ih * 0.7), false
+		Kit.FixedText(chance, Theme.TextSize.Label)
 		at(chance, 0.35)
-		at(Kit.Icon(cells, "CoinRange", UDim2.fromOffset(26, 26)), 0.48)
+		at(Kit.Icon(cells, "CoinRange", UDim2.fromOffset(ih * 0.55, ih * 0.55)), 0.48)
 		local coins = Kit.Label(cells, Badges.Range(v.Coins), Theme.TextSize.Body, Theme.Gold, true)
-		coins.Size, coins.TextWrapped = UDim2.new(0.22, 0, 0, 36), false
-		coins.TextScaled = true
-		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = Theme.TextSize.Body }, coins)
+		coins.Size, coins.TextWrapped = UDim2.new(0.22, 0, 0, ih * 0.7), false
+		Kit.FixedText(coins, Theme.TextSize.Label)
 		at(coins, 0.64)
 		if v.GuaranteedBox then
-			at(Kit.Icon(cells, boxIcon(v.GuaranteedBox), UDim2.fromOffset(30, 30)), 0.82)
-			at(Kit.Icon(cells, "Check", UDim2.fromOffset(16, 16), Theme.Success), 0.92)
+			at(Kit.Icon(cells, boxIcon(v.GuaranteedBox), UDim2.fromOffset(ih * 0.7, ih * 0.7)), 0.82)
+			at(Kit.Icon(cells, "Check", UDim2.fromOffset(ih * 0.35, ih * 0.35), Theme.Success), 0.92)
 		end
 		Kit.Tip(row, tostring(v.Id) .. (if v.GuaranteedBox then " - guaranteed " .. boxName(v.GuaranteedBox) else ""))
 	end

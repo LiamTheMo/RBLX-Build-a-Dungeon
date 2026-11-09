@@ -349,12 +349,6 @@ local function remaining(key: string?): number
 	return if g then #g.Free else 0
 end
 
--- Card frame border in reference px (v6 rarity frame, uniform slice scale capped at 0.5).
-local function cardBorder(w: number, h: number): number
-	local spec = Kit.Spec("Rarity.Common")
-	return math.ceil(math.min(w / spec.Size.X, h / spec.Size.Y, 0.5) * spec.SliceCenter.Min.X)
-end
-
 local function refreshInventory()
 	for _, c in ui.Scroll:GetChildren() do
 		if c:IsA("TextButton") then
@@ -373,9 +367,27 @@ local function refreshInventory()
 	if ui.Empty then
 		ui.Empty.Visible = #keys == 0
 	end
-	local cardW, cardH = if phone then 128 else 156, if phone then 160 else 196
-	local border = cardBorder(cardW, cardH)
-	local roomSize = if phone then 46 else 62
+	-- The tray holds one row of whole rarity frames (Rarity.* art, 0.72:1) as tall as the tray's Inner rect.
+	local cardH = math.max(60, math.floor((ui.TrayInnerH or 110) - (if phone then 4 else 12)))
+	local rs = Kit.Spec("Rarity.Common")
+	local cardW = math.floor(cardH * rs.Size.X / rs.Size.Y)
+	local roomSize = math.floor(cardH * 0.36)
+	-- ONE name size for every card of this layout: 18, or the largest size at which the longest single word of any name fits the
+	-- card (a word never breaks mid-letter). It never varies per card.
+	local nameSize = Theme.TextSize.Label
+	local availW = cardW * 0.96
+	for _, k in keys do
+		local nm = Catalog.Room(groups[k].Id)
+		for word in string.gmatch(if nm then nm.DisplayName else "", "%S+") do
+			local w = Kit.Measure(word, Theme.TextSize.Label, Theme.HeadingFont, 2000).X
+			if w > availW then
+				nameSize = math.min(nameSize, math.floor(Theme.TextSize.Label * availW / w))
+			end
+		end
+	end
+	nameSize = math.max(nameSize, 11)
+	-- The count chip rests on the card's top edge: the content starts 20 px lower, the room icon takes what the name leaves.
+	roomSize = math.clamp(cardH - 14 - math.ceil(nameSize * 2.2) - 2, 24, math.floor(cardH * 0.62))
 	for i, key in keys do
 		local g = groups[key]
 		local def = Catalog.Room(g.Id)
@@ -393,20 +405,23 @@ local function refreshInventory()
 				Build.Refresh()
 			end,
 		})
-		-- Content sits inside the frame's border: icon, name, perks; the count chip rests at the bottom.
-		local inner = make("CanvasGroup", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), GroupTransparency = if count > 0 then 0 else 0.5, ZIndex = 2 }, btn.Instance)
-		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, inner)
-		make("UIPadding", { PaddingTop = UDim.new(0, border + 5), PaddingBottom = UDim.new(0, border + 44), PaddingLeft = UDim.new(0, border + 3), PaddingRight = UDim.new(0, border + 3) }, inner)
+		-- Content sits inside the frame's Inner rect: icon, then the name wrapped on up to two lines, then perks. The count chip
+		-- rests on the top-right corner, clear of the name.
+		-- 130% of the Inner width (still inside the card art): names are one fixed size, so they need room not to break mid-word.
+		local inner = make("CanvasGroup", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(1.3, 1), GroupTransparency = if count > 0 then 0 else 0.5, ZIndex = 2 }, btn.Content)
+		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, inner)
+		make("UIPadding", { PaddingTop = UDim.new(0, 14) }, inner)
 		P.RoomImage(inner, g.Id, roomSize, def.Kind).LayoutOrder = 0
-		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 17 else 20, Theme.TextPrimary, true)
-		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 26 else 30), 1
+		local hasPerks = #g.Perks > 0 and not phone
+		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 14 else 18, Theme.TextPrimary, true)
+		-- One fixed name size (18) on every card, desktop and phone; the row holds two lines, a long name wraps.
+		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, math.ceil(nameSize * 2.2)), 1
 		name.TextYAlignment = Enum.TextYAlignment.Center
-		name.TextWrapped = false
-		name.TextScaled = true
-		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = if phone then 17 else 20 }, name)
+		name.TextWrapped = true
+		Kit.FixedText(name, nameSize)
 		Kit.Stroke(name, Theme.Stroke, 2)
-		if #g.Perks > 0 then
-			Kit.Perks(inner, g.Perks, phone).LayoutOrder = 3
+		if hasPerks then
+			Kit.Perks(inner, g.Perks, true).LayoutOrder = 3
 		end
 		if RarityColors.Shimmer[g.Rarity] then
 			btn.Shimmer()
@@ -414,7 +429,7 @@ local function refreshInventory()
 		if g.Modifier then
 			local mod = Badges.Modifier(btn.Instance, g.Modifier, if phone then 22 else 26)
 			if mod then
-				mod.AnchorPoint, mod.Position, mod.ZIndex = Vector2.new(0, 0), UDim2.new(0, border + 2, 0, border + 2), 4
+				mod.AnchorPoint, mod.Position, mod.ZIndex = Vector2.new(0, 0), UDim2.new(0, 6, 0, 6), 4
 				for _, d in mod:GetDescendants() do
 					if d:IsA("GuiObject") then
 						d.ZIndex = 4
@@ -422,13 +437,9 @@ local function refreshInventory()
 				end
 			end
 		end
-		-- Rarity gem inside the top-right of the frame; count chip inside the bottom.
-		local gemSize = if phone then 18 else 22
-		local gem = Kit.Gem(btn.Instance, g.Rarity, UDim2.fromOffset(gemSize, gemSize))
-		gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, -(border + 2), 0, border + 2), 4
-		local pill = Kit.Count(btn.Instance, ("x%d"):format(count), count > 0, 22)
-		pill.AnchorPoint, pill.Position, pill.ZIndex = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(border + 3)), 4
-		Kit.PillLabel(pill).ZIndex = 5
+		local pill = Kit.Count(btn.Instance, ("x%d"):format(count), count > 0, if phone then 28 else 32)
+		pill.AnchorPoint, pill.Position, pill.ZIndex = Vector2.new(1, 0), UDim2.new(1, -2, 0, -8), 6
+		Kit.PillLabel(pill).ZIndex = 7
 		btn.SetSelected(selectedType == key)
 		btn.SetEnabled(count > 0)
 	end
@@ -839,28 +850,46 @@ function Build.Layout()
 		return
 	end
 	local phone = Scale.Phone
-	local bn, bs = ui.Banner, ui.Inventory
-	local invH = if phone then 260 else 300
-	local invBottom = if phone then 4 else 16
-	local tabHeight = math.max(58, 46 / math.max(Scale.Value, 0.1))
-	ui.Scroll.Position = UDim2.fromOffset(0, tabHeight + 4)
-	ui.Scroll.Size = UDim2.new(1, 0, 1, -(tabHeight + 4))
-	if phone then
-		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 56), UDim2.fromOffset(320, 48)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(0.8, 0, 0, invH)
-	else
-		bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 96), UDim2.fromOffset(440, 56)
-		bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.new(0.72, 0, 0, invH)
+	local sc = math.max(Scale.Value, 0.01)
+	local view = ui.Gui.AbsoluteSize / sc
+	if view.X < 50 or view.Y < 50 then
+		view = workspace.CurrentCamera.ViewportSize / sc
 	end
-	-- Confirm / Cancel: centred right above the inventory bar, big touch targets.
-	ui.Buttons.AnchorPoint, ui.Buttons.Position = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(invBottom + invH + (if phone then 8 else 12)))
-	local bw, bh = if phone then 150 else 210, if phone then 52 else 64
+	local bn, bs = ui.Banner, ui.Inventory
+	-- Tray: Panel.Tray is one whole image (5.6:1); its height follows its width, kept to 40% of the screen.
+	local tray = Kit.Spec("Panel.Tray")
+	local ratio = tray.Size.X / tray.Size.Y
+	local trayW = math.min(view.X - (if phone then 8 else 24), if phone then 1180 else 1700)
+	local trayH = trayW / ratio
+	if trayH > view.Y * (if phone then 0.46 else 0.4) then
+		trayH = view.Y * (if phone then 0.46 else 0.4)
+		trayW = trayH * ratio
+	end
+	local invBottom = if phone then 4 else 12
+	bs.AnchorPoint, bs.Position, bs.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -invBottom), UDim2.fromOffset(trayW, trayH)
+	ui.TrayInnerH = trayH * (tray.Inner.Max.Y - tray.Inner.Min.Y) / tray.Size.Y
+	-- Kind tabs (Tab.On / Tab.Off, 2.6:1) sit on a row just above the tray; boxes are >= 44 real px tall.
+	local tabH = math.max(if phone then 44 else 56, (if phone then 44 else 46) / sc)
+	local tabW = math.floor(tabH * Kit.Spec("Tab.On").Size.X / Kit.Spec("Tab.On").Size.Y)
+	ui.KindRow.AnchorPoint, ui.KindRow.Position = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(invBottom + trayH + 2))
+	ui.KindRow.Size = UDim2.fromOffset(tabW * 5 + 4 * 6, tabH)
+	for _, tab in ui.KindTabs do
+		tab.Instance.Size = UDim2.fromOffset(tabW, tabH)
+	end
+	local bannerW = if phone then 380 else 440
+	local banner = Kit.Spec("ToastWide.Info")
+	bn.AnchorPoint, bn.Position, bn.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, if phone then 96 else 122), UDim2.fromOffset(bannerW, bannerW * banner.Size.Y / banner.Size.X)
+	-- Confirm / Cancel: centred right above the kind tabs, big touch targets (wide art, ~3.9:1).
+	local above = invBottom + trayH + 2 + tabH + (if phone then 6 else 10)
+	ui.Buttons.AnchorPoint, ui.Buttons.Position = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -above)
+	local bh = math.max(if phone then 52 else 60, 46 / sc)
+	local bw = math.floor(bh * 3.9)
 	ui.Commit.Instance.Size = UDim2.fromOffset(bw, bh)
 	ui.Cancel.Instance.Size = UDim2.fromOffset(bw, bh)
 	ui.View.Instance.AnchorPoint = Vector2.new(1, 1)
-	ui.View.Instance.Position = UDim2.new(1, if phone then -8 else -16, 1, -(invBottom + invH + (if phone then 8 else 12)))
-	ui.Commit.SetTextSize(if phone then 20 else 24)
-	ui.Cancel.SetTextSize(if phone then 20 else 24)
+	ui.View.Instance.Position = UDim2.new(1, if phone then -8 else -16, 1, -above)
+	ui.Commit.SetTextSize(22)
+	ui.Cancel.SetTextSize(22)
 end
 
 local function buildUi()
@@ -868,36 +897,37 @@ local function buildUi()
 	gui.Enabled = false
 	ui = { Gui = gui }
 
-	-- Route-state banner: ToastInfo (checking) / ToastGood (valid) / ToastBad (blocked) sprite with the matching icon.
-	ui.Banner = Kit.Panel(gui, { Sprite = "ToastInfo" })
-	ui.Banner:FindFirstChild("Inset"):Destroy()
+	-- Route-state banner: ToastWide Info (checking) / Good (valid) / Bad (blocked), one whole image with the matching icon.
+	ui.Banner = Kit.Panel(gui, { Sprite = "ToastWideInfo" })
 	ui.BannerSpec = function(kind: string)
-		local spec = Kit.Spec("Toast." .. kind)
+		local spec = Kit.Spec("ToastWide." .. kind)
 		if spec and ui.Banner.Image ~= spec.Id then
-			Kit.Reskin(ui.Banner, spec)
+			Kit.RepaintPanel(ui.Banner, "ToastWide" .. kind)
 		end
 		ui.IconInfo.Visible, ui.IconOk.Visible, ui.IconBad.Visible = kind == "Info", kind == "Good", kind == "Bad"
 	end
-	ui.IconInfo = Kit.Icon(ui.Banner, "Info", UDim2.fromOffset(28, 28))
-	ui.IconInfo.AnchorPoint, ui.IconInfo.Position = Vector2.new(0, 0.5), UDim2.new(0, 20, 0.5, 0)
-	ui.IconOk = Kit.Icon(ui.Banner, "Good", UDim2.fromOffset(28, 28))
-	ui.IconOk.AnchorPoint, ui.IconOk.Position = Vector2.new(0, 0.5), UDim2.new(0, 20, 0.5, 0)
-	ui.IconBad = Kit.Icon(ui.Banner, "Warn", UDim2.fromOffset(28, 28))
-	ui.IconBad.AnchorPoint, ui.IconBad.Position = Vector2.new(0, 0.5), UDim2.new(0, 20, 0.5, 0)
+	local function bannerIcon(name: string)
+		local ic = Kit.Icon(ui.Banner, name, UDim2.fromScale(1, 1))
+		make("UIAspectRatioConstraint", { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Height }, ic)
+		ic.AnchorPoint, ic.Position = Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5)
+		return ic
+	end
+	ui.IconInfo, ui.IconOk, ui.IconBad = bannerIcon("Info"), bannerIcon("Good"), bannerIcon("Warn")
 	ui.IconOk.Visible, ui.IconBad.Visible = false, false
 	ui.Status = Kit.Label(ui.Banner, "", Theme.TextSize.Body, Theme.TextPrimary, true)
-	ui.Status.Position = UDim2.fromOffset(58, 0)
-	ui.Status.Size = UDim2.new(1, -80, 1, 0)
+	ui.Status.Position = UDim2.new(0, 58, 0, 0)
+	ui.Status.Size = UDim2.new(1, -66, 1, 0)
 	ui.Status.TextXAlignment = Enum.TextXAlignment.Left
-	ui.Status.TextScaled = true
-	make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = Theme.TextSize.Body }, ui.Status)
+	ui.Status.TextWrapped = true
+	Kit.FixedText(ui.Status, 22)
 
-	ui.Inventory = Kit.Panel(gui, { Sprite = "Small", Pad = Vector2.new(6, 4) })
+	-- The tray: Panel.Tray (one whole image, 5.6:1) holding a single scrolling row of room cards; the kind tabs sit above it.
+	ui.Inventory = Kit.Panel(gui, { Sprite = "Tray" })
 	ui.KindTabs = {}
-	local tabs = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 60) }, ui.Inventory)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, tabs)
+	ui.KindRow = make("Frame", { Name = "KindTabs", BackgroundTransparency = 1 }, gui)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, ui.KindRow)
 	for order, kind in { "All", "Defender", "Trap", "Treasure", "Support" } do
-		local tab = Kit.Button(tabs, { Text = kind, Style = "Tab", TextSize = 24, Size = UDim2.new(0.2, -3, 0, 56), LayoutOrder = order, OnClick = function()
+		local tab = Kit.Button(ui.KindRow, { Text = kind, Style = "Tab", TextSize = 24, Size = UDim2.fromOffset(146, 56), LayoutOrder = order, OnClick = function()
 			selectedKind = kind
 			if not carry then selectedType = nil end
 			ui.Scroll.CanvasPosition = Vector2.zero
@@ -907,22 +937,21 @@ local function buildUi()
 	end
 	ui.Scroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, 48),
-		Size = UDim2.new(1, 0, 1, -48),
+		Size = UDim2.fromScale(1, 1),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.X,
 		ScrollingDirection = Enum.ScrollingDirection.X,
-		ScrollBarThickness = 8,
-		HorizontalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
+		ScrollBarThickness = 6,
+		HorizontalScrollBarInset = Enum.ScrollBarInset.None,
 		BorderSizePixel = 0,
 	}, ui.Inventory)
 	make("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, 8),
+		Padding = UDim.new(0, 14),
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, ui.Scroll)
-	make("UIPadding", { PaddingLeft = UDim.new(0, 2), PaddingRight = UDim.new(0, 2) }, ui.Scroll)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }, ui.Scroll)
 	ui.Empty = P.Empty(ui.Inventory, "No rooms to place", 1)
 	ui.Empty.AnchorPoint, ui.Empty.Position, ui.Empty.Visible = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), false
 
@@ -995,17 +1024,16 @@ local function buildUi()
 	ui.View.SetSelected(overview)
 
 	-- Selected-room callout: icon + name, then Move / Remove side by side.
-	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(300, 140), Pad = Vector2.new(4, 2) })
-	ui.CalloutIcon = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 0), Size = UDim2.fromOffset(40, 40), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Callout)
+	ui.Callout = Kit.Panel(gui, { Visible = false, Size = UDim2.fromOffset(360, 127) }) -- Panel.Section 706:248, whole
+	ui.CalloutIcon = make("ImageLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 0), Size = UDim2.fromOffset(38, 38), ScaleType = Enum.ScaleType.Fit, Image = "" }, ui.Callout)
 	ui.CalloutName = Kit.Label(ui.Callout, "", 20, Theme.TextPrimary, true)
-	ui.CalloutName.Position = UDim2.fromOffset(48, 0)
-	ui.CalloutName.Size = UDim2.new(1, -48, 0, 40)
+	ui.CalloutName.Position = UDim2.fromOffset(46, 0)
+	ui.CalloutName.Size = UDim2.new(1, -46, 0, 38)
 	ui.CalloutName.TextXAlignment = Enum.TextXAlignment.Left
-	ui.CalloutName.TextScaled = true
-	make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 22 }, ui.CalloutName)
+	Kit.FixedText(ui.CalloutName, 20)
 	local move = Kit.Button(ui.Callout, {
 		Text = "Move",
-		Size = UDim2.new(0.5, -4, 0, 50),
+		Size = UDim2.new(0.5, -4, 0, 46),
 		OnClick = function()
 			local instanceId = selectedCell and draft[selectedCell]
 			if instanceId then
@@ -1018,11 +1046,11 @@ local function buildUi()
 			end
 		end,
 	})
-	move.Instance.Position = UDim2.fromOffset(0, 48)
+	move.Instance.Position = UDim2.fromOffset(0, 42)
 	local remove = Kit.Button(ui.Callout, {
 		Text = "Remove",
 		Style = "Danger",
-		Size = UDim2.new(0.5, -4, 0, 50),
+		Size = UDim2.new(0.5, -4, 0, 46),
 		OnClick = function()
 			if selectedCell then
 				draft[selectedCell] = nil
@@ -1032,7 +1060,7 @@ local function buildUi()
 			end
 		end,
 	})
-	remove.Instance.AnchorPoint, remove.Instance.Position = Vector2.new(1, 0), UDim2.new(1, 0, 0, 48)
+	remove.Instance.AnchorPoint, remove.Instance.Position = Vector2.new(1, 0), UDim2.new(1, 0, 0, 42)
 
 	Scale.Changed:Connect(function()
 		Build.Layout()

@@ -20,7 +20,7 @@ function Controller.Start()
 		Catalog.Wait()
 		local plot = Plots.WaitOwn()
 		local gui = Kit.Screen("RoomInspector", 24)
-		local modal = Modal.New(gui, "Room", "Defender", Vector2.new(540, 340), Vector2.new(510, 290))
+		local modal = Modal.New(gui, "Room", "Defender", Vector2.new(720, 0), Vector2.new(640, 0))
 		local selected: string? = nil
 		local function fill()
 			for _, child in modal.Body:GetChildren() do child:Destroy() end
@@ -45,7 +45,7 @@ function Controller.Start()
 				ability.Text = "Idle: off the route. " .. ability.Text
 			end
 			if def.Kind == "Treasure" then
-				local button = Kit.Button(root, { Text = "Vault", Icon = "Vault", IconLayout = "Row", Style = "Primary", Size = UDim2.fromOffset(150, 48) })
+				local button = Kit.Button(root, { Text = "Vault", Icon = "Vault", IconLayout = "Row", Style = "Primary", Size = UDim2.fromOffset(220, 54) })
 				button.Instance.AnchorPoint, button.Instance.Position = Vector2.new(1, 1), UDim2.fromScale(1, 1)
 				button.Instance.Activated:Connect(function() modal.Close(); Bus.VaultRequested:Fire() end)
 			end

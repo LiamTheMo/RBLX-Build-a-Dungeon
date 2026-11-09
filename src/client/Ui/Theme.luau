@@ -26,7 +26,7 @@ local Theme = {
 	-- Rarity accents (always paired with the rarity name, never colour alone).
 	Rarity = RarityColors.Accent,
 
-	TextSize = { Title = 36, Heading = 28, Button = 26, Number = 30, Body = 23, Caption = 18 },
+	TextSize = { Title = 36, Heading = 28, Button = 26, Number = 30, Body = 23, Caption = 18, Label = 18, Tiny = 16 },
 	CornerPanel = UDim.new(0, 16),
 	CornerButton = UDim.new(0, 12),
 	CornerPill = UDim.new(1, 0),

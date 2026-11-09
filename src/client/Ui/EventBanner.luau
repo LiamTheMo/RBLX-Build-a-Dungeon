@@ -27,23 +27,36 @@ function Banner.Start()
 	end
 	started = true
 	local gui = Kit.Screen("Events", 4)
-	local frame = make("Frame", { Name = "Banner", AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1, Visible = false, AutomaticSize = Enum.AutomaticSize.X }, gui)
+	-- Hud.BarWideGold: one whole image (4.17:1); the row of icon, name, clock and timer sits in its Inner rect and shrinks
+	-- (UIScale) when the event name is long.
+	local frame = make("Frame", { Name = "Banner", AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1, Visible = false }, gui)
 	local pop = make("UIScale", {}, frame)
-	local pill = Kit.Panel(frame, { Sprite = "PillGold", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1) })
+	local pill = Kit.Panel(frame, { Sprite = "BarGold", Size = UDim2.fromScale(1, 1) })
 	local glow = Kit.Glow(pill, Theme.Gold, 1)
 	glow.Size, glow.ZIndex = UDim2.new(1.5, 0, 3, 0), 10
-	local row = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1) }, pill)
-	make("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 18) }, row)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }, row)
+	local rowHolder = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, pill)
+	local rowScale = make("UIScale", {}, rowHolder)
+	local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, rowHolder)
+	local rowLayout = make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }, row)
+	local function fitRow()
+		local avail = row.AbsoluteSize.X / math.max(Scale.Value, 0.01)
+		local need = rowLayout.AbsoluteContentSize.X / math.max(rowScale.Scale, 0.01)
+		if avail > 10 and need > 0 then
+			rowScale.Scale = math.min(1, avail / need)
+		end
+	end
+	rowHolder.Size = UDim2.fromScale(1, 1)
 	local icon = Kit.Icon(row, "GoldenHour", UDim2.fromOffset(34, 34))
 	icon.LayoutOrder = 1
 	local name = Kit.Label(row, "", Theme.TextSize.Heading, Theme.Gold, true)
-	name.AutomaticSize, name.Size, name.TextWrapped, name.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false, 2
+	name.AutomaticSize, name.Size, name.TextWrapped, name.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 30), false, 2
 	Kit.Stroke(name, Theme.Stroke, 2)
 	local clock = Kit.Icon(row, "Clock", UDim2.fromOffset(24, 24))
 	clock.LayoutOrder = 3
 	local timer = Kit.Label(row, "", Theme.TextSize.Body + 2, Theme.TextPrimary, true)
 	timer.AutomaticSize, timer.Size, timer.TextWrapped, timer.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 32), false, 4
+	rowLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitRow)
+	row:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitRow)
 	frame.Active = true
 	Kit.Tip(frame, function()
 		local id = workspace:GetAttribute("ActiveEvent")
@@ -58,10 +71,14 @@ function Banner.Start()
 	local shownId = ""
 	local function layout()
 		local phone = Scale.Phone
-		frame.Position = UDim2.new(0.5, 0, 0, if phone then 150 else 204)
-		frame.Size = UDim2.fromOffset(0, if phone then 40 else 48)
-		name.TextSize = if phone then 18 else Theme.TextSize.Heading
-		icon.Size = UDim2.fromOffset(if phone then 28 else 34, if phone then 28 else 34)
+		-- Hud.BarWideGold is 534:128; height follows width. Sits under the next-visitor chip row.
+		local w = if phone then 250 else 330
+		frame.Position = UDim2.new(0.5, 0, 0, if phone then 138 else 212)
+		frame.Size = UDim2.fromOffset(w, w * 128 / 534)
+		name.TextSize = if phone then 16 else 22
+		timer.TextSize = if phone then 16 else 22
+		icon.Size = UDim2.fromOffset(if phone then 24 else 30, if phone then 24 else 30)
+		clock.Size = UDim2.fromOffset(if phone then 18 else 24, if phone then 18 else 24)
 	end
 	Scale.Changed:Connect(layout)
 	layout()
@@ -99,7 +116,7 @@ function Banner.Start()
 			icon.Image = sprite or ""
 		end
 		frame.Visible = true
-		Bus.ToastOffset = if Scale.Phone then 50 else 62
+		Bus.ToastOffset = if Scale.Phone then 0 else 96
 		if announce then
 			celebrate()
 		end

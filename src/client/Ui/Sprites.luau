@@ -8,7 +8,6 @@ local RunService = game:GetService("RunService")
 local Ids = require(script.Parent.SpriteIds)
 local Ids3 = require(script.Parent.SpriteIds3)
 local IconIds = require(script.Parent.IconIds)
-local Atlas = require(script.Parent.Atlas)
 local Ids4 = require(script.Parent.SpriteIds4) -- icons and in-world art only
 local Ids6 = require(script.Parent.SpriteIds6) -- the unified UI kit: every frame, button, bar, chip, badge and toast
 
@@ -81,7 +80,6 @@ task.spawn(function()
 	collect(Ids, ids)
 	collect(Ids3, ids)
 	collect(IconIds, ids)
-	collect(Atlas, ids)
 	collect(Ids4, ids)
 	collect(Ids6, ids)
 	local seen, unique = {}, {}
