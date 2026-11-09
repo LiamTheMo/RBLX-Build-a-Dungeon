@@ -30,7 +30,7 @@ function Threat.Build(body: GuiObject)
 	local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 1 }, root)
 	local tierGrid = make("UIGridLayout", {
 		CellPadding = UDim2.fromOffset(8, 8),
-		CellSize = UDim2.new(1 / 6, -7, 1, 0),
+		CellSize = UDim2.new(1 / 6, -9, 1, 0),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 	}, row)
@@ -41,9 +41,9 @@ function Threat.Build(body: GuiObject)
 		local btn
 		btn = Kit.Button(row, {
 			Text = "",
-			Style = "Secondary",
+			Style = "Card",
 			Icon = "T" .. tier,
-			IconScale = 0.62,
+			IconScale = 0.58,
 			LayoutOrder = tier,
 			Tip = "T" .. tier,
 			OnClick = function()
@@ -60,11 +60,11 @@ function Threat.Build(body: GuiObject)
 		})
 		local card = { Button = btn }
 		-- One check marks the selected tier; keep it inside the card bounds.
-		card.Check = Kit.Icon(btn.Instance, "ThreatCheck", UDim2.fromScale(0.26, 0.26))
+		card.Check = Kit.Sprite(btn.Instance, "Round.Confirm", { Size = UDim2.fromScale(0.26, 0.26) })
 		make("UIAspectRatioConstraint", { AspectRatio = 1 }, card.Check)
 		card.Check.AnchorPoint, card.Check.Position, card.Check.ZIndex, card.Check.Visible = Vector2.new(1, 0), UDim2.new(1, -4, 0, 4), 5, false
 		-- Locked: padlock over the badge and the level it needs.
-		card.Lock = Kit.Icon(btn.Instance, "ThreatLock", UDim2.fromScale(0.36, 0.36))
+		card.Lock = Kit.Sprite(btn.Instance, "Round.Lock", { Size = UDim2.fromScale(0.36, 0.36) })
 		make("UIAspectRatioConstraint", { AspectRatio = 1 }, card.Lock)
 		card.Lock.AnchorPoint, card.Lock.Position, card.Lock.ZIndex, card.Lock.Visible = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.66), 5, false
 		card.Level = Kit.Pill(btn.Instance, "Lv " .. tiers[tier].UnlockLevel, Theme.BgDeep, Theme.TextPrimary, 24)
@@ -78,11 +78,12 @@ function Threat.Build(body: GuiObject)
 		cards[tier] = card
 	end
 
-	-- Multiplier chips of the focused tier.
+	-- Multiplier strip of the focused tier (Hud.Pill).
 	local chipPanel = Kit.Panel(root, { Sprite = "Pill", Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 2 })
 	local chipRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, chipPanel)
 	local chipGrid = make("UIGridLayout", {
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		CellPadding = UDim2.fromOffset(4, 4),
 	}, chipRow)
@@ -91,15 +92,16 @@ function Threat.Build(body: GuiObject)
 	for i, c in CHIPS do
 		local f = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 36), LayoutOrder = i, Active = true }, chipRow)
 		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }, f)
-		Kit.Icon(f, c[1], UDim2.fromOffset(28, 28)).LayoutOrder = 1
-		local l = Kit.Label(f, "", Theme.TextSize.Body, if i <= 3 then Theme.TextPrimary else Theme.Warning, true)
+		Kit.Icon(f, c[1], UDim2.fromOffset(38, 38)).LayoutOrder = 1
+		local l = Kit.Label(f, "", Theme.TextSize.Number - 2, if i <= 3 then Theme.TextPrimary else Theme.Warning, true)
 		l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, 32), false, 2
+		Kit.Stroke(l, Theme.Stroke, 2)
 		Kit.Tip(f, c[3])
 		chipLabels[c[2]] = l
 	end
 
 	-- Next tier to unlock.
-	local goal = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 40), LayoutOrder = 3, Active = true }, root)
+	local goal = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 48), LayoutOrder = 3, Active = true }, root)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, goal)
 	Kit.Icon(goal, "Flag", UDim2.fromOffset(32, 32)).LayoutOrder = 1
 	local goalTier = Kit.Icon(goal, "T2", UDim2.fromOffset(34, 34))
@@ -108,18 +110,23 @@ function Threat.Build(body: GuiObject)
 	goalText.AutomaticSize, goalText.Size, goalText.TextWrapped, goalText.LayoutOrder = X, UDim2.fromOffset(0, 34), false, 3
 	Kit.Tip(goal, "Next tier")
 
+	-- Short description under the strip (fills the panel and explains the multipliers).
+	local desc = Kit.Label(root, "", Theme.TextSize.Body, Theme.TextMuted, true)
+	desc.Size, desc.AutomaticSize, desc.LayoutOrder = UDim2.new(1, -16, 0, 0), Enum.AutomaticSize.Y, 4
+
 	function self.Layout()
 		local phone = Scale.Phone
 		local narrow = body.AbsoluteSize.X / math.max(Scale.Value, 0.01) < 440
-		local tierHeight = if phone then 112 else 156
+		local avail = body.AbsoluteSize.Y / math.max(Scale.Value, 0.01)
+		local tierHeight = math.clamp(math.floor(avail - 195), if phone then 116 else 190, if phone then 150 else 340)
 		local tierColumns = if narrow then 3 else 6
 		row.Size = UDim2.new(1, 0, 0, if narrow then tierHeight * 2 + 8 else tierHeight)
 		tierGrid.FillDirectionMaxCells = tierColumns
-		tierGrid.CellSize = UDim2.new(1 / tierColumns, -8 * (tierColumns - 1) / tierColumns, 0, tierHeight)
+		tierGrid.CellSize = UDim2.new(1 / tierColumns, -9, 0, tierHeight)
 		local chipColumns = if narrow then 2 else 5
-		chipPanel.Size = UDim2.new(1, 0, 0, if narrow then 116 elseif phone then 44 else 54)
+		chipPanel.Size = UDim2.new(1, 0, 0, if narrow then 116 elseif phone then 56 else 96)
 		chipGrid.FillDirectionMaxCells = chipColumns
-		chipGrid.CellSize = UDim2.new(1 / chipColumns, -4 * (chipColumns - 1) / chipColumns, 0, 36)
+		chipGrid.CellSize = UDim2.new(1 / chipColumns, -6, 0, if phone then 40 else 60)
 		for _, c in cards do
 			c.Level.Size = UDim2.fromOffset(0, if phone then 20 else 24)
 		end
@@ -141,7 +148,9 @@ function Threat.Build(body: GuiObject)
 			end
 			c.Lock.Visible, c.Level.Visible = locked, locked
 			c.Check.Visible = tier == selected
+			c.Button.SetSelected(tier == selected)
 		end
+		desc.Text = string.format("Tier %d is shown. The multipliers above apply to the visitors that arrive next.", shown)
 		local info = Catalog.Current.Threat[shown]
 		if info then
 			chipLabels.Coins.Text = Badges.Mult(info.Coins)
@@ -157,7 +166,7 @@ function Threat.Build(body: GuiObject)
 			if goalTier:IsA("ImageLabel") then
 				Kit.SetIcon(goalTier, "T" .. nextTier.Tier)
 			end
-			goalText.Text = "Lv " .. nextTier.Level
+			goalText.Text = "Next Threat Tier Unlock: Lv " .. nextTier.Level
 		end
 	end
 

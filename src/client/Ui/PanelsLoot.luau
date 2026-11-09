@@ -68,7 +68,7 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local rg = Kit.Screen("Reveal", 30)
 	rg.ScreenInsets = Enum.ScreenInsets.None
 	local gui = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 10 }, rg)
-	Kit.Sprite(gui, "Feedback.Scrim", { Name = "Scrim", Size = UDim2.fromScale(1, 1), ImageTransparency = 0.1, ScaleType = Enum.ScaleType.Stretch, ZIndex = 10 })
+	Kit.Scrim(gui, 0.25, { Size = UDim2.fromScale(1, 1), Position = UDim2.new(), ZIndex = 10 })
 	local reduced = Settings.Reduced()
 	local color = P.RarityColor[result.Rarity] or Theme.TextPrimary
 	local card
@@ -104,7 +104,7 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local revealGlow: any = nil
 
 	local function makeCard(rarity: string?): (Frame, Frame)
-		local c = Kit.Panel(gui, { Sprite = "Large", Pad = Vector2.new(6, 6), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(340, if rarity then 380 else 320), ZIndex = 11 })
+		local c = Kit.Panel(gui, { Sprite = "Large", Rarity = rarity, Pad = Vector2.new(6, 6), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(340, if rarity then 380 else 320), ZIndex = 11 })
 		local col = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 12 }, c)
 		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }, col)
 		return c, col
@@ -113,13 +113,19 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 	local scale = make("UIScale", {})
 
 	-- "Tap" hint under the card: a pulsing check mark, no sentence.
-	local hint = make("Frame", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 190 * revealScale + 4), Size = UDim2.fromOffset(120, 44), ZIndex = 12, Visible = false }, gui)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 8) }, hint)
-	local hintIcon = Kit.Icon(hint, "Check", UDim2.fromOffset(36, 36), Theme.Success)
-	local hintText = Kit.Label(hint, "Tap", Theme.TextSize.Body, Theme.TextPrimary, true)
-	hintText.AutomaticSize, hintText.Size, hintText.TextWrapped = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false
-	hintIcon.ZIndex, hintText.ZIndex = 13, 13
-	hintText.TextTransparency = 0.15
+	local collect = Kit.Button(gui, { Text = "Collect", Style = "Primary", Icon = "Check", IconLayout = "Row", TextSize = 30, Size = UDim2.fromOffset(260, 68), OnClick = function()
+		if phase == "shown" and os.clock() >= readyAt then
+			close()
+		end
+	end })
+	local hint, hintIcon = collect.Instance, collect.Icon
+	hint.Name, hint.AnchorPoint, hint.Position, hint.ZIndex, hint.Visible = "Hint", Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0.5, 190 * revealScale + 8), 20, false
+	-- The reveal screen uses global z-ordering: lift the button's own layers above the scrim and card.
+	for _, d in hint:GetDescendants() do
+		if d:IsA("GuiObject") then
+			d.ZIndex += 19
+		end
+	end
 
 	local function resizeReveal()
 		view = workspace.CurrentCamera.ViewportSize / math.max(Scale.Value, 0.01)
@@ -145,11 +151,11 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		end
 		card, col = makeCard(result.Rarity)
 		scale = make("UIScale", { Scale = revealScale }, card)
-		-- Light behind the card in the tier colour, and a burst that blooms once (Reel.Burst).
+		-- Light behind the card in the tier colour, and a burst that blooms once (Fx.Burst).
 		revealGlow = Kit.Glow(gui, color, 0.45)
 		revealGlow.AnchorPoint, revealGlow.Position = Vector2.new(0.5, 0.5), UDim2.new(0.5, 0, 0.5, -16)
 		revealGlow.Size, revealGlow.ZIndex = UDim2.fromOffset(646 * revealScale, 722 * revealScale), 10
-		local burst = Kit.Sprite(gui, "Reel.Burst", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(300, 300), ImageColor3 = color, ImageTransparency = 0.2, ZIndex = 11 })
+		local burst = Kit.Sprite(gui, "Fx.Burst", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -16), Size = UDim2.fromOffset(300, 300), ImageColor3 = color, ImageTransparency = 0.2, ZIndex = 11 })
 		if reduced then
 			burst.ImageTransparency = 1
 		else
@@ -158,13 +164,11 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		if RarityColors.Shimmer[result.Rarity] then
 			Kit.Prismatic(card)
 		end
-		-- Rarity: gem + name, inside the frame's inset (never on the rim).
-		local top = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36), LayoutOrder = 1, ZIndex = 12 }, col)
-		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, top)
-		Kit.Gem(top, result.Rarity, UDim2.fromOffset(32, 32)).LayoutOrder = 1
-		local rl = Kit.Label(top, string.upper(tostring(result.Rarity)), Theme.TextSize.Heading, color, true)
-		rl.AutomaticSize, rl.Size, rl.TextWrapped, rl.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false, 2
-		if result.Rarity == "Secret" then Kit.Prismatic(rl) end
+		-- Rarity: the tier's RarityBadge, inside the frame's inset (never on the rim).
+		local top = Kit.Rarity(col, result.Rarity)
+		top.LayoutOrder = 1
+		top.Size = UDim2.fromOffset(0, 42)
+		Kit.PillLabel(top).TextSize = 22
 		local room = P.RoomImage(col, result.RoomId, 150)
 		room.LayoutOrder, room.ZIndex = 2, 12
 		local nm = Kit.Label(col, roomName(result.RoomId), Theme.TextSize.Title, Theme.TextPrimary, true)
@@ -253,21 +257,22 @@ local function reveal(box: string, result: any, onDone: (() -> ())?)
 		local gem = Kit.Gem(slot, rarity, UDim2.fromOffset(22, 22))
 		gem.AnchorPoint, gem.Position = Vector2.new(1, 0), UDim2.new(1, -4, 0, 4)
 	end
-	-- Pointers (Reel.PointerTop above, Reel.PointerBottom below the centre slot) and the selector frame (Reel.Slot).
-	local pointer = Kit.Sprite(window, "Reel.PointerTop", { Size = UDim2.fromOffset(44, 30), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, -6), ZIndex = 14 })
-	local pointerB = Kit.Sprite(window, "Reel.PointerBottom", { Size = UDim2.fromOffset(44, 30), AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 6), ZIndex = 14 })
-	local selector = Kit.Sprite(window, "Reel.Slot", { Size = UDim2.fromOffset(slotW + 8, 126), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ImageTransparency = 0.6, ZIndex = 13 })
-	-- Skip button (Reel.SpinButton art) under the window.
-	local skipBtn = make("ImageButton", { Name = "Skip", BackgroundTransparency = 1, AutoButtonColor = false, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 18), Size = UDim2.fromOffset(160, 60), Image = "", ZIndex = 14 }, window)
-	Kit.MinTouch(skipBtn)
-	Kit.Skin(skipBtn, Kit.Spec("Reel.SpinButton"), "Uniform", nil, nil)
-	local skipLabel = Kit.Label(skipBtn, "Skip", Theme.TextSize.Button, Theme.TextOnGold, true)
-	skipLabel.Size, skipLabel.ZIndex = UDim2.fromScale(1, 1), 15
-	skipBtn.Activated:Connect(function()
+	-- Pointers (Pointer.Down above, Pointer.Up below the centre slot) and the selector frame (Frame.Highlight).
+	local pointer = Kit.Sprite(window, "Pointer.Down", { Size = UDim2.fromOffset(40, 32), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 2), ZIndex = 14 })
+	local pointerB = Kit.Sprite(window, "Pointer.Up", { Size = UDim2.fromOffset(40, 32), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 1, -2), ZIndex = 14 })
+	local selector = Kit.Sprite(window, "Frame.Highlight", { Size = UDim2.fromOffset(slotW + 8, 126), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ImageTransparency = 0.3, ZIndex = 13 })
+	-- Skip button (yellow) under the window.
+	local skipBtn = Kit.Button(window, { Text = "Skip", Style = "Primary", Size = UDim2.fromOffset(230, 80), TextSize = 32, OnClick = function()
 		if skipReel then
 			skipReel()
 		end
-	end)
+	end }).Instance
+	skipBtn.AnchorPoint, skipBtn.Position, skipBtn.ZIndex = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 1, 22), 14
+	for _, d in skipBtn:GetDescendants() do
+		if d:IsA("GuiObject") then
+			d.ZIndex += 13
+		end
+	end
 	for _, d in window:GetDescendants() do
 		if d:IsA("GuiObject") and d ~= pointer and d ~= pointerB and d ~= selector and d ~= skipBtn and d.Parent ~= skipBtn then
 			d.ZIndex = math.max(d.ZIndex, 12)
@@ -343,11 +348,7 @@ local function showBatch(box: string, rewards: { any })
 	local gui = Kit.Screen("BatchRewards", 31)
 	gui.ScreenInsets = Enum.ScreenInsets.None
 	local scrim = make("TextButton", { Text = "", AutoButtonColor = false, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0 }, gui)
-	Kit.Sprite(scrim, "Feedback.Scrim", { Size = UDim2.fromScale(1, 1), ImageTransparency = 0.1, ScaleType = Enum.ScaleType.Stretch })
-	local panel = Kit.Panel(scrim, { Sprite = "Large", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.9, 0.84), Pad = Vector2.new(8, 6) })
-	make("UISizeConstraint", { MaxSize = Vector2.new(760, 620) }, panel)
-	local title = Kit.Label(panel, string.format("Opened %d %s chests", #rewards, box), Theme.TextSize.Title, Theme.TextPrimary, true)
-	title.Position, title.Size = UDim2.fromOffset(8, 4), UDim2.new(1, -76, 0, 52)
+	Kit.Scrim(scrim, 0.25, { Position = UDim2.new(), Size = UDim2.fromScale(1, 1) })
 	local closed = false
 	local function close()
 		if closed then return end
@@ -356,16 +357,27 @@ local function showBatch(box: string, rewards: { any })
 		State.Hold(false)
 		for _, reward in rewards do Bus.RoomAwarded:Fire(reward) end
 	end
-	local closeButton = Kit.CloseButton(panel, UDim2.fromOffset(56, 56), close)
-	closeButton.Instance.AnchorPoint, closeButton.Instance.Position = Vector2.new(1, 0), UDim2.new(1, -4, 0, 0)
-	local list = make("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(4, 64), Size = UDim2.new(1, -8, 1, -72), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 8, ScrollingDirection = Enum.ScrollingDirection.Y }, panel)
+	local chrome = Kit.ModalChrome(scrim, string.format("Opened %d %s chests", #rewards, box), close)
+	local panel = chrome.Root
+	panel.AnchorPoint = Vector2.new(0.5, 0)
+	local function place()
+		local view = gui.AbsoluteSize / math.max(Scale.Value, 0.01)
+		local w = math.min(820, view.X - 24)
+		local overhang = chrome.Layout(w)
+		local h = math.max(200, math.min(620, view.Y - overhang - 24))
+		panel.Size = UDim2.fromOffset(w, h)
+		panel.Position = UDim2.new(0.5, 0, 0.5, -h / 2 + overhang / 2)
+	end
+	place()
+	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(place)
+	local list = make("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(22, 64), Size = UDim2.new(1, -44, 1, -90), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 12, ScrollingDirection = Enum.ScrollingDirection.Y }, panel)
 	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
-	make("UIPadding", { PaddingRight = UDim.new(0, 10), PaddingBottom = UDim.new(0, 6) }, list)
+	make("UIPadding", { PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 6) }, list)
 	for i, reward in rewards do
 		local rarity = tostring(reward.Rarity or "Common")
 		local details = string.format("%s  %s", roomName(reward.RoomId), P.Rich("[" .. rarity .. "]", rarity))
 		if reward.Modifier then details ..= "\n" .. tostring(reward.Modifier) end
-		local card = P.Card(list, i, rarity)
+		local card = P.Card(list, i)
 		local row = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50) }, card)
 		local image = P.RoomImage(row, reward.RoomId, 44)
 		image.Position = UDim2.fromOffset(2, 3)
@@ -409,19 +421,18 @@ function L.Build(scroll: ScrollingFrame, state: any)
 	end
 	local tabs = inventoryTabs[scroll]
 	if not tabs then
-		local row = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 52) }, scroll.Parent)
-		local rooms = Kit.Button(row, { Text = "Rooms", Icon = "Rooms", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
+		local row = P.TabRow(scroll) :: Frame
+		local rooms = P.TabButton(row, { Text = "Rooms", Icon = "Rooms", Size = UDim2.new(0.5, -6, 1, 0), OnClick = function()
 			currentTab = "Items"
 			scroll.CanvasPosition = Vector2.zero
 			L.Build(scroll, State.Current or state)
 		end })
-		local chests = Kit.Button(row, { Text = "Loot Chests", Icon = "Box", IconLayout = "Row", Style = "Tab", Size = UDim2.new(0.5, -4, 1, 0), OnClick = function()
+		local chests = P.TabButton(row, { Text = "Loot Chests", Icon = "Box", Size = UDim2.new(0.5, -6, 1, 0), OnClick = function()
 			currentTab = "Drops"
 			scroll.CanvasPosition = Vector2.zero
 			L.Build(scroll, State.Current or state)
 		end })
-		chests.Instance.Position = UDim2.new(0.5, 4, 0, 0)
-		scroll.Position, scroll.Size = UDim2.fromOffset(0, 118), UDim2.new(1, 0, 1, -118)
+		chests.Instance.Position = UDim2.new(0.5, 6, 0, 0)
 		tabs = { Rooms = rooms, Chests = chests }
 		inventoryTabs[scroll] = tabs
 	end
@@ -449,13 +460,26 @@ function L.Build(scroll: ScrollingFrame, state: any)
 			P.Text(oddsCard, "Next chest odds; pity can change later rolls in a batch.", Theme.TextSize.Body, Theme.TextMuted, true, 1)
 			for i, rarity in odds.Rarities do
 				local color = P.RarityColor[rarity.Id] or Theme.TextPrimary
-				local lines = { string.format("%s — %s", rarity.Id, P.Pct(rarity.Chance)) }
+				-- Rarity badge + chance, then the rooms of that tier as readable rows.
+				local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = i * 2 }, oddsCard)
+				make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }, head)
+				local badge = Kit.Rarity(head, rarity.Id, 38)
+				badge.Size, badge.LayoutOrder = UDim2.fromOffset(0, 38), 1
+				Kit.PillLabel(badge).TextSize = 22
+				local pct = Kit.Label(head, P.Pct(rarity.Chance), Theme.TextSize.Heading, color, true)
+				pct.AutomaticSize, pct.Size, pct.TextWrapped, pct.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 38), false, 2
+				Kit.Stroke(pct, Theme.Stroke, 2)
+				local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = i * 2 + 1 }, oddsCard)
+				make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 2), CellSize = UDim2.new(0.5, -8, 0, 32), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
+				local n = 0
 				for _, room in odds.Rooms do
 					if room.Rarity == rarity.Id then
-						table.insert(lines, string.format("%s  %s", roomName(room.Id), P.Pct(room.Chance)))
+						n += 1
+						local row = Kit.Label(grid, string.format("%s   %s", roomName(room.Id), P.Pct(room.Chance)), Theme.TextSize.Body, Theme.TextPrimary, true)
+						row.TextXAlignment, row.TextWrapped, row.LayoutOrder = Enum.TextXAlignment.Left, false, n
+						row.TextTruncate = Enum.TextTruncate.AtEnd
 					end
 				end
-				P.Text(oddsCard, table.concat(lines, "\n"), Theme.TextSize.Body, color, true, i + 1)
 			end
 		end
 		local controlsOrder, openOrder = nxt(), nxt()
@@ -580,7 +604,7 @@ function L.Build(scroll: ScrollingFrame, state: any)
 		for _, group in groups do alive[group.Key] = true end
 		for key in selectedItems do if not alive[key] then selectedItems[key] = nil end end
 		local saleKey = table.concat(selectedIds, ",")
-		local sellButton = Kit.Button(scroll, { Text = if sellConfirmUntil > os.clock() and sellConfirmKey == saleKey then string.format("Confirm %d for %s coins", selectedCount, Badges.Comma(selectedValue)) else string.format("Sell %d for %s coins", selectedCount, Badges.Comma(selectedValue)), Icon = "CoinStack", IconLayout = "Row", Style = "Danger", Size = UDim2.new(1, 0, 0, 48), LayoutOrder = nxt(), OnClick = function()
+		local sellButton = Kit.Button(scroll, { Text = if sellConfirmUntil > os.clock() and sellConfirmKey == saleKey then string.format("Confirm %d for %s coins", selectedCount, Badges.Comma(selectedValue)) else string.format("Sell %d for %s coins", selectedCount, Badges.Comma(selectedValue)), Icon = "CoinStack", IconLayout = "Row", Style = "Danger", TextSize = 26, Size = UDim2.new(1, 0, 0, 60), LayoutOrder = nxt(), OnClick = function()
 			if busy or #selectedIds == 0 then return end
 			if sellConfirmUntil <= os.clock() or sellConfirmKey ~= saleKey then
 				sellConfirmKey = saleKey
@@ -609,10 +633,10 @@ function L.Build(scroll: ScrollingFrame, state: any)
 		end })
 		sellButton.SetEnabled(selectedCount > 0)
 		local width = scroll.AbsoluteSize.X / math.max(Scale.Value, 0.01)
-		local columns = if width >= 720 then 3 elseif width >= 500 then 2 else 1
-		local controlSize = math.max(44, 44 / math.max(Scale.Value, 0.1))
+		local columns = if Scale.Phone then math.max(2, math.floor(width / 200)) elseif width >= 880 then 4 elseif width >= 620 then 3 elseif width >= 420 then 2 else 1
+		local controlSize = if Scale.Phone then 52 else 70
 		local roomGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-		make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / columns, -8 * (columns - 1) / columns - 1, 0, 260), SortOrder = Enum.SortOrder.LayoutOrder }, roomGrid)
+		make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / columns, -8 * (columns - 1) / columns - 1, 0, if Scale.Phone then 160 else 300), SortOrder = Enum.SortOrder.LayoutOrder }, roomGrid)
 		for index, group in groups do
 			local stackCount = #group.Instances
 			local chosen = selectedItems[group.Key] or 0
@@ -621,19 +645,23 @@ function L.Build(scroll: ScrollingFrame, state: any)
 			local image = P.RoomImage(row, group.Id, 88, group.Def.Kind)
 			image.AnchorPoint, image.Position, image.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 0), UDim2.new(1, 0, 0.43, 0)
 			make("UIAspectRatioConstraint", { AspectRatio = 1, AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Height }, image)
-			Kit.Tip(row, string.format("%s [%s] Lv %d x%d%s%s", roomName(group.Id), group.Rarity, group.Level, stackCount, if group.Modifier then "\n" .. tostring(group.Modifier) else "", if P.PerkText(group.Perks) ~= "" then "\n" .. P.PerkText(group.Perks) else ""))
-			local label = P.Text(row, string.format("%s\nLv %d  x%d", roomName(group.Id), group.Level, stackCount), Theme.TextSize.Body, Theme.TextPrimary, true)
+			Kit.Tip(row, string.format("%s  Lv %d  x%d%s%s", roomName(group.Id), group.Level, stackCount, if group.Modifier then "\n" .. tostring(group.Modifier) else "", if P.PerkText(group.Perks) ~= "" then "\n" .. P.PerkText(group.Perks) else ""), nil, group.Rarity)
+			local count = Kit.Count(card, "x" .. stackCount, true, 26)
+			count.AnchorPoint, count.Position, count.ZIndex = Vector2.new(1, 0), UDim2.new(1, 0, 0, 0), 6
+			Kit.PillLabel(count).ZIndex = 7
+			local label = P.Text(row, if Scale.Phone then roomName(group.Id) else string.format("%s\nLv %d", roomName(group.Id), group.Level), Theme.TextSize.Body, Theme.TextPrimary, true)
 			label.Position, label.Size, label.AutomaticSize, label.TextScaled = UDim2.fromScale(0, 0.43), UDim2.new(1, 0, 0.57, -controlSize), Enum.AutomaticSize.None, true
 			label.TextXAlignment = Enum.TextXAlignment.Center
 			make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Body }, label)
 			local qtyLabel = Kit.Label(row, string.format("%d/%d", chosen, stackCount), Theme.TextSize.Body, Theme.TextPrimary, true)
-			qtyLabel.AnchorPoint, qtyLabel.Position, qtyLabel.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, 0), UDim2.new(1, -2 * controlSize - 8, 0, controlSize)
-			local remove = Kit.Button(row, { Text = "−", Style = "Secondary", Size = UDim2.fromOffset(44, 44), OnClick = function()
+			qtyLabel.AnchorPoint, qtyLabel.Position, qtyLabel.Size = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, 0), UDim2.new(1, -2 * controlSize - 12, 0, controlSize)
+			qtyLabel.TextWrapped = false
+			local remove = Kit.Button(row, { Text = "−", Style = "Secondary", Round = true, TextSize = 34, Size = UDim2.fromOffset(controlSize, controlSize), OnClick = function()
 				selectedItems[group.Key] = math.max(0, chosen - 1)
 				sellConfirmUntil = 0
 				L.Build(scroll, State.Current or state)
 			end })
-			local add = Kit.Button(row, { Text = "+", Style = "Secondary", Size = UDim2.fromOffset(44, 44), OnClick = function()
+			local add = Kit.Button(row, { Text = "+", Style = "Primary", Round = true, TextSize = 34, Size = UDim2.fromOffset(controlSize, controlSize), OnClick = function()
 				selectedItems[group.Key] = math.min(stackCount, chosen + 1)
 				sellConfirmUntil = 0
 				L.Build(scroll, State.Current or state)
@@ -642,6 +670,11 @@ function L.Build(scroll: ScrollingFrame, state: any)
 			add.Instance.AnchorPoint, add.Instance.Position = Vector2.new(1, 1), UDim2.fromScale(1, 1)
 			remove.SetEnabled(chosen > 0)
 			add.SetEnabled(group.Def.Craftable and chosen < stackCount and selectedCount < 30)
+		end
+		-- Empty cells (Slot.Empty) fill the last row, like the reference grid.
+		local cellsWanted = math.max(columns, math.ceil(#groups / columns) * columns)
+		for index = #groups + 1, cellsWanted do
+			Kit.Panel(roomGrid, { Sprite = "Slot", LayoutOrder = index })
 		end
 		if #groups == 0 then P.Empty(scroll, "No unplaced rooms", nxt()) end
 	end

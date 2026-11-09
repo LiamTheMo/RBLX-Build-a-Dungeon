@@ -42,8 +42,8 @@ end
 -- A tinted band: leading art, chance icon and percent.
 local function band(parent: Instance, order: number, color: Color3, art: (Instance) -> GuiObject, chance: number, tip: string)
 	local f = make("ImageLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = order, Active = true, Image = "" }, parent)
-	Kit.Skin(f, Kit.Spec("Controls.DropPill"), "Uniform", nil, nil)
-	f.ImageColor3 = color:Lerp(Color3.new(1, 1, 1), 0.45) -- DropPill is the tintable plate
+	Kit.Skin(f, Kit.Spec("Chip.Dark"), "Uniform", nil, nil)
+	local _ = color -- the tier colour shows in the chance text, the plate is the dark chip
 	make("UIPadding", { PaddingLeft = UDim.new(0, 26), PaddingRight = UDim.new(0, 30) }, f)
 	local left = hrow(f, 6, { BackgroundTransparency = 1, Size = UDim2.new(0.5, 0, 1, 0) })
 	art(left).LayoutOrder = 1
@@ -51,7 +51,7 @@ local function band(parent: Instance, order: number, color: Color3, art: (Instan
 	Kit.Icon(right, "DropChance", UDim2.fromOffset(30, 30)).LayoutOrder = 1
 	local l = Kit.Label(right, P.Pct(chance), Theme.TextSize.Number - 2, Theme.TextPrimary, true)
 	l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, 40), false, 2
-	l.TextStrokeColor3, l.TextStrokeTransparency = Theme.Stroke, 0.4
+	Kit.Stroke(l, Theme.Stroke, 2)
 	Kit.Tip(f, tip)
 	return f
 end

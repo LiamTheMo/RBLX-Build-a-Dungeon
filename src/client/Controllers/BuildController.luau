@@ -349,9 +349,9 @@ local function remaining(key: string?): number
 	return if g then #g.Free else 0
 end
 
--- Card frame border in reference px (v4 rarity frame, uniform slice scale capped at 0.5).
+-- Card frame border in reference px (v6 rarity frame, uniform slice scale capped at 0.5).
 local function cardBorder(w: number, h: number): number
-	local spec = Kit.Spec("Rarity.Common.Frame")
+	local spec = Kit.Spec("Rarity.Common")
 	return math.ceil(math.min(w / spec.Size.X, h / spec.Size.Y, 0.5) * spec.SliceCenter.Min.X)
 end
 
@@ -373,9 +373,9 @@ local function refreshInventory()
 	if ui.Empty then
 		ui.Empty.Visible = #keys == 0
 	end
-	local cardW, cardH = if phone then 100 else 120, if phone then 105 else 120
+	local cardW, cardH = if phone then 128 else 156, if phone then 160 else 196
 	local border = cardBorder(cardW, cardH)
-	local roomSize = if phone then 32 else 40
+	local roomSize = if phone then 46 else 62
 	for i, key in keys do
 		local g = groups[key]
 		local def = Catalog.Room(g.Id)
@@ -396,12 +396,15 @@ local function refreshInventory()
 		-- Content sits inside the frame's border: icon, name, perks; the count chip rests at the bottom.
 		local inner = make("CanvasGroup", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), GroupTransparency = if count > 0 then 0 else 0.5, ZIndex = 2 }, btn.Instance)
 		make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 1) }, inner)
-		make("UIPadding", { PaddingTop = UDim.new(0, border + 5), PaddingBottom = UDim.new(0, border + 26), PaddingLeft = UDim.new(0, border + 3), PaddingRight = UDim.new(0, border + 3) }, inner)
+		make("UIPadding", { PaddingTop = UDim.new(0, border + 5), PaddingBottom = UDim.new(0, border + 44), PaddingLeft = UDim.new(0, border + 3), PaddingRight = UDim.new(0, border + 3) }, inner)
 		P.RoomImage(inner, g.Id, roomSize, def.Kind).LayoutOrder = 0
-		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 15 else 16, Theme.TextPrimary, true)
-		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 22 else 26), 1
-		name.TextYAlignment = Enum.TextYAlignment.Top
-		name.TextTruncate = Enum.TextTruncate.AtEnd
+		local name = Kit.Label(inner, def.DisplayName .. (if g.Level > 1 then " Lv" .. g.Level else ""), if phone then 17 else 20, Theme.TextPrimary, true)
+		name.Size, name.LayoutOrder = UDim2.new(1, 0, 0, if phone then 26 else 30), 1
+		name.TextYAlignment = Enum.TextYAlignment.Center
+		name.TextWrapped = false
+		name.TextScaled = true
+		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = if phone then 17 else 20 }, name)
+		Kit.Stroke(name, Theme.Stroke, 2)
 		if #g.Perks > 0 then
 			Kit.Perks(inner, g.Perks, phone).LayoutOrder = 3
 		end
@@ -423,7 +426,7 @@ local function refreshInventory()
 		local gemSize = if phone then 18 else 22
 		local gem = Kit.Gem(btn.Instance, g.Rarity, UDim2.fromOffset(gemSize, gemSize))
 		gem.AnchorPoint, gem.Position, gem.ZIndex = Vector2.new(1, 0), UDim2.new(1, -(border + 2), 0, border + 2), 4
-		local pill = Kit.Pill(btn.Instance, ("x%d"):format(count), if count > 0 then Theme.Gold else Theme.Disabled, if count > 0 then Theme.TextOnGold else Theme.DangerText, 22)
+		local pill = Kit.Count(btn.Instance, ("x%d"):format(count), count > 0, 22)
 		pill.AnchorPoint, pill.Position, pill.ZIndex = Vector2.new(0.5, 1), UDim2.new(0.5, 0, 1, -(border + 3)), 4
 		Kit.PillLabel(pill).ZIndex = 5
 		btn.SetSelected(selectedType == key)
@@ -837,9 +840,9 @@ function Build.Layout()
 	end
 	local phone = Scale.Phone
 	local bn, bs = ui.Banner, ui.Inventory
-	local invH = if phone then 210 else 224
+	local invH = if phone then 260 else 300
 	local invBottom = if phone then 4 else 16
-	local tabHeight = math.max(48, 44 / math.max(Scale.Value, 0.1))
+	local tabHeight = math.max(58, 46 / math.max(Scale.Value, 0.1))
 	ui.Scroll.Position = UDim2.fromOffset(0, tabHeight + 4)
 	ui.Scroll.Size = UDim2.new(1, 0, 1, -(tabHeight + 4))
 	if phone then
@@ -869,10 +872,9 @@ local function buildUi()
 	ui.Banner = Kit.Panel(gui, { Sprite = "ToastInfo" })
 	ui.Banner:FindFirstChild("Inset"):Destroy()
 	ui.BannerSpec = function(kind: string)
-		local spec = Kit.Spec("Feedback.Toast" .. kind)
+		local spec = Kit.Spec("Toast." .. kind)
 		if spec and ui.Banner.Image ~= spec.Id then
-			ui.Banner.Image = spec.Id
-			ui.Banner.SliceCenter = spec.SliceCenter
+			Kit.Reskin(ui.Banner, spec)
 		end
 		ui.IconInfo.Visible, ui.IconOk.Visible, ui.IconBad.Visible = kind == "Info", kind == "Good", kind == "Bad"
 	end
@@ -890,12 +892,12 @@ local function buildUi()
 	ui.Status.TextScaled = true
 	make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = Theme.TextSize.Body }, ui.Status)
 
-	ui.Inventory = Kit.Panel(gui, { Sprite = "Large", Pad = Vector2.new(6, 4) })
+	ui.Inventory = Kit.Panel(gui, { Sprite = "Small", Pad = Vector2.new(6, 4) })
 	ui.KindTabs = {}
-	local tabs = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48) }, ui.Inventory)
+	local tabs = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 60) }, ui.Inventory)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, tabs)
 	for order, kind in { "All", "Defender", "Trap", "Treasure", "Support" } do
-		local tab = Kit.Button(tabs, { Text = kind, Style = "Tab", TextSize = 16, Size = UDim2.new(0.2, -3, 0, 44), LayoutOrder = order, OnClick = function()
+		local tab = Kit.Button(tabs, { Text = kind, Style = "Tab", TextSize = 24, Size = UDim2.new(0.2, -3, 0, 56), LayoutOrder = order, OnClick = function()
 			selectedKind = kind
 			if not carry then selectedType = nil end
 			ui.Scroll.CanvasPosition = Vector2.zero
@@ -933,7 +935,6 @@ local function buildUi()
 		IconLayout = "Row",
 		TextSize = 24,
 		LayoutOrder = 1,
-		Shadow = true,
 		OnClick = function()
 			if not routeValid then
 				return
@@ -958,7 +959,6 @@ local function buildUi()
 		IconLayout = "Row",
 		TextSize = 24,
 		LayoutOrder = 2,
-		Shadow = true,
 		OnClick = function()
 			if requestBuilding(false) then
 				exit()
@@ -975,7 +975,6 @@ local function buildUi()
 		Round = true,
 		Size = UDim2.fromOffset(56, 56),
 		Tip = "Overview",
-		Shadow = true,
 		OnClick = function()
 			overview = not overview
 			ui.View.SetSelected(overview)

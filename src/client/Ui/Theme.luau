@@ -6,16 +6,16 @@ end
 local RarityColors = require(script.Parent.RarityColors)
 
 local Theme = {
-	BgDeep = hex("#1E1630"),
-	BgPanel = hex("#2E2347"),
-	BgRaised = hex("#3F3162"),
-	Stroke = hex("#120D1F"),
+	BgDeep = hex("#2E1A5C"), -- deep well
+	BgPanel = hex("#2E1A5C"),
+	BgRaised = hex("#7B3FD0"), -- kit purple
+	Stroke = hex("#1A0F2E"), -- outline
 	TextPrimary = hex("#FFF6E0"),
 	TextMuted = hex("#BDB0D6"),
-	Gold = hex("#FFC83D"),
-	GoldDark = hex("#B8860B"),
+	Gold = hex("#FFC21A"),
+	GoldDark = hex("#E59400"),
 	TextOnGold = hex("#2A1A00"),
-	Accent = hex("#6C5CE7"),
+	Accent = hex("#7B3FD0"),
 	Success = hex("#4ADE80"),
 	Danger = hex("#FF5C5C"),
 	Warning = hex("#FFA94D"),
@@ -26,7 +26,7 @@ local Theme = {
 	-- Rarity accents (always paired with the rarity name, never colour alone).
 	Rarity = RarityColors.Accent,
 
-	TextSize = { Title = 32, Heading = 24, Button = 22, Number = 26, Body = 18, Caption = 14 },
+	TextSize = { Title = 36, Heading = 28, Button = 26, Number = 30, Body = 23, Caption = 18 },
 	CornerPanel = UDim.new(0, 16),
 	CornerButton = UDim.new(0, 12),
 	CornerPill = UDim.new(1, 0),

@@ -12,6 +12,7 @@ local Sprites = require(script.Parent.Sprites)
 local SpriteIds = require(script.Parent.SpriteIds)
 local Sound = require(script.Parent.Sound)
 local Theme = require(script.Parent.Theme)
+local Scale = require(script.Parent.Scale)
 local Toast = require(script.Parent.Toast)
 
 local make = Kit.Make
@@ -21,7 +22,7 @@ local C = {}
 -- a "?" silhouette otherwise. `image` = { Room = id, Kind = kind } | { Portrait = id } | nil.
 -- Returns the text column.
 local function entry(parent: Instance, order: number, known: boolean, image: { [string]: any }?, rarity: string?, compact: boolean?): Frame
-	local card = P.Card(parent, order)
+	local card = P.Card(parent, order, nil, "Card")
 	if compact then card.AutomaticSize = Enum.AutomaticSize.None end
 	card:FindFirstChildOfClass("UIListLayout"):Destroy()
 	local badge = Kit.Panel(card, { BackgroundColor3 = if known then Theme.BgRaised else Theme.BgDeep, Size = UDim2.fromOffset(64, 64), Rarity = if known then rarity else nil, Pad = 0 })
@@ -112,10 +113,17 @@ function C.BuildCollection(scroll: ScrollingFrame, state: any)
 		total += 1
 		seen += if found[id] then 1 else 0
 	end
-	P.IconLine(scroll, "Trophy", string.format("%d/%d", seen, total), nxt(), Theme.Gold)
+	-- Collection counter: a gold-rimmed pill with the trophy.
+	local counter = Kit.Panel(scroll, { Sprite = "PillGold", Size = UDim2.fromOffset(190, 52), LayoutOrder = nxt() })
+	local counterRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, counter)
+	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10) }, counterRow)
+	Kit.Icon(counterRow, "Trophy", UDim2.fromOffset(38, 38))
+	local counterText = Kit.Label(counterRow, string.format("%d/%d", seen, total), Theme.TextSize.Heading, Theme.TextPrimary, true)
+	counterText.AutomaticSize, counterText.Size, counterText.TextWrapped = Enum.AutomaticSize.X, UDim2.fromOffset(0, 40), false
+	Kit.Stroke(counterText, Theme.Stroke, 2)
 
 	P.Section(scroll, "Rooms", nxt())
-	local roomCols = if P.Columns(scroll) == 3 then 2 else 1
+	local roomCols = if P.Columns(scroll) >= 3 then 2 else 1
 	local roomGrid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
 	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / roomCols, -8 * (roomCols - 1) / roomCols - 1, 0, 136), SortOrder = Enum.SortOrder.LayoutOrder }, roomGrid)
 	for _, id in roomIds do
@@ -192,47 +200,54 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 		return order
 	end
 
-	local card = P.Card(scroll, nxt())
-	local level, xp, need = state.Level or 1, state.Xp or 0, math.max(state.XpToNext or 1, 1)
-	local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 1 }, card)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, head)
-	local portrait = SpriteIds.Portraits.Keeper
-	if Sprites.Ok(portrait) then
-		make("ImageLabel", { BackgroundTransparency = 1, Image = portrait, Size = UDim2.fromOffset(56, 56), ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1 }, head)
-	else
-		Kit.Icon(head, "Keeper", UDim2.fromOffset(48, 48)).LayoutOrder = 1
-	end
-	local title = P.Text(head, "Lv " .. level, Theme.TextSize.Title, Theme.TextPrimary, true, 2)
-	title.Size, title.AutomaticSize = UDim2.new(1, -66, 1, 0), Enum.AutomaticSize.None
-	local bar = Kit.Bar(card, UDim2.new(1, 0, 0, 28))
-	bar.Instance.LayoutOrder = 2
-	bar.Set(xp / need, string.format("%d/%d", xp, need))
-	local b = state.Bonuses or {}
-	local flow = P.ChipFlow(card, 3)
-	for i, e in { { "Coin", "Coins", "Coins" }, { "Loot", "Loot", "Loot chance" }, { "Xp", "Xp", "XP" } } do
-		P.Chip(flow, i, function(p)
-			return Kit.Icon(p, e[1], UDim2.fromOffset(24, 24))
-		end, "+" .. P.Pct(b[e[2]] or 0), Theme.TextPrimary, e[3])
-	end
+	if not Scale.Phone then
+		local card = P.Card(scroll, nxt())
+		local level, xp, need = state.Level or 1, state.Xp or 0, math.max(state.XpToNext or 1, 1)
+		local head = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 1 }, card)
+		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, head)
+		local portrait = SpriteIds.Portraits.Keeper
+		if Sprites.Ok(portrait) then
+			make("ImageLabel", { BackgroundTransparency = 1, Image = portrait, Size = UDim2.fromOffset(56, 56), ScaleType = Enum.ScaleType.Fit, LayoutOrder = 1 }, head)
+		else
+			Kit.Icon(head, "Keeper", UDim2.fromOffset(48, 48)).LayoutOrder = 1
+		end
+		local title = P.Text(head, "Lv " .. level, Theme.TextSize.Title, Theme.TextPrimary, true, 2)
+		title.Size, title.AutomaticSize = UDim2.new(1, -66, 1, 0), Enum.AutomaticSize.None
+		local bar = Kit.Bar(card, UDim2.new(1, 0, 0, 28))
+		bar.Instance.LayoutOrder = 2
+		bar.Set(xp / need, string.format("%d/%d", xp, need))
+		local b = state.Bonuses or {}
+		local flow = P.ChipFlow(card, 3)
+		for i, e in { { "Coin", "Coins", "Coins" }, { "Loot", "Loot", "Loot chance" }, { "Xp", "Xp", "XP" } } do
+			P.Chip(flow, i, function(p)
+				return Kit.Icon(p, e[1], UDim2.fromOffset(24, 24))
+			end, "+" .. P.Pct(b[e[2]] or 0), Theme.TextPrimary, e[3])
+		end
 
+	end
 	P.Section(scroll, "Permanent upgrades", nxt())
 	local coins = state.Coins or 0
-	local cols = P.Columns(scroll)
+	local cols = math.min(P.Columns(scroll), 3)
 	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), LayoutOrder = nxt() }, scroll)
-	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, 170), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
+	make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), CellSize = UDim2.new(1 / cols, -8 * (cols - 1) / cols - 1, 0, if Scale.Phone then 150 else 270), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 	for order, def in catalog.Permanent do
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0
 		local cost = (state.PermanentNextCost or {})[id]
 		local icon = ({ Coins = "Coin", Loot = "DropChance", Xp = "Xp", DefenderHealth = "Heal", VisitorInterval = "Speed", VaultRate = "Exchange" })[def.Effect] or "Upgrade"
-		local card = Kit.Panel(grid, { LayoutOrder = order, Pad = Vector2.new(4, 2) })
-		make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
-		Kit.Icon(card, icon, UDim2.fromOffset(34, 34)).LayoutOrder = 1
-		local label = Kit.Label(card, string.format("%s  •  %d/%d", def.PerLevelText, lv, def.MaxLevel), 16, Theme.TextPrimary, true)
-		label.Size, label.LayoutOrder, label.TextScaled, label.Active = UDim2.new(1, 0, 0, 36), 2, true, true
-		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 16 }, label)
+		-- Card well (Panel.Section): art, effect line, level chip (Chip.Dark "1/10") and the yellow price button.
+		local card = Kit.Panel(grid, { Sprite = "Card", LayoutOrder = order, Pad = Vector2.new(6, 4) })
+		make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
+		Kit.Icon(card, icon, UDim2.fromOffset(if Scale.Phone then 34 else 78, if Scale.Phone then 34 else 78)).LayoutOrder = 1
+		local label = Kit.Label(card, def.PerLevelText, 26, Theme.TextPrimary, true)
+		label.Size, label.LayoutOrder, label.TextScaled, label.Active = UDim2.new(1, 0, 0, if Scale.Phone then 26 else 34), 2, true, true
+		make("UITextSizeConstraint", { MinTextSize = 11, MaxTextSize = 28 }, label)
+		Kit.Stroke(label, Theme.Stroke, 2)
 		Kit.Tip(label, def.Name .. ": " .. def.PerLevelText)
-		local buy = Kit.Button(card, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "CoinStack" else nil, IconLayout = "Row", Style = "Primary", Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 3, OnClick = function()
+		local lvChip = Kit.Pill(card, string.format("%d/%d", lv, def.MaxLevel), Theme.BgDeep, Theme.TextPrimary, if Scale.Phone then 26 else 32)
+		Kit.PillLabel(lvChip).TextSize = 21
+		lvChip.LayoutOrder = 3
+		local buy = Kit.Button(card, { Text = if cost then tostring(cost) else "Max", Icon = if cost then "Coin" else nil, IconLayout = "Row", Style = "Primary", TextSize = 26, Size = UDim2.new(1, 0, 0, if Scale.Phone then 46 else 54), LayoutOrder = 4, OnClick = function()
 			local ok, res = Net.Invoke("BuyPermanent", id)
 			if not ok then Toast.Show(ReasonText.Get(res), "Bad") else Sound.Play("UpgradePurchase") end
 		end })

@@ -29,7 +29,7 @@ function Banner.Start()
 	local gui = Kit.Screen("Events", 4)
 	local frame = make("Frame", { Name = "Banner", AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1, Visible = false, AutomaticSize = Enum.AutomaticSize.X }, gui)
 	local pop = make("UIScale", {}, frame)
-	local pill = Kit.Panel(frame, { Sprite = "Pill", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1) })
+	local pill = Kit.Panel(frame, { Sprite = "PillGold", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1) })
 	local glow = Kit.Glow(pill, Theme.Gold, 1)
 	glow.Size, glow.ZIndex = UDim2.new(1.5, 0, 3, 0), 10
 	local row = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromScale(0, 1) }, pill)
@@ -39,7 +39,7 @@ function Banner.Start()
 	icon.LayoutOrder = 1
 	local name = Kit.Label(row, "", Theme.TextSize.Heading, Theme.Gold, true)
 	name.AutomaticSize, name.Size, name.TextWrapped, name.LayoutOrder = Enum.AutomaticSize.X, UDim2.fromOffset(0, 36), false, 2
-	name.TextStrokeColor3, name.TextStrokeTransparency = Theme.Stroke, 0.5
+	Kit.Stroke(name, Theme.Stroke, 2)
 	local clock = Kit.Icon(row, "Clock", UDim2.fromOffset(24, 24))
 	clock.LayoutOrder = 3
 	local timer = Kit.Label(row, "", Theme.TextSize.Body + 2, Theme.TextPrimary, true)
@@ -58,7 +58,7 @@ function Banner.Start()
 	local shownId = ""
 	local function layout()
 		local phone = Scale.Phone
-		frame.Position = UDim2.new(0.5, 0, 0, if phone then 104 else 150)
+		frame.Position = UDim2.new(0.5, 0, 0, if phone then 150 else 204)
 		frame.Size = UDim2.fromOffset(0, if phone then 40 else 48)
 		name.TextSize = if phone then 18 else Theme.TextSize.Heading
 		icon.Size = UDim2.fromOffset(if phone then 28 else 34, if phone then 28 else 34)

@@ -1,27 +1,6 @@
 -- Generated from AI design assistant sprite sheets cut by tools/cut_sheet.py (Assets repo). Origin: owner's AI design assistant account;
 -- rights to be confirmed by the owner before release. SliceCenter is in image pixels (SliceScale 1).
 local base = {
-	Kit = {
-		PanelLarge = { Id = "rbxassetid://124887060420461", SliceCenter = Rect.new(25, 25, 487, 141), Size = Vector2.new(512, 166) },
-		PanelSmall = { Id = "rbxassetid://126666251218482", SliceCenter = Rect.new(28, 31, 407, 174), Size = Vector2.new(435, 205) },
-		ButtonPrimary = { Id = "rbxassetid://123012210942704", SliceCenter = Rect.new(54, 54, 259, 75), Size = Vector2.new(313, 129) },
-		ButtonPrimaryPressed = { Id = "rbxassetid://70828243164438", SliceCenter = Rect.new(53, 53, 236, 73), Size = Vector2.new(289, 126) },
-		ButtonSecondary = { Id = "rbxassetid://118654444028666", SliceCenter = Rect.new(54, 54, 253, 75), Size = Vector2.new(307, 129) },
-		ButtonSecondaryPressed = { Id = "rbxassetid://77519783273936", SliceCenter = Rect.new(53, 53, 244, 73), Size = Vector2.new(297, 126) },
-		ButtonDanger = { Id = "rbxassetid://137897074894416", SliceCenter = Rect.new(55, 55, 259, 75), Size = Vector2.new(314, 130) },
-		ButtonDangerPressed = { Id = "rbxassetid://126036185873235", SliceCenter = Rect.new(53, 53, 238, 74), Size = Vector2.new(291, 127) },
-		ButtonSuccess = { Id = "rbxassetid://132789776131697", SliceCenter = Rect.new(55, 55, 254, 76), Size = Vector2.new(309, 131) },
-		ButtonSuccessPressed = { Id = "rbxassetid://119748061180840", SliceCenter = Rect.new(53, 53, 245, 74), Size = Vector2.new(298, 127) },
-		Tab = { Id = "rbxassetid://93102354632223", SliceCenter = Rect.new(76, 60, 229, 66), Size = Vector2.new(305, 120) },
-		Pill = { Id = "rbxassetid://139802393313339", SliceCenter = Rect.new(42, 42, 221, 51), Size = Vector2.new(263, 93) },
-		ProgressFrame = { Id = "rbxassetid://128344910180135", SliceCenter = Rect.new(34, 34, 303, 42), Size = Vector2.new(337, 76) },
-		ProgressFill = { Id = "rbxassetid://92255225845124", SliceCenter = Rect.new(31, 31, 253, 37), Size = Vector2.new(284, 68) },
-		ToggleOn = { Id = "rbxassetid://128467350584806", Size = Vector2.new(216, 117) },
-		ToggleOff = { Id = "rbxassetid://87695141857151", Size = Vector2.new(215, 117) },
-		SliderTrack = { Id = "rbxassetid://79968306831131", SliceCenter = Rect.new(28, 28, 337, 34), Size = Vector2.new(365, 62) },
-		SliderKnob = { Id = "rbxassetid://73829988840451", Size = Vector2.new(95, 96) },
-		Close = { Id = "rbxassetid://104990635685582", Size = Vector2.new(143, 142) },
-	},
 	Icons = {
 		Box = "rbxassetid://86254209003880",
 		RareBox = "rbxassetid://112756641645371",

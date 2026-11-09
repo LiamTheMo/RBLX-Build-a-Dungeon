@@ -33,52 +33,61 @@ local function hrow(parent: Instance, padding: number, props: { [string]: any })
 	return f
 end
 
--- A rounded stat plate: icon + text, `color` for the text.
-local function plate(parent: Instance, order: number, icon: string, color: Color3, tip: string)
-	local f = Kit.Panel(parent, { Sprite = "Pill", Size = UDim2.new(0.5, -32, 1, 0), LayoutOrder = order, Active = true })
-	local row = hrow(f, 8, { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-	local ic = Kit.Icon(row, icon, UDim2.fromOffset(40, 40))
-	ic.LayoutOrder = 1
-	local l = Kit.Label(row, "", Theme.TextSize.Number, color, true)
-	l.Size, l.TextWrapped, l.TextScaled, l.LayoutOrder = UDim2.new(1, -48, 0, 40), false, true, 2
-	make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Number }, l)
-	Kit.Tip(f, tip)
-	return l, f, ic
+-- A labelled section: a Panel.Section well with a gold-rimmed label pill (Hud.PillGold) on its top edge.
+local function section(parent: Instance, title: string, order: number, height: number)
+	local well = Kit.Panel(parent, { Sprite = "Small", Size = UDim2.new(1, 0, 0, height), LayoutOrder = order, Pad = Vector2.new(6, 6) })
+	well.ClipsDescendants = false
+	local label = Kit.Panel(well, { Sprite = "PillGold", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, -4), AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 32), ZIndex = 5 })
+	local text = Kit.Label(label, title, 18, Theme.TextPrimary, true)
+	text.AutomaticSize, text.Size, text.TextWrapped, text.ZIndex = Enum.AutomaticSize.X, UDim2.fromOffset(0, 30), false, 6
+	make("UIPadding", { PaddingLeft = UDim.new(0, 22), PaddingRight = UDim.new(0, 22) }, text)
+	Kit.Stroke(text, Theme.Stroke, 2)
+	return well
 end
 
 -- body: the modal body Frame. Returns { Refresh, Layout }.
 function Vault.Build(body: Frame)
 	local self: any = {}
-	local root = make("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y, ScrollBarThickness = 6 }, body)
-	local art = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.36, -8, 0, 200) }, root)
+	local root = make("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y, ScrollBarThickness = 12 }, body)
+	-- Left: the treasure room's art with the vaulted coin total in a gold-rimmed pill.
+	local art = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(0.36, -8, 0, 250) }, root)
+	local artImage = make("Frame", { Name = "ArtImage", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -66) }, art)
+	local coinPill = Kit.Panel(art, { Sprite = "PillGold", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromOffset(230, 56), Active = true })
+	local coinRow = hrow(coinPill, 8, { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
+	Kit.Icon(coinRow, "CoinStack", UDim2.fromOffset(40, 40)).LayoutOrder = 1
+	local vaultedLabel = Kit.Label(coinRow, "", Theme.TextSize.Number + 4, Theme.TextPrimary, true)
+	vaultedLabel.Size, vaultedLabel.TextWrapped, vaultedLabel.TextScaled, vaultedLabel.LayoutOrder = UDim2.new(0, 130, 0, 40), false, true, 2
+	make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Number + 4 }, vaultedLabel)
+	Kit.Stroke(vaultedLabel, Theme.Stroke, 2)
+	Kit.Tip(coinPill, "Vaulted coins")
+	-- Right: Allocation, Exchange Rate and the stat strip.
 	local rows = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0) }, root)
-	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, rows)
+	make("UIListLayout", { Padding = UDim.new(0, 22), SortOrder = Enum.SortOrder.LayoutOrder }, rows)
+	make("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingRight = UDim.new(0, 16) }, rows)
 	local shownRoom = ""
 
-	-- Row 1: vaulted coins <-> extra visits.
-	local top = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 1 }, rows)
-	local topLayout = make("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 10),
-	}, top)
-	local vaultedLabel, vaultedPlate = plate(top, 1, "CoinStack", Theme.TextPrimary, "Vaulted coins")
-	local exch = Kit.Icon(top, "Exchange", UDim2.fromOffset(44, 44))
-	exch.LayoutOrder = 2
-	local bonusLabel, bonusPlate = plate(top, 3, "Speed", Theme.Success, "More adventurers")
-
-	-- Row 2: slider (padlock instead of the % icon while an adventurer is inside).
-	local sliderRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 2, Active = true }, rows)
+	-- Allocation: slider (padlock instead of the % icon while an adventurer is inside).
+	local allocation = section(rows, "Allocation", 1, 82)
+	local sliderRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Active = true }, allocation)
 	local sliderIcon = Kit.Icon(sliderRow, "VaultPercent", UDim2.fromOffset(44, 44))
-	sliderIcon.AnchorPoint, sliderIcon.Position = Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5)
-	local lockIcon = Kit.Icon(sliderRow, "Lock", UDim2.fromOffset(34, 34))
-	lockIcon.AnchorPoint, lockIcon.Position, lockIcon.Visible, lockIcon.ZIndex = Vector2.new(0, 0.5), UDim2.new(0, 5, 0.5, 0), false, 5
-	local sliderHolder = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(52, 0), Size = UDim2.new(1, -52, 1, 0) }, sliderRow)
+	sliderIcon.AnchorPoint, sliderIcon.Position = Vector2.new(0, 0.5), UDim2.new(0, 4, 0.5, 6)
+	local lockIcon = Kit.Sprite(sliderRow, "Round.Lock", { Size = UDim2.fromOffset(40, 40), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 6), Visible = false, ZIndex = 5 })
+	local sliderHolder = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(56, 6), Size = UDim2.new(1, -60, 1, 0) }, sliderRow)
 	Kit.Tip(sliderRow, "Share of your coins in the vault")
 
-	local pending: number? = nil -- value the player chose that the server has not confirmed yet
+	-- Exchange Rate: vaulted coins <-> extra visits.
+	local exchange = section(rows, "Exchange Rate", 2, 82)
+	local exchRow = hrow(exchange, 14, { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -8) })
+	Kit.Icon(exchRow, "CoinStack", UDim2.fromOffset(46, 46)).LayoutOrder = 1
+	Kit.Icon(exchRow, "Exchange", UDim2.fromOffset(40, 40)).LayoutOrder = 2
+	Kit.Icon(exchRow, "Speed", UDim2.fromOffset(46, 46)).LayoutOrder = 3
+	local bonusLabel = Kit.Label(exchRow, "", Theme.TextSize.Number, Theme.Success, true)
+	bonusLabel.Size, bonusLabel.TextWrapped, bonusLabel.TextScaled, bonusLabel.LayoutOrder = UDim2.fromOffset(120, 44), false, true, 4
+	make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Number }, bonusLabel)
+	Kit.Stroke(bonusLabel, Theme.Stroke, 2)
+	Kit.Tip(exchange, "More adventurers")
+
+local pending: number? = nil -- value the player chose that the server has not confirmed yet
 	local sending, want = false, nil :: number?
 	local gen = 0
 
@@ -138,22 +147,23 @@ function Vault.Build(body: Frame)
 	slider.Instance.Position = UDim2.fromScale(0, 0.5)
 	slider.Instance.AnchorPoint = Vector2.new(0, 0.5)
 
-	-- Row 3: thief risk, resulting interval.
-	local bottom = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 3 }, rows)
-	local bottomGrid = make("UIGridLayout", { CellPadding = UDim2.fromOffset(4, 4), SortOrder = Enum.SortOrder.LayoutOrder }, bottom)
+	-- Stat strip: thief risk, resulting interval, vault luck.
+	local bottom = Kit.Panel(rows, { Sprite = "Small", Size = UDim2.new(1, 0, 0, 74), LayoutOrder = 3, Pad = Vector2.new(6, 4) })
+	local bottomGrid = make("UIGridLayout", { CellPadding = UDim2.fromOffset(4, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center }, bottom)
 	local function chip(order: number, icon: string, color: Color3, tip: string)
 		local f = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 44), LayoutOrder = order, Active = true }, bottom)
 		make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, f)
-		Kit.Icon(f, icon, UDim2.fromOffset(40, 40)).LayoutOrder = 1
-		local l = Kit.Label(f, "", Theme.TextSize.Number - 2, color, true)
-		l.Size, l.TextWrapped, l.TextScaled, l.LayoutOrder = UDim2.new(1, -46, 0, 40), false, true, 2
-		make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Number - 2 }, l)
+		Kit.Icon(f, icon, UDim2.fromOffset(38, 38)).LayoutOrder = 1
+		local l = Kit.Label(f, "", Theme.TextSize.Number - 4, color, true)
+		l.Size, l.TextWrapped, l.TextScaled, l.LayoutOrder = UDim2.new(1, -46, 0, 36), false, true, 2
+		make("UITextSizeConstraint", { MinTextSize = 14, MaxTextSize = Theme.TextSize.Number - 4 }, l)
+		Kit.Stroke(l, Theme.Stroke, 2)
 		Kit.Tip(f, tip)
 		return l
 	end
 	local riskLabel = chip(1, "Thief", Theme.Danger, "Most a thief could steal")
 	local intervalLabel = chip(2, "Clock", Theme.TextPrimary, "Wait after an escape; defeated adventurers are replaced immediately")
-	local luckLabel = chip(3, "Exchange", Theme.TextMuted, "Vault luck multiplier for drops and rare finds")
+	local luckLabel = chip(3, "Exchange", Theme.TextPrimary, "Vault luck multiplier for drops and rare finds")
 
 	local function locked(): boolean
 		local ok, plot = pcall(Plots.WaitOwn)
@@ -176,22 +186,16 @@ function Vault.Build(body: Frame)
 	end
 
 	function self.Layout()
-		local phone = Scale.Phone
 		local width = body.AbsoluteSize.X / math.max(Scale.Value, 0.01)
-		local wide = width >= 720
+		local wide = width >= 600
 		local rowWidth = if wide then width * 0.64 else width
 		local narrow = rowWidth < 430
-		local stacked = rowWidth < 320
 		art.Visible = wide
 		rows.Position, rows.Size = if wide then UDim2.fromScale(0.36, 0) else UDim2.new(), UDim2.new(if wide then 0.64 else 1, 0, 0, 0)
-		topLayout.FillDirection = if stacked then Enum.FillDirection.Vertical else Enum.FillDirection.Horizontal
-		top.Size = UDim2.new(1, 0, 0, if stacked then 152 elseif phone then 52 else 64)
-		vaultedPlate.Size, bonusPlate.Size = if stacked then UDim2.new(1, 0, 0, 44) else UDim2.new(0.5, -32, 1, 0), if stacked then UDim2.new(1, 0, 0, 44) else UDim2.new(0.5, -32, 1, 0)
-		sliderRow.Size = UDim2.new(1, 0, 0, if phone then 48 else 52)
 		local columns = if narrow then 2 else 3
-		bottom.Size = UDim2.new(1, 0, 0, if narrow then 92 else 44)
+		bottom.Size = UDim2.new(1, 0, 0, if narrow then 118 else 74)
 		bottomGrid.FillDirectionMaxCells = columns
-		bottomGrid.CellSize = UDim2.new(1 / columns, -4 * (columns - 1) / columns, 0, 44)
+		bottomGrid.CellSize = UDim2.new(1 / columns, -6 * (columns - 1) / columns - 2, 0, 44)
 	end
 
 	function self.Refresh()
@@ -207,9 +211,9 @@ function Vault.Build(body: Frame)
 		end
 		if roomId ~= shownRoom then
 			shownRoom = roomId
-			for _, child in art:GetChildren() do child:Destroy() end
+			for _, child in artImage:GetChildren() do child:Destroy() end
 			if roomId ~= "" then
-				local image = P.RoomImage(art, roomId, 180, "Treasure")
+				local image = P.RoomImage(artImage, roomId, 180, "Treasure")
 				image.AnchorPoint, image.Position, image.Size = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1)
 			end
 		end

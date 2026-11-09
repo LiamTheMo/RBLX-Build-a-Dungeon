@@ -92,16 +92,16 @@ local function layout()
 	-- Above the bottom bar (3 buttons: 76 / 108 px tall) and its margin.
 	-- The bubble sprite's tail stretches, so the bubble stays near its native width (<= ~1.4x at the 0.5 slice scale).
 	local available = ui.Root.AbsoluteSize.X / math.max(Scale.Value, 0.01)
-	local width = math.max(220, math.min(if phone then 340 else 350, available - 40))
-	ui.Bubble.Position = UDim2.new(0.5, 0, 1, if phone then -92 else -144)
-	ui.Bubble.Size = UDim2.fromOffset(width, if phone then 170 else 196)
-	ui.Buttons.Size = UDim2.fromOffset(width, 48)
-	ui.TextLimit.MaxTextSize = if phone then 15 else 18
+	local width = math.max(220, math.min(if phone then 460 else 520, available - 40))
+	ui.Bubble.Position = UDim2.new(0.5, 0, 1, if phone then -118 else -196)
+	ui.Bubble.Size = UDim2.fromOffset(width, if phone then 178 else 230)
+	ui.Buttons.Size = UDim2.fromOffset(width, 76)
+	ui.TextLimit.MaxTextSize = if phone then 24 else 28
 	local m = if phone then 64 else 84
 	ui.Mascot.Size = UDim2.fromOffset(m, m)
-	-- Text sits inside the bubble body: 34 px of border at the sides and top, 66 px at the bottom (tail band).
-	ui.Text.Position = UDim2.fromOffset(32, 24)
-	ui.Text.Size = UDim2.new(1, -64, 1, -(24 + 58))
+	-- Text sits inside the bubble body: ~29 px of border at the sides, 27 px at the top, 38 px at the bottom (tail band).
+	ui.Text.Position = UDim2.fromOffset(34, 24)
+	ui.Text.Size = UDim2.new(1, -68, 1, -(24 + 52))
 end
 
 local function refresh()
@@ -145,7 +145,7 @@ local function buildUi()
 	local gui = Kit.Screen("Tutorial", 3)
 	ui = {}
 	ui.Root = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, gui)
-	-- Cream bubble (drawn, dark text) with the Keeper portrait as the mascot at the left.
+	-- Bubble.Tutorial sprite (cream, dark text) with the Keeper portrait as the mascot at the left.
 	ui.Bubble = Kit.Panel(ui.Root, { Sprite = "Bubble", AnchorPoint = Vector2.new(0.5, 1), Visible = false })
 	ui.Bubble:FindFirstChild("Inset"):Destroy() -- text and buttons are placed explicitly
 	ui.Bubble.ClipsDescendants = false
@@ -161,7 +161,7 @@ local function buildUi()
 	else
 		ui.Mascot.Visible = false
 	end
-	ui.Text = Kit.Label(ui.Bubble, "", 20, Theme.BgDeep)
+	ui.Text = Kit.Label(ui.Bubble, "", 20, Theme.Stroke)
 	ui.Text.ZIndex = 3
 	ui.Text.TextXAlignment = Enum.TextXAlignment.Left
 	ui.Text.TextYAlignment = Enum.TextYAlignment.Center
@@ -182,7 +182,7 @@ local function buildUi()
 		SortOrder = Enum.SortOrder.LayoutOrder,
 	}, ui.Buttons)
 	local function btn(text: string, style: string, order: number, fn: () -> ())
-		return Kit.Button(ui.Buttons, { Text = text, Style = style, LayoutOrder = order, Size = UDim2.fromOffset(if Scale.Phone then 104 else 120, 48), TextSize = 18, OnClick = fn })
+		return Kit.Button(ui.Buttons, { Text = text, Style = style, LayoutOrder = order, Size = UDim2.fromOffset(if Scale.Phone then 150 else 170, 76), TextSize = 24, OnClick = fn })
 	end
 	ui.Place = btn("Place", "Primary", 1, function()
 		Bus.BuildRequested:Fire()
@@ -197,8 +197,8 @@ local function buildUi()
 		action("Skip")
 	end)
 
-	-- Pointer arrow (Feedback.TutorialArrow) above the highlighted button.
-	ui.Arrow = Kit.Sprite(ui.Root, "Feedback.TutorialArrow", { AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(40, 44), Visible = false, ZIndex = 5 })
+	-- Pointer arrow (Arrow.Tutorial, 322 x 216 native, tip at the bottom left) above the highlighted button.
+	ui.Arrow = Kit.Sprite(ui.Root, "Arrow.Tutorial", { AnchorPoint = Vector2.new(0.04, 0.96), Size = UDim2.fromOffset(78, 52), Visible = false, ZIndex = 5 })
 
 	ui.Root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layout)
 	Scale.Changed:Connect(layout)

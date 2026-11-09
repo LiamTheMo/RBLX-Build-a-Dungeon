@@ -33,7 +33,7 @@ local function ensure(): Frame
 		-- Centre column below the next-visitor chip.
 		local phone = Scale.Phone
 		f.AnchorPoint = Vector2.new(0.5, 0)
-		f.Position = UDim2.new(0.5, 0, 0, (if phone then 104 else 148) + Bus.ToastOffset)
+		f.Position = UDim2.new(0.5, 0, 0, (if phone then 150 else 204) + Bus.ToastOffset)
 		f.Size = UDim2.fromOffset(if phone then 300 else 460, 10)
 	end
 	place()
@@ -56,15 +56,15 @@ function Toast.Show(text: string, kind: string?)
 		if child.Name == "Panels" and child:IsA("ScreenGui") and child.Enabled then panels = child; break end
 	end
 	local dim = panels and panels:IsA("ScreenGui") and panels.Enabled and panels:FindFirstChildWhichIsA("TextButton")
-	local panelFrame = dim and dim:FindFirstChildWhichIsA("GuiObject")
+	local panelFrame = dim and dim:FindFirstChild("Modal")
 	local toastGui = parent.Parent :: ScreenGui
 	if panelFrame then
-		local y = (panelFrame.AbsolutePosition.Y - toastGui.AbsolutePosition.Y) / Scale.Value + 84
+		local y = (panelFrame.AbsolutePosition.Y - toastGui.AbsolutePosition.Y) / Scale.Value + 112
 		parent.AnchorPoint = Vector2.new(0.5, 0)
 		parent.Position = UDim2.new(0.5, 0, 0, y)
 	else
 		parent.AnchorPoint = Vector2.new(0.5, 0)
-		parent.Position = UDim2.new(0.5, 0, 0, (if Scale.Phone then 104 else 148) + Bus.ToastOffset)
+		parent.Position = UDim2.new(0.5, 0, 0, (if Scale.Phone then 150 else 204) + Bus.ToastOffset)
 	end
 	local live = {}
 	for _, c in parent:GetChildren() do
@@ -82,7 +82,7 @@ function Toast.Show(text: string, kind: string?)
 	local g = Instance.new("CanvasGroup")
 	g.LayoutOrder = os.clock() * 1000
 	-- Height from the measured text (automatic sizing under a CanvasGroup clipped the second line); the frame's
-	-- border is ~18 px each side (ToastInfo/Good/Bad sprites).
+	-- border is ~20 px each side (Toast.Info/Good/Bad sprites).
 	local width = if Scale.Phone then 300 else 460
 	local lines = math.max(1, math.ceil(#text * Theme.TextSize.Body * 0.5 / math.max(width - 110, 100)))
 	g.Size = UDim2.new(1, 0, 0, math.max(64, 44 + lines * (Theme.TextSize.Body + 4)))
@@ -105,6 +105,9 @@ function Toast.Show(text: string, kind: string?)
 	label.FontFace = Theme.BodyFont
 	label.ZIndex = 2
 	label.Parent = g
+	local stroke = Instance.new("UIStroke")
+	stroke.Color, stroke.Thickness = Theme.Stroke, 2
+	stroke.Parent = label
 	g.Parent = parent
 
 	local fast = Settings.Reduced()

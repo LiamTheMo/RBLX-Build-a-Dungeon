@@ -676,10 +676,20 @@ local function addHealthBar(actor)
 	local anchorWorld = Vector3.new(cf.Position.X, cf.Position.Y + halfHeight + 0.35, cf.Position.Z)
 	local anchor = make("Attachment", { Name = "HealthAnchor", Position = root.CFrame:PointToObjectSpace(anchorWorld) }, root)
 	local gui = make("BillboardGui", { Name = "HealthBar", Adornee = anchor, Size = UDim2.fromOffset(80, 14), MaxDistance = 150 }, actor.Model)
-	local bg = Kit.Sprite(gui, "Bars.Track", { Size = UDim2.fromScale(1, 1) })
+	local bg = Kit.Sprite(gui, "Bar.Track", { Size = UDim2.fromScale(1, 1) })
 	local clip = make("Frame", { Name = "Clip", BackgroundTransparency = 1, Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6), ClipsDescendants = true }, bg)
-	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ImageColor3 = Theme.Success, Image = "" }, clip)
-	Kit.SkinByHeight(fill, Kit.Spec("Bars.Fill"))
+	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Image = "" }, clip)
+	local setFill = Kit.SkinByHeight(fill, Kit.Spec("Bar.FillGreen"))
+	local low = false
+	-- Green fill, switching to the red one under 30% health.
+	actor.HealthSet = function(fraction: number)
+		fill.Size = UDim2.fromScale(fraction, 1)
+		fill.Visible = fraction > 0
+		if (fraction < 0.3) ~= low then
+			low = fraction < 0.3
+			setFill(Kit.Spec(if low then "Bar.FillRed" else "Bar.FillGreen"))
+		end
+	end
 	actor.HealthBar, actor.HealthFill = gui, fill
 	return anchor
 end
@@ -1123,9 +1133,7 @@ local function stepView(view, dt: number)
 		v.Healing = healing
 		v.HealFx.Enabled = healing
 		local frac = math.clamp((plot:GetAttribute("VisitorHealth") or max) / max, 0, 1)
-		v.HealthFill.Size = UDim2.fromScale(frac, 1)
-		v.HealthFill.Visible = frac > 0
-		v.HealthFill.ImageColor3 = if frac < 0.3 then Theme.Danger else Theme.Success
+		v.HealthSet(frac)
 	end
 
 	-- Defenders: one actor per unit; the active unit (DefenderUnit) fights, finished units lie down, a Goblin
@@ -1151,9 +1159,7 @@ local function stepView(view, dt: number)
 			local maxHp = m:GetAttribute("DefenderMaxHealth")
 			local fraction = if type(hp) == "number" and type(maxHp) == "number" and maxHp > 0 then math.clamp(hp / maxHp, 0, 1) else 1
 			a.HealthBar.Enabled = inEncounter and i == unit and not roomDown and fraction < 1
-			a.HealthFill.Size = UDim2.fromScale(fraction, 1)
-			a.HealthFill.Visible = fraction > 0
-			a.HealthFill.ImageColor3 = if fraction < 0.3 then Theme.Danger else Theme.Success
+			a.HealthSet(fraction)
 			local hidden = cfg.Summoned == i and not (def.SummonAt and inEncounter)
 			if a.Hidden ~= hidden then
 				a.Hidden = hidden

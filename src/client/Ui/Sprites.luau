@@ -1,4 +1,4 @@
--- Load tracking for the uploaded UI sprites (SpriteIds, SpriteIds3, SpriteIds4). Every id is preloaded once;
+-- Load tracking for the uploaded UI sprites (SpriteIds6 kit, SpriteIds / SpriteIds3 / SpriteIds4 icon and world art). Every id is preloaded once;
 -- an id that is missing or fails to load is marked Failed, and the UI pieces that use it switch to the minimal
 -- neutral fallback image (Sprites.Fallback; never a code-drawn replacement shape). Status holds the last fetch
 -- status per id.
@@ -9,17 +9,17 @@ local Ids = require(script.Parent.SpriteIds)
 local Ids3 = require(script.Parent.SpriteIds3)
 local IconIds = require(script.Parent.IconIds)
 local Atlas = require(script.Parent.Atlas)
-local ids4Module = script.Parent:FindFirstChild("SpriteIds4") -- v4 frames and reel art (optional until it lands)
-local Ids4 = if ids4Module then require(ids4Module) else {}
+local Ids4 = require(script.Parent.SpriteIds4) -- icons and in-world art only
+local Ids6 = require(script.Parent.SpriteIds6) -- the unified UI kit: every frame, button, bar, chip, badge and toast
 
-local Sprites = { Failed = {} :: { [string]: boolean }, Status = {} :: { [string]: string }, Ids = Ids, Ids3 = Ids3, Ids4 = Ids4 }
+local Sprites = { Failed = {} :: { [string]: boolean }, Status = {} :: { [string]: string }, Ids = Ids, Ids3 = Ids3, Ids4 = Ids4, Ids6 = Ids6 }
 
 local watchers: { [string]: { () -> () } } = {}
 
--- Minimal neutral image shown when a sprite is unusable: the plain small panel (a AI design assistant sprite itself).
-local fallbackSpec = if type((Ids4 :: any).Panels) == "table" then (Ids4 :: any).Panels.Small else nil
+-- Minimal neutral image shown when a sprite is unusable: the plain section panel (a kit sprite itself).
+local fallbackSpec = Ids6.Panel.Section
 Sprites.Fallback = fallbackSpec
-Sprites.FallbackId = if fallbackSpec then fallbackSpec.Id else (Ids.Kit and Ids.Kit.PanelSmall and Ids.Kit.PanelSmall.Id) or ""
+Sprites.FallbackId = fallbackSpec.Id
 
 local function collect(node: any, out: { string })
 	if type(node) == "string" then
@@ -36,23 +36,6 @@ local function collect(node: any, out: { string })
 			end
 		end
 	end
-end
-
--- Looks a sprite up by dotted path in the v4 set ("Reel.Pointer", "Frames.Pill", ...): an id string or a
--- spec table, nil until SpriteIds4 has it. Every element still waiting for AI design assistant art routes through here, so
--- landing the art only needs ids, no code changes.
-function Sprites.Get(path: string): any
-	local node: any = Ids4
-	for part in string.gmatch(path, "[^%.]+") do
-		if type(node) ~= "table" then
-			return nil
-		end
-		node = node[part]
-	end
-	if type(node) == "string" and not Sprites.Ok(node) then
-		return nil
-	end
-	return node
 end
 
 -- True when the id is usable (present and not known to have failed).
@@ -100,6 +83,7 @@ task.spawn(function()
 	collect(IconIds, ids)
 	collect(Atlas, ids)
 	collect(Ids4, ids)
+	collect(Ids6, ids)
 	local seen, unique = {}, {}
 	for _, id in ids do
 		if not seen[id] then

@@ -81,12 +81,12 @@ end
 
 -- Icon + a number that tweens (instant when reduced) and pops on gain. Name on hover.
 local function cell(parent: Instance, iconName: string, tip: string, order: number)
-	local root = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 40), LayoutOrder = order, Active = true }, parent)
+	local root = make("Frame", { BackgroundTransparency = 1, AutomaticSize = X, Size = UDim2.fromOffset(0, 52), LayoutOrder = order, Active = true }, parent)
 	hlist(root, 6)
-	local icon = Kit.Icon(root, iconName, UDim2.fromOffset(32, 32))
+	local icon = Kit.Icon(root, iconName, UDim2.fromOffset(44, 44))
 	icon.LayoutOrder = 1
 	local number = Kit.Label(root, "0", Theme.TextSize.Number, Theme.TextPrimary, true)
-	number.AutomaticSize, number.Size, number.TextWrapped, number.TextXAlignment, number.LayoutOrder = X, UDim2.fromOffset(0, 36), false, Enum.TextXAlignment.Left, 2
+	number.AutomaticSize, number.Size, number.TextWrapped, number.TextXAlignment, number.LayoutOrder = X, UDim2.fromOffset(0, 48), false, Enum.TextXAlignment.Left, 2
 	Kit.Tip(root, tip)
 	local popScale = make("UIScale", {}, number)
 	local value = make("NumberValue", {}, number)
@@ -113,8 +113,8 @@ local function formatTime(seconds: number): string
 	return string.format("%d:%02d", seconds // 60, seconds % 60)
 end
 
-local function modal(gui: ScreenGui, title: string, titleIcon: string, desktop: Vector2, phone: Vector2)
-	return Modal.New(gui, title, titleIcon, desktop, phone)
+local function modal(gui: ScreenGui, title: string, titleIcon: string, desktop: Vector2, phone: Vector2, wideFrac: number?)
+	return Modal.New(gui, title, titleIcon, desktop, phone, wideFrac)
 end
 
 local modals = Modal.All
@@ -127,21 +127,22 @@ local function closeModals()
 end
 
 local function buildShop(gui: ScreenGui)
-	local shop = modal(gui, "Shop", "Shop", Vector2.new(900, 560), Vector2.new(660, 330))
+	local shop = modal(gui, "Shop", "Shop", Vector2.new(1000, 720), Vector2.new(820, 440), 0.62)
+	-- The scroll area sits in the dark well of Panel.Modal.
 	local scroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		CanvasSize = UDim2.new(),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 10,
+		ScrollBarThickness = 12,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
 		BorderSizePixel = 0,
 	}, shop.Body)
 	make("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, scroll)
-	make("UIPadding", { PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 4) }, scroll)
+	make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 18), PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8) }, scroll)
 	local grid = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.fromScale(1, 0), LayoutOrder = 1 }, scroll)
 	-- Four cards per row at any width: each cell is a quarter of the row minus its share of the gaps.
-	local gl = make("UIGridLayout", { CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Left }, grid)
+	local gl = make("UIGridLayout", { CellPadding = UDim2.fromOffset(10, 18), SortOrder = Enum.SortOrder.LayoutOrder, FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Left }, grid)
 	local upHead = P.IconLine(scroll, "Upgrade", "", 2, Theme.Gold)
 	upHead.Size = UDim2.new(1, 0, 0, 34)
 	local upList = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.fromScale(1, 0), LayoutOrder = 3 }, scroll)
@@ -157,36 +158,38 @@ local function buildShop(gui: ScreenGui)
 		local cost = def and def.Cost
 		if def and def.Source == "Shop" and cost then
 			order += 1
-			local card = Kit.Panel(grid, { BackgroundColor3 = Theme.BgPanel, LayoutOrder = order, Pad = Vector2.new(4, 2), Rarity = def.Rarity })
-			make("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)
-			local art = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 0 }, card)
+			-- Card: the tier's frame, a category tag on its top edge, art, name and a yellow price button.
+			local card = Kit.Panel(grid, { LayoutOrder = order, Rarity = def.Rarity })
+			card.ClipsDescendants = false
+			card:FindFirstChild("Inset"):Destroy() -- the rarity frame is drawn at slice scale 0.5 here: fixed borders
+			local content = make("Frame", { Name = "Content", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, card)
+			make("UIPadding", { PaddingLeft = UDim.new(0, 26), PaddingRight = UDim.new(0, 30), PaddingTop = UDim.new(0, 22), PaddingBottom = UDim.new(0, 30) }, content)
+			make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, content)
+			local tag = Kit.Sprite(card, "Tag.Label", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 4), Size = UDim2.fromOffset(112, 30), ZIndex = 5 })
+			local tagText = Kit.Label(tag, def.Kind or "Room", 16, Theme.TextOnGold, true)
+			tagText.Size, tagText.TextWrapped, tagText.ZIndex = UDim2.fromScale(1, 0.92), false, 6
+			tag.Active = true
+			Kit.Tip(tag, def.Kind .. (if def.Ability and def.Ability ~= "" then "\n" .. def.Ability else ""), nil, def.Rarity)
+			local art = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 0 }, content)
 			local artImg = P.RoomImage(art, id, 64, def.Kind)
 			artImg.AnchorPoint, artImg.Position, artImg.Size = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1)
 			make("UIAspectRatioConstraint", { AspectRatio = 1 }, artImg)
-			local name = Kit.Label(card, def.DisplayName, 18, Theme.TextPrimary, true)
-			name.Size, name.LayoutOrder, name.TextTruncate = UDim2.new(1, 0, 0, 40), 2, Enum.TextTruncate.AtEnd
-			make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 18 }, name)
+			local name = Kit.Label(content, def.DisplayName, 18, Theme.TextPrimary, true)
+			name.Size, name.LayoutOrder, name.TextTruncate = UDim2.new(1, 0, 0, 28), 2, Enum.TextTruncate.AtEnd
+			make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 20 }, name)
+			Kit.Stroke(name, Theme.Stroke, 2)
 			name.TextScaled = true
-			local costRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 3 }, card)
-			hlist(costRow, 6, { HorizontalAlignment = Enum.HorizontalAlignment.Center })
-			Kit.Icon(costRow, "CoinStack", UDim2.fromOffset(22, 22)).LayoutOrder = 1
-			local costLabel = Kit.Label(costRow, tostring(cost), Theme.TextSize.Body, Theme.Gold, true)
-			costLabel.AutomaticSize, costLabel.Size, costLabel.TextWrapped, costLabel.LayoutOrder = X, UDim2.fromOffset(0, 24), false, 2
-			-- Role icon and how many you own.
-			local metaRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 4, Active = true }, card)
-			hlist(metaRow, 10, { HorizontalAlignment = Enum.HorizontalAlignment.Center })
-			Kit.Icon(metaRow, ROLE_ICON[def.Kind] or "Defender", UDim2.fromOffset(22, 22)).LayoutOrder = 1
-			Kit.Tip(metaRow, def.Kind .. " - owned" .. (if def.Ability and def.Ability ~= "" then "\n" .. def.Ability else ""))
-			if type(def.Exchange) == "number" then
-				Kit.Icon(metaRow, "Exchange", UDim2.fromOffset(22, 22)).LayoutOrder = 3
-			end
-			local owned = Kit.Label(metaRow, "x0", 16, Theme.TextMuted, true)
-			owned.AutomaticSize, owned.Size, owned.TextWrapped, owned.LayoutOrder = X, UDim2.fromOffset(0, 24), false, 2
+			-- How many you own: Badge.Count at the top-right corner of the card.
+			local owned = Kit.Count(card, "x0", true, 28)
+			owned.AnchorPoint, owned.Position, owned.ZIndex, owned.Visible = Vector2.new(1, 0.5), UDim2.new(1, -6, 0, 10), 6, false
+			Kit.PillLabel(owned).ZIndex = 7
 			local entry = { Id = id, Cost = cost, Owned = owned, Name = name, Confirm = 0, Level = def.ShopLevel, Art = art }
-			entry.Button = Kit.Button(card, {
-				Text = "Buy",
+			entry.Button = Kit.Button(content, {
+				Text = tostring(cost),
 				Style = "Primary",
-				TextSize = 18,
+				Icon = "Coin",
+				IconLayout = "Row",
+				TextSize = 20,
 				LayoutOrder = 5,
 				Size = UDim2.new(1, 0, 0, 44),
 				OnClick = function()
@@ -217,10 +220,10 @@ local function buildShop(gui: ScreenGui)
 
 	function shop.Refresh()
 		local phone = Scale.Phone
-		gl.CellSize = UDim2.new(0.25, -6, 0, if phone then 226 else 262)
+		gl.CellSize = UDim2.new(0.25, -8, 0, if phone then 214 else 252)
 		for _, e in cards do
-			e.Art.Size = UDim2.new(1, 0, 0, if phone then 44 else 64)
-			e.Button.SetTextSize(if phone then 16 else 18)
+			e.Art.Size = UDim2.new(1, 0, 0, if phone then 72 else 96)
+			e.Button.SetTextSize(if phone then 17 else 20)
 		end
 		local s = State.Current
 		if not s then
@@ -235,15 +238,16 @@ local function buildShop(gui: ScreenGui)
 					count += 1
 				end
 			end
-			e.Owned.Text = "x" .. count
+			Kit.SetText(e.Owned, "x" .. count)
+			e.Owned.Visible = count > 0
 			local locked = level < e.Level
 			e.Name.TextColor3 = if locked then Theme.TextMuted else Theme.TextPrimary
-			e.Button.SetText(if e.Confirm == 1 then "Confirm" else "Buy")
+			e.Button.SetText(if e.Confirm == 1 then "Confirm?" else tostring(e.Cost))
 			if locked then
 				e.Confirm = 0
 				e.Button.SetEnabled(false, "Lv " .. e.Level, true)
 			else
-				e.Button.SetEnabled(coins >= e.Cost, "Buy", true)
+				e.Button.SetEnabled(coins >= e.Cost, tostring(e.Cost))
 			end
 		end
 
@@ -271,7 +275,7 @@ local function buildShop(gui: ScreenGui)
 			end
 			table.clear(upRows)
 			for i, r in rows do
-				local f = Kit.Panel(upList, { BackgroundColor3 = Theme.BgPanel, Size = UDim2.new(1, 0, 0, 80), LayoutOrder = i, Rarity = r.Rarity, Pad = Vector2.new(8, 0) })
+				local f = Kit.Panel(upList, { Size = UDim2.new(1, 0, 0, 84), LayoutOrder = i, Pad = Vector2.new(8, 0) })
 				local roomImg = P.RoomImage(f, r.Def.Id, 52, r.Def.Kind)
 				roomImg.AnchorPoint, roomImg.Position = Vector2.new(0, 0.5), UDim2.new(0, 0, 0.5, 0)
 				local left = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(64, 0), Size = UDim2.new(1, -(64 + 156), 1, 0) }, f)
@@ -331,8 +335,9 @@ local function buildShop(gui: ScreenGui)
 end
 
 local function buildSettings(gui: ScreenGui)
-	local panel = modal(gui, "Settings", "Settings", Vector2.new(580, 360), Vector2.new(560, 300))
-	local list = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, panel.Body)
+	local panel = modal(gui, "Settings", "Settings", Vector2.new(640, 400), Vector2.new(600, 330))
+	local well = Kit.Panel(panel.Body, { Sprite = "Small", Size = UDim2.fromScale(1, 1), Pad = Vector2.new(10, 8) })
+	local list = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, well)
 	make("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	pad(list, 6, 4)
 	-- Icon at the left, the control filling the rest of the row.
@@ -346,7 +351,7 @@ local function buildSettings(gui: ScreenGui)
 	end
 	local v = Settings.Values
 	local motion = row("ReducedMotion", "Reduced motion", 1)
-	local ml = Kit.Label(motion, "Reduced motion", Theme.TextSize.Body, Theme.TextPrimary)
+	local ml = Kit.Label(motion, "Reduced motion", Theme.TextSize.Heading, Theme.TextPrimary)
 	ml.Size, ml.TextXAlignment = UDim2.new(1, -110, 1, 0), Enum.TextXAlignment.Left
 	local toggle = Kit.Toggle(motion, v.ReducedMotion, function(on)
 		Settings.Set("ReducedMotion", on)
@@ -398,13 +403,13 @@ local function build()
 		hlist(r, gap)
 		return r
 	end
-	local currencyRow = pillRow(currency, 26, 14)
+	local currencyRow = pillRow(currency, 46, 18)
 	local banked = cell(currencyRow, "Coin", "Coins", 1)
 	local vault = cell(currencyRow, "Vault", "Vault", 2)
 	-- The vault share (%) as a gold pill; the whole chip opens the vault slider.
-	local bonus = Kit.Pill(vault.Root, "", Theme.Gold, Theme.TextOnGold, 26)
-	Kit.PillLabel(bonus).TextSize, bonus.LayoutOrder = 16, 3
-	bonus.Size = UDim2.fromOffset(0, 26)
+	local bonus = Kit.Pill(vault.Root, "", Theme.Gold, Theme.TextOnGold, 38)
+	Kit.PillLabel(bonus).TextSize, bonus.LayoutOrder = 24, 3
+	bonus.Size = UDim2.fromOffset(0, 38)
 	-- Keep the tutorial ring out of the auto-sized currency row.
 	local vaultRing = Kit.Ring(gui, 6)
 	local function positionVaultRing()
@@ -421,12 +426,12 @@ local function build()
 	-- Keeper level and XP.
 	local levelPanel = Kit.Panel(gui, { Sprite = "Pill" })
 	local levelRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, levelPanel)
-	pad(levelRow, 16, 6)
+	pad(levelRow, 34, 10)
 	hlist(levelRow, 8)
 	local levelIcon = Kit.Icon(levelRow, "Level", UDim2.fromOffset(30, 30))
 	levelIcon.LayoutOrder = 0
-	local levelPill = Kit.Pill(levelRow, "Lv 1", Theme.Gold, Theme.TextOnGold, 28)
-	Kit.PillLabel(levelPill).TextSize, levelPill.LayoutOrder = 18, 1
+	local levelPill = Kit.Pill(levelRow, "Lv 1", Theme.Gold, Theme.TextOnGold, 42)
+	Kit.PillLabel(levelPill).TextSize, levelPill.LayoutOrder = 26, 1
 	local xpBar = Kit.Bar(levelRow, UDim2.fromOffset(170, 28))
 	xpBar.Instance.LayoutOrder = 2
 	local levelGlow = Kit.Glow(levelPanel, Theme.Gold, 1)
@@ -437,44 +442,45 @@ local function build()
 	local function levelMark(on: boolean)
 		levelRing.Visible = on
 	end
-	-- Level-up banner (Feedback.LevelUpBanner) with its glow, shown briefly top-centre.
-	local lvlBanner = make("Frame", { Name = "LevelUp", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 150), Size = UDim2.fromOffset(300, 98), Visible = false, ZIndex = 30 }, gui)
+	-- Level-up banner (Banner.LevelUp) with its Fx.Burst glow, shown briefly top-centre.
+	local lvlBanner = make("Frame", { Name = "LevelUp", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 270), Size = UDim2.fromOffset(460, 167), Visible = false, ZIndex = 30 }, gui)
 	local lvlGlow = Kit.Glow(lvlBanner, Theme.Gold, 0.35)
 	lvlGlow.Size, lvlGlow.ZIndex = UDim2.new(2, 0, 3, 0), 30
-	local lvlArt = Kit.Sprite(lvlBanner, "Feedback.LevelUpBanner", { Size = UDim2.fromScale(1, 1), ZIndex = 31 })
-	local lvlText = Kit.Label(lvlBanner, "LEVEL UP!", 28, Theme.TextOnGold, true)
-	lvlText.Size, lvlText.ZIndex, lvlText.TextWrapped = UDim2.new(0.68, 0, 1, -14), 32, false
-	lvlText.AnchorPoint, lvlText.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5)
+	local lvlArt = Kit.Sprite(lvlBanner, "Banner.LevelUp", { Size = UDim2.fromScale(1, 1), ZIndex = 31 })
+	local lvlText = Kit.Label(lvlBanner, "LEVEL UP!", 34, Theme.TextPrimary, true)
+	lvlText.Size, lvlText.ZIndex, lvlText.TextWrapped = UDim2.new(0.66, 0, 0.3, 0), 32, false
+	lvlText.AnchorPoint, lvlText.Position = Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.66)
 	lvlText.TextScaled = true
-	make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 30 }, lvlText)
+	Kit.Stroke(lvlText, Theme.Stroke, 3)
+	make("UITextSizeConstraint", { MinTextSize = 12, MaxTextSize = 40 }, lvlText)
 	local lvlScale = make("UIScale", {}, lvlBanner)
 	local lvlId = 0
 
 	-- Under the level pill: the next goal chip, then the active bonuses.
 	local leftStack = make("Frame", { Name = "LeftStack", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0) }, gui)
 	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, leftStack)
-	local goal = Kit.Panel(leftStack, { Sprite = "Pill", AutomaticSize = X, Size = UDim2.fromOffset(0, 34), LayoutOrder = 1, Active = true, Visible = false })
-	local goalRow = pillRow(goal, 12, 6)
-	Kit.Icon(goalRow, "Flag", UDim2.fromOffset(24, 24)).LayoutOrder = 1
-	local goalArt = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(28, 28), LayoutOrder = 2 }, goalRow)
-	local goalText = Kit.Label(goalRow, "", 16, Theme.TextPrimary, true)
-	goalText.AutomaticSize, goalText.Size, goalText.TextWrapped, goalText.LayoutOrder = X, UDim2.fromOffset(0, 26), false, 3
+	local goal = Kit.Panel(leftStack, { Sprite = "Pill", AutomaticSize = X, Size = UDim2.fromOffset(0, 48), LayoutOrder = 1, Active = true, Visible = false })
+	local goalRow = pillRow(goal, 46, 8)
+	Kit.Icon(goalRow, "Flag", UDim2.fromOffset(32, 32)).LayoutOrder = 1
+	local goalArt = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(36, 36), LayoutOrder = 2 }, goalRow)
+	local goalText = Kit.Label(goalRow, "", 22, Theme.TextPrimary, true)
+	goalText.AutomaticSize, goalText.Size, goalText.TextWrapped, goalText.LayoutOrder = X, UDim2.fromOffset(0, 34), false, 3
 	local goalKind, goalSig = "", ""
 	Kit.Tip(goal, "Next goal")
 	-- Active bonuses: one small chip per bonus (icon + percent).
-	local bonusRow = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 32), Visible = false, LayoutOrder = 2 }, leftStack)
+	local bonusRow = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 44), Visible = false, LayoutOrder = 2 }, leftStack)
 	hlist(bonusRow, 6)
 	local bonusSig = ""
 
-	-- Settings gear: small, top-left under the Roblox menu buttons.
-	local gear = Kit.Button(gui, { Text = "", Icon = "Settings", IconScale = 0.7, Style = "Secondary", Round = true, Size = UDim2.fromOffset(52, 52), Tip = "Settings", Shadow = true })
+	-- Settings gear: Round.Purple, top-right.
+	local gear = Kit.Button(gui, { Text = "", Icon = "Settings", IconScale = 0.66, Style = "Secondary", Round = true, Size = UDim2.fromOffset(56, 56), Tip = "Settings" })
 
 	-- Next visitor chip: clock + countdown, portrait and trait icons.
 	local chipBar = make("Frame", { Name = "ChipBar", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0) }, gui)
 	hlist(chipBar, 8, { HorizontalAlignment = Enum.HorizontalAlignment.Center })
 	local chip = Kit.Panel(chipBar, { Sprite = "Pill", AutomaticSize = X, LayoutOrder = 1 })
-	local chipRowF = pillRow(chip, 22, 8)
-	local chipIcon = Kit.Icon(chipRowF, "Clock", UDim2.fromOffset(28, 28))
+	local chipRowF = pillRow(chip, 40, 10)
+	local chipIcon = Kit.Icon(chipRowF, "Clock", UDim2.fromOffset(38, 38))
 	chipIcon.LayoutOrder = 1
 	local status = Kit.Label(chipRowF, "", Theme.TextSize.Body, Theme.TextPrimary, true)
 	status.AutomaticSize, status.Size, status.TextWrapped, status.LayoutOrder = X, UDim2.fromOffset(0, 32), false, 2
@@ -490,12 +496,12 @@ local function build()
 	local threatButton = Kit.Button(chipBar, { Text = "", Icon = "T1", IconScale = 0.82, Style = "Secondary", Round = true, Size = UDim2.fromOffset(46, 46), LayoutOrder = 2, Tip = "Threat" })
 	local infoButton = Kit.Button(chipBar, { Text = "", Icon = "DropChance", IconScale = 0.6, Style = "Secondary", Round = true, Size = UDim2.fromOffset(46, 46), LayoutOrder = 3, Tip = "Drops" })
 
-	-- Bottom navigation.
+	-- Bottom navigation: Nav.Off (purple) buttons, icon over label; the open panel (and Build) wear Nav.On (yellow).
 	local bar = make("Frame", { BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, AnchorPoint = Vector2.new(0.5, 1) }, gui)
-	hlist(bar, 14, { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom })
+	hlist(bar, 12, { HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Bottom })
 	local buttons = {}
-	local function action(key: string, icon: string, text: string, style: string, order: number, onClick: () -> ())
-		local b = Kit.Button(bar, { Text = text, Icon = icon, IconScale = 0.58, Style = style, LayoutOrder = order, Shadow = true, Tip = text, OnClick = onClick })
+	local function action(key: string, icon: string, text: string, _style: string, order: number, onClick: () -> ())
+		local b = Kit.Button(bar, { Text = text, Icon = icon, IconScale = 0.58, Style = "Nav", LayoutOrder = order, Tip = text, OnClick = onClick })
 		buttons[key] = b
 		return b
 	end
@@ -547,7 +553,7 @@ local function build()
 	settingsPanel = buildSettings(gui)
 
 	-- Threat picker, vault slider and drop card popups (bodies in Ui/PanelsThreat, PanelsVault, DropCard).
-	local vaultModal = modal(gui, "Vault", "Vault", Vector2.new(900, 430), Vector2.new(640, 300))
+	local vaultModal = modal(gui, "Vault", "Vault", Vector2.new(980, 460), Vector2.new(700, 420), 0.62)
 	local vaultPanel = PanelsVault.Build(vaultModal.Body)
 	vaultModal.OnOpen = vaultPanel.Refresh
 	Bus.VaultRequested:Connect(function()
@@ -556,7 +562,7 @@ local function build()
 			vaultModal.Open()
 		end
 	end)
-	local dropModal = modal(gui, "Drops", "DropChance", Vector2.new(640, 520), Vector2.new(620, 330))
+	local dropModal = modal(gui, "Drops", "DropChance", Vector2.new(700, 560), Vector2.new(640, 420), 0.5)
 	local dropScroll = make("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
@@ -628,7 +634,7 @@ local function build()
 	EventBanner.Start()
 
 	-- Encounter panel.
-	local enc = Kit.Panel(gui, { Visible = false, AutomaticSize = Enum.AutomaticSize.Y, Pad = Vector2.new(6, 4) })
+	local enc = Kit.Panel(gui, { Sprite = "Card", Visible = false, AutomaticSize = Enum.AutomaticSize.Y, Pad = Vector2.new(10, 8) })
 	make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, enc)
 	local nameRow = make("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 1 }, enc)
 	hlist(nameRow, 10)
@@ -680,44 +686,44 @@ local function build()
 
 	local function layout()
 		local phone = Scale.Phone
-		local cs = if phone then 22 else Theme.TextSize.Number
-		levelIcon.Visible = not phone
+		local cs = if phone then 26 else 36
+		levelIcon.Visible = false -- the reference shows the Lv chip and the XP bar only
 		banked.Number.TextSize, vault.Number.TextSize = cs, cs
 		for _, c in { banked, vault } do
-			c.Icon.Size = UDim2.fromOffset(if phone then 26 else 32, if phone then 26 else 32)
+			c.Icon.Size = UDim2.fromOffset(if phone then 34 else 46, if phone then 34 else 46)
 		end
 		if phone then
-			gear.Instance.AnchorPoint, gear.Instance.Position, gear.Instance.Size = Vector2.new(0, 0), UDim2.fromOffset(8, 4), UDim2.fromOffset(46, 46)
-			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.fromOffset(62, 4), UDim2.fromOffset(262, 46)
-			xpBar.Instance.Size = UDim2.fromOffset(158, 24)
-			leftStack.AnchorPoint, leftStack.Position = Vector2.new(0, 0), UDim2.fromOffset(62, 54)
-			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 4), UDim2.fromOffset(0, 46)
-			chipBar.AnchorPoint, chipBar.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 54)
-			chip.Size = UDim2.fromOffset(0, 38)
-			threatButton.Instance.Size, infoButton.Instance.Size = UDim2.fromOffset(44, 44), UDim2.fromOffset(44, 44)
+			gear.Instance.AnchorPoint, gear.Instance.Position, gear.Instance.Size = Vector2.new(1, 0), UDim2.new(1, -8, 0, 4), UDim2.fromOffset(56, 56)
+			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.fromOffset(8, 4), UDim2.fromOffset(360, 62)
+			xpBar.Instance.Size = UDim2.fromOffset(190, 30)
+			leftStack.AnchorPoint, leftStack.Position = Vector2.new(0, 0), UDim2.fromOffset(8, 72)
+			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 4), UDim2.fromOffset(0, 62)
+			chipBar.AnchorPoint, chipBar.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 72)
+			chip.Size = UDim2.fromOffset(0, 52)
+			threatButton.Instance.Size, infoButton.Instance.Size = UDim2.fromOffset(54, 54), UDim2.fromOffset(54, 54)
 			bar.Position = UDim2.new(0.5, 0, 1, -16)
-			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -8, 0, 52), UDim2.fromOffset(250, 0)
+			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -8, 0, 76), UDim2.fromOffset(270, 0)
 		else
-			gear.Instance.AnchorPoint, gear.Instance.Position, gear.Instance.Size = Vector2.new(0, 0), UDim2.fromOffset(16, 8), UDim2.fromOffset(52, 52)
-			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.fromOffset(78, 6), UDim2.fromOffset(340, 58)
-			xpBar.Instance.Size = UDim2.fromOffset(170, 28)
-			leftStack.AnchorPoint, leftStack.Position = Vector2.new(0, 0), UDim2.fromOffset(78, 72)
-			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 6), UDim2.fromOffset(0, 64)
-			chipBar.AnchorPoint, chipBar.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 78)
-			chip.Size = UDim2.fromOffset(0, 46)
-			threatButton.Instance.Size, infoButton.Instance.Size = UDim2.fromOffset(46, 46), UDim2.fromOffset(46, 46)
+			gear.Instance.AnchorPoint, gear.Instance.Position, gear.Instance.Size = Vector2.new(1, 0), UDim2.new(1, -16, 0, 10), UDim2.fromOffset(84, 84)
+			levelPanel.AnchorPoint, levelPanel.Position, levelPanel.Size = Vector2.new(0, 0), UDim2.fromOffset(16, 8), UDim2.fromOffset(520, 90)
+			xpBar.Instance.Size = UDim2.fromOffset(300, 42)
+			leftStack.AnchorPoint, leftStack.Position = Vector2.new(0, 0), UDim2.fromOffset(16, 108)
+			currency.AnchorPoint, currency.Position, currency.Size = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 8), UDim2.fromOffset(0, 90)
+			chipBar.AnchorPoint, chipBar.Position = Vector2.new(0.5, 0), UDim2.new(0.5, 0, 0, 108)
+			chip.Size = UDim2.fromOffset(0, 66)
+			threatButton.Instance.Size, infoButton.Instance.Size = UDim2.fromOffset(72, 72), UDim2.fromOffset(72, 72)
 			bar.Position = UDim2.new(0.5, 0, 1, -16)
-			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -16, 0, 96), UDim2.fromOffset(340, 0)
+			enc.AnchorPoint, enc.Position, enc.Size = Vector2.new(1, 0), UDim2.new(1, -16, 0, 120), UDim2.fromOffset(380, 0)
 		end
 		local count = 0
 		for _ in buttons do count += 1 end
 		local available = gui.AbsoluteSize.X / math.max(Scale.Value, 0.01)
-		local width = math.min(if phone then 96 else 120, (available - 32 - 14 * (count - 1)) / count)
+		local width = math.min(if phone then 112 else 184, (available - 32 - 12 * (count - 1)) / count)
 		for _, b in buttons do
-			b.Instance.Size = UDim2.fromOffset(math.max(width, 44 / Scale.Value), if phone then 76 else 108)
-			b.SetTextSize(if phone then 14 else 16)
+			b.Instance.Size = UDim2.fromOffset(math.max(width, 44 / Scale.Value), if phone then 88 else 140)
+			b.SetTextSize(if phone then 18 else 28)
 		end
-		encName.TextSize = if phone then 20 else Theme.TextSize.Heading
+		encName.TextSize = if phone then 22 else 30
 		shop.Layout()
 		settingsPanel.Layout()
 		vaultModal.Layout()
@@ -730,11 +736,43 @@ local function build()
 	Scale.Changed:Connect(layout)
 	layout()
 
+	-- Nav state: Build is always lit; Shop / Bag / Index / Upgrades light (Nav.On) while their panel is open.
+	buttons.Build.SetSelected(true)
+	local navLit: { [string]: boolean } = {}
+	task.spawn(function()
+		while gui.Parent do
+			local open: { [string]: boolean } = {}
+			for _, panels in gui.Parent:GetChildren() do
+				if panels:IsA("ScreenGui") and panels:GetAttribute("Panel") ~= nil and panels.Enabled then
+					open[tostring(panels:GetAttribute("Panel"))] = true
+				end
+			end
+			open.Shop = shop.IsOpen
+			-- Only the open panel wears Nav.On; Build is lit while nothing is open.
+			local anyOpen = false
+			for _, m in modals do
+				anyOpen = anyOpen or m.IsOpen
+			end
+			for _, isOpen in open do
+				anyOpen = anyOpen or isOpen
+			end
+			open.Build = not anyOpen
+			for key, panel in { Build = "Build", Shop = "Shop", Bag = "Bag", Index = "Index", Keeper = "Keeper" } do
+				local on = open[panel] == true
+				if navLit[key] ~= on then
+					navLit[key] = on
+					buttons[key].SetSelected(on)
+				end
+			end
+			task.wait(0.12)
+		end
+	end)
+
 	local function syncChipVisibility()
 		local covered = false
 		for _, m in modals do covered = covered or m.Group.Visible end
 		for _, panels in gui.Parent:GetChildren() do
-			if panels.Name == "Panels" and panels:IsA("ScreenGui") and panels.Enabled then covered = true end
+			if panels:GetAttribute("Panel") ~= nil and panels:IsA("ScreenGui") and panels.Enabled then covered = true end
 		end
 		chipBar.Visible = not covered and not (State.Current and State.Current.Building)
 	end
@@ -749,7 +787,7 @@ local function build()
 			covered = covered or m.Group.Visible
 		end
 		for _, panels in gui.Parent:GetChildren() do
-			if panels.Name == "Panels" and panels:IsA("ScreenGui") and panels.Enabled then covered = true end
+			if panels:GetAttribute("Panel") ~= nil and panels:IsA("ScreenGui") and panels.Enabled then covered = true end
 		end
 		enc.Visible = show and not covered
 		if not show then
@@ -804,7 +842,7 @@ local function build()
 		m.Group:GetPropertyChangedSignal("Visible"):Connect(syncChipVisibility)
 	end
 	local function watchPanels(panels)
-		if panels.Name == "Panels" and panels:IsA("ScreenGui") then
+		if panels:IsA("ScreenGui") and (panels.Name == "Panels" or panels:GetAttribute("Panel") ~= nil) then
 			panels:GetPropertyChangedSignal("Enabled"):Connect(refreshEncounter)
 			panels:GetPropertyChangedSignal("Enabled"):Connect(syncChipVisibility)
 		end
@@ -856,6 +894,11 @@ local function build()
 		end
 		lastCoins = coins
 		vault.Set(s.Vaulted or 0)
+		local chests = 0
+		for _, n in s.Boxes or {} do
+			chests += n
+		end
+		buttons.Bag.SetBadge(chests)
 		local hasTreasure = State.HasPlacedKind("Treasure")
 		vault.Root.Visible = hasTreasure
 		local share = s.VaultPercent or 0
@@ -937,11 +980,11 @@ local function build()
 			for i, e in BONUS_ICON do
 				local v = pct(b[e[1]])
 				if v > 0 then
-					local c = Kit.Panel(bonusRow, { Sprite = "Pill", AutomaticSize = X, Size = UDim2.fromOffset(0, 32), LayoutOrder = i, Active = true })
-					local cr = pillRow(c, 12, 4)
-					Kit.Icon(cr, e[2], UDim2.fromOffset(20, 20)).LayoutOrder = 1
-					local l = Kit.Label(cr, "+" .. v .. "%", 15, Theme.TextPrimary, true)
-					l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, 24), false, 2
+					local c = Kit.Panel(bonusRow, { Sprite = "Pill", AutomaticSize = X, Size = UDim2.fromOffset(0, 54), LayoutOrder = i, Active = true })
+					local cr = pillRow(c, 18, 6)
+					Kit.Icon(cr, e[2], UDim2.fromOffset(36, 36)).LayoutOrder = 1
+					local l = Kit.Label(cr, "+" .. v .. "%", 27, Theme.TextPrimary, true)
+					l.AutomaticSize, l.Size, l.TextWrapped, l.LayoutOrder = X, UDim2.fromOffset(0, 40), false, 2
 					Kit.Tip(c, e[3])
 				end
 			end
@@ -1031,21 +1074,22 @@ function Hud.Init()
 end
 
 function Hud.Start()
-	-- Loading spinner (Feedback.LoadingSpinner) until the catalog and the first State snapshot are here.
+	-- Loading spinner (Misc.Spinner) until the catalog and the first State snapshot are here.
 	local spinGui = Kit.Screen("Loading", 90)
-	local spin = Kit.Sprite(spinGui, "Feedback.LoadingSpinner", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(72, 72) })
+	local spin = Kit.Sprite(spinGui, "Misc.Spinner", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(72, 72) })
 	local spinConn = game:GetService("RunService").RenderStepped:Connect(function(dt)
 		spin.Rotation = (spin.Rotation + dt * 360) % 360
 	end)
 	local failGui = Kit.Screen("LoadFailure", 100)
 	failGui.Enabled = false
 	local fail = make("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 100, Active = true }, failGui)
-	Kit.Sprite(fail, "Feedback.Scrim", { Position = UDim2.fromOffset(-400, -400), Size = UDim2.new(1, 800, 1, 800), ImageTransparency = 0, ScaleType = Enum.ScaleType.Stretch, ZIndex = 100 })
+	Kit.Scrim(fail, 0.15, { ZIndex = 100 })
 	local failPanel = Kit.Panel(fail, { Sprite = "LoadFail", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(520, 260), ZIndex = 101 })
 	local failIcon = Kit.Icon(failPanel, "Warn", UDim2.fromOffset(64, 64))
 	failIcon.AnchorPoint, failIcon.Position, failIcon.ZIndex = Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), 102
 	local failText = Kit.Label(failPanel, "Your progress could not load. Please rejoin.", Theme.TextSize.Heading, Theme.TextPrimary, true)
 	failText.Position, failText.Size, failText.ZIndex = UDim2.fromOffset(0, 72), UDim2.new(1, 0, 1, -72), 102
+	Kit.Stroke(failText, Theme.Stroke, 3)
 	local function layoutFailure()
 		local view = failGui.AbsoluteSize / math.max(Scale.Value, 0.01)
 		if view.X > 32 and view.Y > 32 then
