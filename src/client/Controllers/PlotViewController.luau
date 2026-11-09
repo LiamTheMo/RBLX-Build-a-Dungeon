@@ -675,34 +675,23 @@ local function addHealthBar(actor)
 	local halfHeight = (math.abs(cf.RightVector.Y) * size.X + math.abs(cf.UpVector.Y) * size.Y + math.abs(cf.LookVector.Y) * size.Z) / 2
 	local anchorWorld = Vector3.new(cf.Position.X, cf.Position.Y + halfHeight + 0.35, cf.Position.Z)
 	local anchor = make("Attachment", { Name = "HealthAnchor", Position = root.CFrame:PointToObjectSpace(anchorWorld) }, root)
-	-- Bar.Track whole at its own aspect (5.29:1 -> 74 x 14); the fill is the whole Bar.Fill sprite laid over the track's window
-	-- (its Inner rect on the window) inside a clip whose width is the health fraction, so it never stretches.
+	-- Bar.Track whole at its own aspect (5.29:1 -> 74 x 14) with the Bar.Fill pill grown over the track's window (Kit.ProgressFill).
 	local track = Kit.Spec("Bar.Track")
 	local gui = make("BillboardGui", { Name = "HealthBar", Adornee = anchor, Size = UDim2.fromOffset(math.floor(14 * track.Size.X / track.Size.Y + 0.5), 14), MaxDistance = 150 }, actor.Model)
 	local bg = Kit.Sprite(gui, "Bar.Track", { Size = UDim2.fromScale(1, 1), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	local l, t, r, b = Kit.InnerPadding(track)
 	local window = make("Frame", { Name = "Window", BackgroundTransparency = 1, Position = UDim2.fromScale(l, t), Size = UDim2.fromScale(1 - l - r, 1 - t - b) }, bg)
-	local clip = make("Frame", { Name = "Clip", BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.fromScale(1, 1) }, window)
-	local holder = make("Frame", { Name = "FillHolder", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) }, clip)
-	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Image = "", ScaleType = Enum.ScaleType.Stretch }, holder)
-	local function setFill(spec: any)
-		fill.Image = spec.Id
-		local fl, ft, fr, fb = Kit.InnerPadding(spec)
-		local fw, fh = 1 - fl - fr, 1 - ft - fb
-		fill.Size = UDim2.fromScale(1 / fw, 1 / fh)
-		fill.Position = UDim2.fromScale(-fl / fw, -ft / fh)
-	end
-	setFill(Kit.Spec("Bar.FillGreen"))
+	local progress = Kit.ProgressFill(window, Kit.Spec("Bar.FillGreen"), nil, true)
+	local fill = progress.Fill
+	progress.SetProgress(1)
 	local low = false
 	-- Green fill, switching to the red one under 30% health.
 	actor.HealthSet = function(fraction: number)
 		fraction = math.clamp(fraction, 0, 1)
-		clip.Visible = fraction > 0
-		clip.Size = UDim2.fromScale(fraction, 1)
-		holder.Size = UDim2.fromScale(1 / math.max(fraction, 0.001), 1)
+		progress.SetProgress(fraction)
 		if (fraction < 0.3) ~= low then
 			low = fraction < 0.3
-			setFill(Kit.Spec(if low then "Bar.FillRed" else "Bar.FillGreen"))
+			progress.SetSpec(Kit.Spec(if low then "Bar.FillRed" else "Bar.FillGreen"))
 		end
 	end
 	actor.HealthBar, actor.HealthFill = gui, fill

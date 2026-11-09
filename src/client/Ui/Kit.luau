@@ -156,32 +156,34 @@ function Kit.Reskin(img: any, spec: any, fitMode: string?)
 	setAspect(img, spec, if fitMode then fitMode elseif c and c.AspectType == Enum.AspectType.ScaleWithParentSize then (if c.DominantAxis == Enum.DominantAxis.Width then "Width" else "Height") else nil)
 end
 
--- Progress fill: the whole fill sprite at the FULL size of its track window, inside a clipping frame whose width is the
--- progress. `holder` is the frame over the track's window (the art's Inner area); returns { Clip, Fill, SetProgress(fraction),
--- SetSpec(spec) }. The fill sprite is laid so its own Inner rect (the pill) covers the holder, and stays that size: the
--- clip reveals more or less of it, so it never stretches with the value.
-function Kit.ProgressFill(holder: GuiObject, spec: any, fallback: any?)
-	local clip = make("Frame", { Name = "FillClip", BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.fromScale(0, 1), ZIndex = 2, Visible = false }, holder)
-	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 2, Image = "", ScaleType = Enum.ScaleType.Stretch }, clip)
+-- Progress fill: the Bar.Fill* pill (one image, its own outline and round caps) grown from the left of `holder` (the track's
+-- window, the art's Inner area) to the progress. The pill's height matches the window and its caps keep their round shape
+-- at any length: only the pill's flat, horizontally uniform middle widens, so no seam shows. Below one cap-width of progress it shows as the round end alone. Returns { Clip, Fill,
+-- SetProgress(fraction), SetSpec(spec) } (Clip is the fill itself; kept for callers). `unscaled` = the holder is not under the
+-- HUD's UIScale (a BillboardGui).
+local FILL_PAD = 4 -- transparent margin around the Bar.Fill* pills (native px)
+function Kit.ProgressFill(holder: GuiObject, spec: any, fallback: any?, unscaled: boolean?)
+	local fill = make("ImageLabel", { Name = "Fill", BackgroundTransparency = 1, ZIndex = 2, Image = "", Visible = false, ScaleType = Enum.ScaleType.Slice }, holder)
 	local current = spec
+	local fraction = 0
 	local function size()
-		local sc = math.max(Scale.Value, 0.01)
+		local sc = if unscaled then 1 else math.max(Scale.Value, 0.01)
 		local w, h = holder.AbsoluteSize.X / sc, holder.AbsoluteSize.Y / sc
 		if w < 1 or h < 1 then
 			return
 		end
-		local r = current.Inner :: Rect?
-		if r then
-			local fw, fh = (r.Max.X - r.Min.X) / current.Size.X, (r.Max.Y - r.Min.Y) / current.Size.Y
-			local iw, ih = w / fw, h / fh
-			fill.Size = UDim2.fromOffset(iw, ih)
-			fill.Position = UDim2.fromOffset(-r.Min.X / current.Size.X * iw, -r.Min.Y / current.Size.Y * ih)
-		else
-			fill.Size, fill.Position = UDim2.fromOffset(w, h), UDim2.new()
-		end
+		local nw, nh = current.Size.X, current.Size.Y
+		local k = h / (nh - 2 * FILL_PAD) -- native px -> units, so the pill body is exactly the window height
+		local cap = nh / 2 -- cap width incl. margin (native px): the pill's radius plus its margin
+		-- A thin mid-height centre band: the art keeps its own height (a full-height centre renders black in Roblox).
+		fill.SliceCenter = Rect.new(cap + 1, nh / 2 - 1, nw - cap - 1, nh / 2 + 1)
+		fill.SliceScale = k * sc -- SliceScale is in screen pixels: the UIScale does not apply to it
+		local body = math.max(fraction * w, h) -- never narrower than one round end
+		fill.Size = UDim2.fromOffset(body + 2 * FILL_PAD * k, nh * k)
+		fill.Position = UDim2.fromOffset(-FILL_PAD * k, -FILL_PAD * k)
 	end
 	holder:GetPropertyChangedSignal("AbsoluteSize"):Connect(size)
-	local self: any = { Clip = clip, Fill = fill }
+	local self: any = { Clip = fill, Fill = fill }
 	function self.SetSpec(next: any)
 		if not Sprites.Ok(next.Id) then
 			if fallback and next ~= fallback then
@@ -203,8 +205,9 @@ function Kit.ProgressFill(holder: GuiObject, spec: any, fallback: any?)
 		end, fill)
 	end
 	function self.SetProgress(f: number)
-		clip.Visible = f > 0
-		clip.Size = UDim2.fromScale(math.clamp(f, 0, 1), 1)
+		fraction = math.clamp(f, 0, 1)
+		fill.Visible = fraction > 0
+		size()
 	end
 	self.SetSpec(spec)
 	return self
