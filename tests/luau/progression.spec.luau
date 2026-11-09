@@ -4,6 +4,7 @@ local Server = game:GetService("ServerScriptService").Server
 local Balance = require(Server.Definitions.Balance)
 local Economy = require(Server.Rules.Economy)
 local Progression = require(Server.Rules.Progression)
+local Threat = require(Server.Rules.Threat)
 local ProfileSchema = require(game:GetService("ServerScriptService").Server.Rules.ProfileSchema)
 
 test("level curve: 50 + 25 * (level - 1)", function()
@@ -104,7 +105,7 @@ test("permanent effects: Stout, Lure, Deep Vault and the treasure room", functio
 	local p = withRooms({ ["3,2"] = { Id = "DragonHoard", Level = 3 } }, { StoutDefenders = 4, Lure = 5, DeepVault = 2 })
 	p.Rooms.r2 = nil -- the starter Coin Cache (unplaced) is not needed here
 	expectNear(Progression.DefenderHealthBonus(p), 0.20, 1e-9, "stout")
-	expectEq(Progression.IntervalReduction(p), 5, "lure")
+	expectNear(Progression.VariantChanceBonus(p), 0.5, 1e-9, "lure: +50% rare visitors at level 5")
 	-- Dragon Hoard (exchange 2.0) level 3, Deep Vault 2: 2.0 * (1 + 0.1 * 2 + 0.05 * 2) = 2.6
 	expectNear(Progression.VaultRate(p), 2.0 * 1.3, 1e-9, "exchange, treasure level and deep vault")
 	expectNear(Progression.VariantBonus(p), 0.25, 1e-9, "hoard: +25% rare variants")
@@ -112,8 +113,18 @@ test("permanent effects: Stout, Lure, Deep Vault and the treasure room", functio
 	local void = withRooms({ ["3,2"] = { Id = "VoidVault" } })
 	expectEq(Progression.TheftScale(void), 0.5, "void vault halves thefts")
 	expectEq(Progression.VariantBonus(void), 0, "no variant bonus")
-	expectEq(Economy.VisitorInterval(0, 5), 25, "lure shortens")
-	expectEq(Economy.VisitorInterval(0, 1000), 5, "never below 5 s")
+	-- Lure scales every variant chance, composing with the vault luck, event and hoard multipliers.
+	local base = Threat.VariantMultiplier(0, 1, 0, 0)
+	expectEq(base, 1, "neutral multiplier")
+	expectNear(Threat.VariantMultiplier(0, 1, 0, 0.5), 1.5, 1e-9, "lure level 5")
+	expectNear(Threat.VariantMultiplier(100, 3, 0.25, 0.5), 2 * 3 * 1.25 * 1.5, 1e-9, "stacks multiplicatively")
+	local plain, lured = Threat.VariantChances("Novice", 1), Threat.VariantChances("Novice", 1.5)
+	for i = 1, #plain do
+		expectNear(lured[i].Chance, plain[i].Chance * 1.5, 1e-9, "variant chance x1.5: " .. plain[i].Id)
+	end
+	expectEq(Threat.VariantChances("Practice", 1.5)[3].Chance, 0, "practice never gets a variant")
+	expectNear(Progression.XpFor("Novice", 0, 1, 2), 2 * Progression.XpFor("Novice", 0, 1), 1e-9, "Swarm doubles XP")
+	expectEq(Progression.XpFor("Novice", 0, 1, nil), Progression.XpFor("Novice", 0, 1, 1), "no event = x1")
 	local unplaced = withRooms({ unplaced = { Id = "DragonHoard", Level = 3 } })
 	expectEq(Progression.VaultRate(unplaced), 0, "only a treasure on the route counts")
 	expectEq(Progression.VariantBonus(unplaced), 0, "idle hoard gives nothing")

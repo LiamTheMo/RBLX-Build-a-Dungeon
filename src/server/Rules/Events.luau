@@ -7,7 +7,7 @@ local Balance = require(script.Parent.Parent.Definitions.Balance)
 local Events = {}
 
 local E = Balance.Events
-local NEUTRAL = table.freeze({ Coins = 1, Drops = 1, Variants = 1, BoxRarity = 1, Interval = 1 })
+local NEUTRAL = table.freeze({ Coins = 1, Drops = 1, Variants = 1, BoxRarity = 1, Xp = 1 })
 
 local events, modifiers = {}, {}
 for _, def in E.List do
@@ -26,7 +26,7 @@ function Events.Modifier(id: any): any
 	return modifiers[id]
 end
 
--- {Coins, Drops, Variants, BoxRarity, Interval} multipliers of the active event
+-- {Coins, Drops, Variants, BoxRarity, Xp} multipliers of the active event
 -- (all 1 with no event).
 function Events.Effects(id: any): { [string]: number }
 	local def = events[id]

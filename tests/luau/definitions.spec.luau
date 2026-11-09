@@ -120,8 +120,7 @@ test("grid and economy values are in range", function()
 	expect(Grid.Columns >= 2 and Grid.Rows >= 2, "grid too small")
 	local e = Grid.EntranceCell
 	expect(e.Column >= 1 and e.Column <= Grid.Columns and e.Row >= 1 and e.Row <= Grid.Rows, "entrance inside grid")
-	local t = Balance.Timing
-	expect(isPositive(t.MinVisitorInterval) and t.MinVisitorInterval <= t.VisitorInterval, "interval floor")
+	expectEq(Balance.Timing, nil, "no visitor interval: visitors arrive back to back")
 	expect(isPositive(Balance.Vault.RatePerPercent), "vault rate")
 end)
 

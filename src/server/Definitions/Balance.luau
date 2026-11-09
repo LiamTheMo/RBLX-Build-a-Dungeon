@@ -16,14 +16,6 @@ Balance.Economy = table.freeze({
 	StartingCoins = 0,
 })
 
-Balance.Timing = table.freeze({
-	-- Seconds after the previous encounter ends before the next automatic visitor
-	-- (before Lure, the vault bonus and events).
-	VisitorInterval = 30,
-	-- No modifier (vault bonus, Lure, Swarm) brings the interval below this.
-	MinVisitorInterval = 5,
-})
-
 -- Treasure vault allocation (owner-approved 2026-11-05). The player picks
 -- VaultPercent (0..100); while a treasure-kind room is on the route,
 -- floor(Coins * pct / 100) coins count as vaulted: visitors who reach the
@@ -31,14 +23,16 @@ Balance.Timing = table.freeze({
 -- exchange: bonus % = LogBonus * log10(1 + vaulted coins / CoinScale) * rate,
 -- where rate = RatePerPercent * the
 -- treasure room's Exchange (Balance.Rooms) * (1 + LevelBonus * (level - 1) +
--- DeepVault PerLevel * Deep Vault level). Luck checks use
--- (1 + LuckPerBonus * bonus / 100) for rare visitors, drops and chest rarity.
+-- DeepVault PerLevel * Deep Vault level). The bonus is pure luck (visitors always
+-- arrive back to back): luck checks use (1 + LuckPerBonus * bonus / 100) for rare
+-- visitors, drops and chest rarity. It was 0.5 while the bonus also sped up
+-- visitors; 1.0 keeps the risk worth taking (+100% bonus = x2 luck).
 Balance.Vault = table.freeze({
 	RatePerPercent = 1.0,
 	CoinScale = 100,
 	LogBonus = 25,
 	LevelBonus = 0.1,
-	LuckPerBonus = 0.5,
+	LuckPerBonus = 1.0,
 })
 
 -- Threat levels: the attackers a keeper unlocks for better loot. Tier t unlocks at
@@ -82,7 +76,7 @@ Balance.Variants = table.freeze({
 
 -- Server events (one at a time). Effects multiply: Coins (win coins), Drops (drop
 -- chances), Variants (rare-variant chances), BoxRarity (box weights of
--- BoxRarityFrom and rarer), Interval (visitor interval, still >= the minimum).
+-- BoxRarityFrom and rarer), Xp (keeper XP from a defeat).
 -- While an event runs, a room from a box gets a Modifier with ModifierChance.
 local function event(id: string, name: string, text: string, effects)
 	return table.freeze({ Id = id, Name = name, Text = text, Effects = table.freeze(effects) })
@@ -96,7 +90,7 @@ Balance.Events = table.freeze({
 		event("LuckyStars", "Lucky Stars", "Double drop chances.", { Drops = 2 }),
 		event("RareInvasion", "Rare Invasion", "Triple chance of Elite, Shiny and Gilded adventurers.", { Variants = 3 }),
 		event("BlessedBoxes", "Blessed Boxes", "Epic and rarer rooms are twice as likely in boxes.", { BoxRarity = 2 }),
-		event("Swarm", "Swarm", "Adventurers arrive twice as often.", { Interval = 0.5 }),
+		event("Swarm", "Swarm", "Double XP from defeated adventurers.", { Xp = 2 }),
 	}),
 	BoxRarityFrom = "Epic",
 	-- Automatic schedule: a random event every MinGap..MaxGap seconds after the
@@ -496,7 +490,8 @@ Balance.Permanent = table.freeze({
 	LuckyCharm = table.freeze({ Effect = "Loot", PerLevel = 0.05, MaxLevel = 10, Base = 200 }),
 	Scholar = table.freeze({ Effect = "Xp", PerLevel = 0.10, MaxLevel = 5, Base = 250 }),
 	StoutDefenders = table.freeze({ Effect = "DefenderHealth", PerLevel = 0.05, MaxLevel = 10, Base = 200 }),
-	Lure = table.freeze({ Effect = "VisitorInterval", PerLevel = 1, MaxLevel = 5, Base = 400 }), -- seconds shorter
+	-- Lure: relative boost to the Elite/Shiny/Gilded chances (+10% per level, +50% at max: Elite 5% -> 7.5%).
+	Lure = table.freeze({ Effect = "VariantChance", PerLevel = 0.10, MaxLevel = 5, Base = 400 }),
 	DeepVault = table.freeze({ Effect = "VaultRate", PerLevel = 0.05, MaxLevel = 5, Base = 300 }), -- vault exchange rate
 })
 

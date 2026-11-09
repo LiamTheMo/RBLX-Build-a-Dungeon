@@ -12,7 +12,7 @@ local Rewards = require(Server.Rules.Rewards)
 
 test("event effects: neutral without an event, one multiplier each", function()
 	local none = Events.Effects(nil)
-	for _, k in { "Coins", "Drops", "Variants", "BoxRarity", "Interval" } do
+	for _, k in { "Coins", "Drops", "Variants", "BoxRarity", "Xp" } do
 		expectEq(none[k], 1, "neutral " .. k)
 	end
 	expectEq(Events.Effects("Bogus").Coins, 1, "unknown id is neutral")
@@ -20,7 +20,7 @@ test("event effects: neutral without an event, one multiplier each", function()
 	expectEq(Events.Effects("LuckyStars").Drops, 2, "lucky stars")
 	expectEq(Events.Effects("RareInvasion").Variants, 3, "rare invasion")
 	expectEq(Events.Effects("BlessedBoxes").BoxRarity, 2, "blessed boxes")
-	expectEq(Events.Effects("Swarm").Interval, 0.5, "swarm")
+	expectEq(Events.Effects("Swarm").Xp, 2, "swarm: double XP")
 	expectEq(Events.Effects("Swarm").Coins, 1, "other effects stay neutral")
 end)
 

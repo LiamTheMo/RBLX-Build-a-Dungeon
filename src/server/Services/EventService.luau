@@ -37,7 +37,7 @@ function EventService.Active()
 	return if active then { Id = active.Id, EndsAt = active.EndsAt } else nil
 end
 
--- Every player's State depends on the event (drop tables, box odds, interval).
+-- Every player's State depends on the event (drop tables, box odds, XP, variant chance).
 local function refreshAll()
 	for _, player in Players:GetPlayers() do
 		ProfileService.Changed(player)

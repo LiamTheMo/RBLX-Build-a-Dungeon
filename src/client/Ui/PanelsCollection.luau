@@ -234,7 +234,7 @@ function C.BuildKeeper(scroll: ScrollingFrame, state: any)
 		local id = def.Id
 		local lv = (state.Permanent or {})[id] or 0
 		local cost = (state.PermanentNextCost or {})[id]
-		local icon = ({ Coins = "Coin", Loot = "DropChance", Xp = "Xp", DefenderHealth = "Heal", VisitorInterval = "Speed", VaultRate = "Exchange" })[def.Effect] or "Upgrade"
+		local icon = ({ Coins = "Coin", Loot = "DropChance", Xp = "Xp", DefenderHealth = "Heal", VariantChance = "Crown", VaultRate = "Exchange" })[def.Effect] or "Upgrade"
 		-- Card well (Panel.Section): art, effect line, level chip (Chip.Dark "1/10") and the yellow price button.
 		local card = Kit.Panel(grid, { Sprite = "Card", LayoutOrder = order, Pad = Vector2.new(6, 4) })
 		make("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center }, card)

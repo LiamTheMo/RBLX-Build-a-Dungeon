@@ -71,7 +71,7 @@ These are the rules the placeholder numbers assume. Phase 2 implements and tunes
   - **Reaches the treasure room:** it steals its theft fraction of the vaulted coins (`floor(Coins × VaultPercent / 100)` at that moment), rounded down. Unvaulted coins and rooms are never affected. A 0% share loses nothing.
 - **Vault:** changing the vault share is refused (`EncounterActive`) while an encounter is running on that plot, so a theft cannot be dodged at the last second. Threat can be changed during an encounter for the next visitor; build mode interrupts the current visit.
 - **Assumption (owner review):** the tutorial's Skip is locked until the player has finished one encounter (`Stats.Encounters >= 1`; later sessions satisfy this), so the first session always sees the practice fight.
-- **Assumption:** removing the treasure room puts nothing at risk (vaulted coins are 0 without it) and removes the spawn-rate bonus. While idle, the next-visitor time follows the current interval, so lowering the share or removing the treasure room after a fast timer was set makes the wait longer again.
+- **Assumption:** removing the treasure room puts nothing at risk (vaulted coins are 0 without it) and removes the vault luck bonus. Visitors have no spawn interval, so changing the share never changes when the next visitor arrives.
 - **Assumption:** rewards and theft round down to whole coins.
 - **Assumption (owner review):** coins spent during an encounter (shop, upgrades) are no longer at risk; theft uses the vaulted coins when the visitor reaches the treasure.
 
@@ -118,7 +118,7 @@ Statuses: slows don't stack (the strongest of Slime and Frost applies); Sure-foo
 | Economy and timing | Value |
 | --- | ---: |
 | Starting coins | 0 |
-| Visitor interval | 30 s after the previous encounter, minus Lure, divided by (1 + vault bonus/100), × Swarm 0.5; never below 5 s |
+| Visitor interval | None (2026-11-08, owner decision): the next visitor spawns at once after a defeat, escape or robbery; fixed delays remain only for the first visitor (3 s tutorial, 10 s normal) and build resume |
 | Room upgrade to level 2 / 3 / 4 / 5 / 6 | 60 / 150 / 350 / 800 / 1800 coins; each level above 1 gives +25% defender damage and health and trap damage |
 
 ### Loot, rarity and progression (owner-approved 2026-11-04)
@@ -169,14 +169,14 @@ Chances are rolled independently on Defeated only and multiplied by (1 + loot bo
 | Lucky Charm | +5% loot | 10 | 200 |
 | Scholar | +10% XP | 5 | 250 |
 | Stout Defenders | +5% defender health | 10 | 200 |
-| Lure | -1 s visitor interval (never below 5 s overall) | 5 | 400 |
+| Rare Lure (id `Lure`) | +10% relative Elite/Shiny/Gilded chance per level (Elite 5% to 7.5% at max); stacks multiplicatively with vault luck, Rare Invasion and Dragon Hoard | 5 | 400 |
 | Deep Vault | +5% vault exchange rate | 5 | 300 |
 
 Cost from level L to L + 1 = round(base * 1.6^L), paid from coins. Levels never reset.
 
 ### Threat levels, variants, vault and events (owner-approved 2026-11-05)
 
-Values in `Balance.Threat`, `Balance.Variants`, `Balance.Vault`, `Balance.Timing` and `Balance.Events`; all starting values to tune.
+Values in `Balance.Threat`, `Balance.Variants`, `Balance.Vault` and `Balance.Events`; all starting values to tune.
 
 | Threat | Keeper level | Health & damage | Coins | XP | Drop chances | Roster (weights) |
 | ---: | ---: | ---: | ---: | ---: | ---: | --- |
@@ -198,9 +198,9 @@ Values in `Balance.Threat`, `Balance.Variants`, `Balance.Vault`, `Balance.Timing
 
 Variant chances × (1 + 0.5 × vault bonus/100) × Rare Invasion 3. Practice never gets a variant. **Assumption:** variants scale health only (damage follows the threat level).
 
-**Vault exchange:** `VaultPercent` 0–100 (whole). Vaulted = floor(Coins × percent / 100) while a Treasure Room is placed, else 0. Rate = 1.0 × the treasure room's Exchange (×1.0 Coin Cache … ×3.5 Void Vault) × (1 + 0.1 × (level − 1) + 0.05 × Deep Vault level). Bonus % = percent × rate. Example: 100% with a level-1 Coin Cache halves the 30 s interval to 15 s and makes variants 1.5× as likely. **Assumption:** the treasure room no longer shortens the interval by itself (the old 20 s), so a 0% share has no risk and no speed-up.
+**Vault exchange:** `VaultPercent` 0–100 (whole). Vaulted = floor(Coins × percent / 100) while a Treasure Room is placed, else 0. Rate = 1.0 × the treasure room's Exchange (×1.0 Coin Cache … ×3.5 Void Vault) × (1 + 0.1 × (level − 1) + 0.05 × Deep Vault level). Bonus % = percent × rate. Example: 100% with a level-1 Coin Cache gives x2 luck for drops, chest rarity and variants (`LuckPerBonus` 1.0; it was 0.5 while the bonus also sped up visitors, retuned so the theft risk still pays). **Assumption:** the treasure room does not shorten anything, so a 0% share has no risk and no luck.
 
-**Server events** (one at a time, 10 minutes, a random one every 35–50 minutes; off in Studio unless `RunInStudio`): Golden Hour coins ×2; Lucky Stars drop chances ×2; Rare Invasion variant chances ×3; Blessed Boxes Epic-and-rarer box weights ×2 (odds shown accordingly); Swarm visitor interval ×0.5 (still ≥ 5 s). A room from a box opened during an event gets a modifier with 25% chance (one at most): Blazing +15% damage, Lucky +10% loot chance, Golden +10% coins (Lucky and Golden count like perks, only while placed, under the same caps). **Assumption:** an event's effects apply when the reward is resolved, so an event that ends mid-encounter no longer counts.
+**Server events** (one at a time, 10 minutes, a random one every 35–50 minutes; off in Studio unless `RunInStudio`): Golden Hour coins ×2; Lucky Stars drop chances ×2; Rare Invasion variant chances ×3; Blessed Boxes Epic-and-rarer box weights ×2 (odds shown accordingly); Swarm keeper XP ×2 from defeats. A room from a box opened during an event gets a modifier with 25% chance (one at most): Blazing +15% damage, Lucky +10% loot chance, Golden +10% coins (Lucky and Golden count like perks, only while placed, under the same caps). **Assumption:** an event's effects apply when the reward is resolved, so an event that ends mid-encounter no longer counts.
 
 Why these numbers (rough arithmetic, to be confirmed in Phase 2):
 
@@ -217,7 +217,7 @@ Why these numbers (rough arithmetic, to be confirmed in Phase 2):
 | ≤0:15 | Practice adventurer arrives; the slime knocks it out; +8–12 coins. | Encounters are automatic; defenders earn coins |
 | ~0:30 | Tutorial grants a Spike Hall and highlights (3, 3) behind the slime. Player places it. | Building and the route |
 | ~0:45 | A novice arrives, gets slowed by the slime and crosses the spikes slowly; +18–26 coins if defeated. Outcome text explains why. | Room order matters |
-| ~1:15 | Tutorial offers the treasure room: choose a vault share for faster visitors and rarer variants, but theft. The player may place it at (3, 4) or skip. If placed, the tutorial teaches the **vault share** (step id `BankVault`, advanced by `SetVaultPercent`). | Optional risk |
+| ~1:15 | Tutorial offers the treasure room: choose a vault share for extra luck and rarer variants, but theft. The player may place it at (3, 4) or skip. If placed, the tutorial teaches the **vault share** (step id `BankVault`, advanced by `SetVaultPercent`). | Optional risk |
 | 1:30–4:30 | Automatic novices. Coins build toward the Guard Room. | The earn loop |
 | ~4:30 | Tutorial points to the shop: buy the Guard Room and place it, which may mean moving rooms to keep one chain. | Shopping and rearranging |
 | Later | Keeper level 4 unlocks threat level 2; the HUD's next goal shows what comes next. | Optional stronger visitors |

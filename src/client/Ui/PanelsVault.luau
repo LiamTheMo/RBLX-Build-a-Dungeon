@@ -1,5 +1,5 @@
--- Treasure vault body: vaulted coins, the exchange "x% of coins -> +y% visits" (VaultRate), the resulting
--- visitor interval and the thief risk, with a 0-100% slider. The slider debounces (0.3 s) and sends the final
+-- Treasure vault body: vaulted coins, the exchange "x% of coins -> +y% luck" (VaultRate), the resulting
+-- rare-visitor chance and the thief risk, with a 0-100% slider. The slider debounces (0.3 s) and sends the final
 -- value on release; the server validates (EncounterActive while a visitor is inside) and is the truth. The
 -- numbers shown while dragging are local estimates from the server's rate; the State snapshot replaces them.
 local Badges = require(script.Parent.Badges)
@@ -147,7 +147,7 @@ local pending: number? = nil -- value the player chose that the server has not c
 	slider.Instance.Position = UDim2.fromScale(0, 0.5)
 	slider.Instance.AnchorPoint = Vector2.new(0, 0.5)
 
-	-- Stat strip: thief risk, resulting interval, vault luck.
+	-- Stat strip: thief risk, rare-visitor chance, vault luck.
 	local bottom = Kit.Panel(rows, { Sprite = "Small", Size = UDim2.new(1, 0, 0, 74), LayoutOrder = 3, Pad = Vector2.new(6, 4) })
 	local bottomGrid = make("UIGridLayout", { CellPadding = UDim2.fromOffset(4, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center }, bottom)
 	local function chip(order: number, icon: string, color: Color3, tip: string)
@@ -162,7 +162,7 @@ local pending: number? = nil -- value the player chose that the server has not c
 		return l
 	end
 	local riskLabel = chip(1, "Thief", Theme.Danger, "Most a thief could steal")
-	local intervalLabel = chip(2, "Clock", Theme.TextPrimary, "Wait after an escape; defeated adventurers are replaced immediately")
+	local rareLabel = chip(2, "Crown", Theme.TextPrimary, "Chance multiplier for Elite, Shiny and Gilded adventurers")
 	local luckLabel = chip(3, "Exchange", Theme.TextPrimary, "Vault luck multiplier for drops and rare finds")
 
 	local function locked(): boolean
@@ -181,7 +181,7 @@ local pending: number? = nil -- value the player chose that the server has not c
 		vaultedLabel.Text = if confirmed then Badges.Comma(s.Vaulted or 0) else "…"
 		bonusLabel.Text = if confirmed then "+" .. tostring(math.floor((s.VaultBonus or 0) * 10 + 0.5) / 10) .. "%" else "…"
 		riskLabel.Text = if confirmed then "-" .. Badges.Comma(s.VaultRisk or 0) else "…"
-		intervalLabel.Text = if confirmed then string.format("%.1fs", s.VisitorInterval or 0) else "…"
+		rareLabel.Text = if confirmed then string.format("x%.2f rare", s.VariantChance or 1) else "…"
 		luckLabel.Text = if confirmed then string.format("x%.2f luck", s.VaultLuck or 1) else "…"
 	end
 

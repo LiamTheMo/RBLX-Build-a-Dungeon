@@ -20,7 +20,7 @@ local function oneString(...)
 end
 
 -- SetVaultPercent: the share of Coins kept in the vault (at risk while a Treasure
--- Room is placed; raises the spawn-rate bonus). Whole number 0..100, any time
+-- Room is placed; raises the luck bonus). Whole number 0..100, any time
 -- except during an encounter, so a theft cannot be dodged at the last second.
 function EconomyService.SetVaultPercent(player: Player, percent: number)
 	local profile = ProfileService.Get(player)

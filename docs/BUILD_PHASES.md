@@ -47,13 +47,13 @@
 
 **Goal:** Complete the earn, bank, spend and risk loop.
 
-**Build:** Add server-owned bank and vault balances, one-time win rewards (banked directly without a treasure room, into the vault with one), banking, capped vault bonus, percentage robbery and the shorter visitor interval for the optional treasure room. Add a HUD, clear encounter result and guaranteed Guard Room purchase. Add an explicitly invited armored challenger with visible reward and theft risk. Give each encounter a unique resolution ID and serialize balance operations per player. Tune the first purchase for a short session.
+**Build:** Add server-owned bank and vault balances, one-time win rewards (banked directly without a treasure room, into the vault with one), banking, capped vault bonus, percentage robbery and the luck bonus for the optional treasure room (visitors arrive back to back; the visitor interval was removed 2026-11-08). Add a HUD, clear encounter result and guaranteed Guard Room purchase. Add an explicitly invited armored challenger with visible reward and theft risk. Give each encounter a unique resolution ID and serialize balance operations per player. Tune the first purchase for a short session.
 
 **Verify:** Wins, losses, empty vault, play with and without a treasure room, removing the treasure room while the vault holds gold, banking near resolution, duplicate requests, insufficient funds and disconnects. Confirm banked coins and owned rooms cannot be stolen. Observe a 10–15 minute playtest.
 
 **Exit:** Players make a purchase and understand the choice between safe banking and optional risk. Safe progression remains worthwhile.
 
-**Superseded (owner-approved 2026-11-05):** the separate vault balance, Bank and the invited challenger were replaced by the treasure vault allocation (a share of Coins at risk in exchange for faster visitors and rarer variants) and threat levels. See GDD "Threat levels, variants and the treasure vault".
+**Superseded (owner-approved 2026-11-05):** the separate vault balance, Bank and the invited challenger were replaced by the treasure vault allocation (a share of Coins at risk in exchange for luck: better drops, chest rarity and rare variants) and threat levels. See GDD "Threat levels, variants and the treasure vault".
 
 ## Phase 4 — Persistence and security
 

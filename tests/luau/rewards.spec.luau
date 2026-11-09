@@ -316,3 +316,17 @@ test("box and blueprint drops respect the shop level gates (Common/Uncommon only
 	local ok2, rare = Rewards.OpenBox(p, "Dungeon", scripted({ 0.9, 0.999999, 0.5 }))
 	expect(ok2 and rare.Rarity == "Rare" and rare.RoomId == "Treasury", "Rare room at level 1")
 end)
+
+test("Swarm doubles defeat XP; Rare Lure raises the variant multiplier through the context", function()
+	local p = ProfileSchema.Default()
+	local plain = Rewards.Context(p, nil)
+	local swarm = Rewards.Context(p, "Swarm")
+	expectEq(swarm.Effects.Xp, 2, "Swarm XP effect")
+	expectEq(swarm.Effects.Coins, 1, "Swarm leaves coins alone")
+	local a = Rewards.Defeat(ProfileSchema.Default(), "Novice", scripted({ 0.99, 0.99 }), plain, 50)
+	local b = Rewards.Defeat(ProfileSchema.Default(), "Novice", scripted({ 0.99, 0.99 }), swarm, 50)
+	expectEq(b.Xp, a.Xp * 2, "double XP under Swarm")
+	p.Permanent = { Lure = 5 }
+	expectNear(Rewards.Context(p, nil).VariantMult, plain.VariantMult * 1.5, 1e-9, "Lure 5: +50% variant chances")
+	expectEq(Rewards.Context(p, nil).LuckMult, plain.LuckMult, "Lure does not touch drop luck")
+end)

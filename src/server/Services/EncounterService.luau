@@ -47,7 +47,6 @@ local VISITOR_ATTRS = {
 
 local runs = {} -- Player -> { Id, Sim, Keys, VisitorId, Variant, Base, Threat, HasTreasure, Paid }
 local planned = {} -- Player -> visitor id announced as NextVisitorId
-local idle = {} -- Timers for encounters that ended without a defeat.
 local nextRunId = 0
 local accumulator = 0
 local rng = LootService.Rng
@@ -71,12 +70,10 @@ local function context(player: Player, profile)
 	return Rewards.Context(profile, EventService.ActiveId(), unlockAll(player))
 end
 
--- Moves a plot's next visitor earlier (never later). Used by the tutorial, so it
--- also drops the interval rule until the next encounter ends.
+-- Moves a plot's next visitor earlier (never later). Used by the tutorial.
 function EncounterService.Expedite(player: Player, seconds: number)
 	local plot = PlotService.GetPlot(player)
 	if plot then
-		idle[player] = nil
 		local at = workspace:GetServerTimeNow() + seconds
 		local current = plot:GetAttribute("NextVisitorAt")
 		if current == nil or current > at then
@@ -203,9 +200,7 @@ local function finish(player: Player, plot: Instance, profile, run, now: number)
 	})
 	clearVisitor(plot)
 	plot:SetAttribute("State", "Idle")
-	local at = if result == "Defeated" then now else now + Progression.VisitorInterval(profile, EventService.Effects())
-	idle[player] = if result == "Defeated" then nil else { Since = now, Set = at }
-	plot:SetAttribute("NextVisitorAt", at)
+	plot:SetAttribute("NextVisitorAt", now) -- every result (defeat, escape, robbery) is followed by the next visitor at once
 	PlotService.RefreshRoomAttrs(player)
 	ProfileService.Changed(player)
 	TutorialService.Notify(player, "EncounterEnd")
@@ -265,22 +260,10 @@ local function stepRun(player: Player, plot: Instance, profile, run, dt: number,
 	end
 end
 
-local function retime(player: Player, plot: Instance, profile)
-	local info = idle[player]
-	if info == nil then return end
-	local at = info.Since + Progression.VisitorInterval(profile, EventService.Effects())
-	local current = plot:GetAttribute("NextVisitorAt")
-	if current == info.Set or (current ~= nil and at > current) then
-		info.Set = at
-		plot:SetAttribute("NextVisitorAt", at)
-	end
-end
-
 local function trySpawn(player: Player, plot: Instance, profile, now: number)
 	if plot:GetAttribute("State") == "Encounter" then
 		return
 	end
-	retime(player, plot, profile)
 	if plot:GetAttribute("State") ~= "Idle" then
 		return
 	end
@@ -342,7 +325,6 @@ local function trySpawn(player: Player, plot: Instance, profile, now: number)
 		Paid = false,
 	}
 	runs[player] = run
-	idle[player] = nil
 	planned[player] = nil
 	plot:SetAttribute("State", "Encounter")
 	plot:SetAttribute("Threat", run.Threat)
@@ -430,7 +412,6 @@ function EncounterService.Start()
 	ProfileService.Left:Connect(function(player)
 		cancel(player)
 		planned[player] = nil
-		idle[player] = nil
 	end)
 	TutorialService.WantsVisitor:Connect(EncounterService.Expedite)
 	RunService.Heartbeat:Connect(function(dt)

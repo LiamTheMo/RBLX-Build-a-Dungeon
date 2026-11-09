@@ -76,15 +76,6 @@ function Economy.VaultLuckMultiplier(bonus: number?): number
 	return 1 + Balance.Vault.LuckPerBonus * math.max(0, bonus or 0) / 100
 end
 
--- Visitor interval: (base - Lure) / (1 + bonus / 100) * the event's Interval
--- effect, never below MinVisitorInterval.
-function Economy.VisitorInterval(bonus: number?, reduction: number?, eventMult: number?): number
-	local t = Balance.Timing
-	local base = math.max(t.MinVisitorInterval, t.VisitorInterval - math.max(0, reduction or 0))
-	local seconds = base / (1 + math.max(0, bonus or 0) / 100) * math.max(0, eventMult or 1)
-	return math.max(t.MinVisitorInterval, seconds)
-end
-
 -- Stolen by a visitor that reaches the treasure: TheftFraction of the vaulted coins, times `scale` (the
 -- treasure's TheftScale, default 1). `snapshot` is the vaulted amount when the visitor spawned: the
 -- theft uses min(snapshot, vaulted), so depositing coins mid-encounter cannot raise it and spending

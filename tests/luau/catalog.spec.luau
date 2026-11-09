@@ -199,7 +199,9 @@ test("permanent upgrades: order, names and effect texts per level", function()
 	for _, p in c.Permanent do
 		byId[p.Id] = p
 	end
-	expectEq(byId.Lure.EffectText[3], "2 s faster visitors", "lure level 2")
+	expectEq(byId.Lure.EffectText[3], "+20% rare visitors", "lure level 2")
+	expectEq(byId.Lure.Name, "Rare Lure", "lure display name")
+	expectEq(byId.Lure.PerLevelValue, "+10%", "lure per level")
 	expectEq(byId.DeepVault.PerLevelText, "+5% vault exchange rate", "deep vault")
 	expectEq(byId.Scholar.EffectText[6], "+50% XP", "scholar max")
 end)

@@ -38,14 +38,14 @@ local STEPS = {
 		Text = "A novice is coming. The slime slows it, so the spikes hit more. Room order matters!",
 	},
 	TreasureOffer = {
-		Text = "Optional: a Treasure Room brings visitors faster and grows a vault bonus, but thieves can steal from the vault.",
+		Text = "Optional: a Treasure Room grows a vault bonus for luck, but thieves can steal from the vault.",
 		Place = true,
 		Decline = true,
 		Cell = "3,4",
 	},
 	BankVault = {
 		-- Step id kept (it is saved); the step now teaches the vault share slider.
-		Text = "Tap the vault and slide in some coins: visitors come faster, but thieves can steal.",
+		Text = "Tap the vault and slide in some coins for extra luck, but thieves can steal.",
 		Target = "Vault",
 	},
 	BuyGuard = {

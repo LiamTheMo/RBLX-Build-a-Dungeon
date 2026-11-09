@@ -42,13 +42,16 @@ local EFFECT: { [string]: (number) -> string } = {
 	DefenderHealth = function(a)
 		return string.format("+%s defender health", pct(a))
 	end,
-	VisitorInterval = function(a)
-		return string.format("%d s faster visitors", a)
+	VariantChance = function(a)
+		return string.format("+%s rare visitors", pct(a))
 	end,
 	VaultRate = function(a)
 		return string.format("+%s vault exchange rate", pct(a))
 	end,
 }
+
+-- Display names that differ from the spaced id (the id is saved, so it never changes).
+local PERMANENT_NAME = { Lure = "Rare Lure" }
 
 local function spaced(id: string): string
 	return (string.gsub(id, "(%l)(%u)", "%1 %2"))
@@ -155,11 +158,11 @@ local function permanent(id: string): any
 	end
 	return {
 		Id = id,
-		Name = spaced(id),
+		Name = PERMANENT_NAME[id] or spaced(id),
 		MaxLevel = def.MaxLevel,
 		PerLevelText = fmt(def.PerLevel),
 		Effect = def.Effect,
-		PerLevelValue = if def.Effect == "VisitorInterval" then tostring(def.PerLevel) .. "s" else "+" .. pct(def.PerLevel),
+		PerLevelValue = "+" .. pct(def.PerLevel),
 		EffectText = effects, -- index level + 1: the total effect at that level
 	}
 end
@@ -256,7 +259,6 @@ function Catalog.Build(): any
 		Threat = tiers, -- index = tier
 		Events = events,
 		Modifiers = modifiers,
-		Vault = { MinInterval = Balance.Timing.MinVisitorInterval, BaseInterval = Balance.Timing.VisitorInterval },
 	})
 end
 

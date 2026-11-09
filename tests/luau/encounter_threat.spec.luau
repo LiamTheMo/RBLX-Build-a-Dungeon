@@ -41,6 +41,7 @@ local profile = {
 	Stats = { Encounters = 0, Wins = 0, Earned = 0, Robberies = 0, Escapes = 0 },
 }
 local remoteCheck, remoteHandler
+local simResult = "Defeated"
 local encounterFx = {}
 
 local function mock(path, value)
@@ -57,7 +58,6 @@ mock({ "ServerScriptService", "Server", "Rules", "Progression" }, {
 	DefenderHealthBonus = function() return 0 end,
 	Vaulted = function() return 0 end,
 	TheftScale = function() return 1 end,
-	VisitorInterval = function() return 30 end,
 })
 mock({ "ServerScriptService", "Server", "Rules", "ProfileSchema" }, { MAX_MONEY = 1e9 })
 mock({ "ServerScriptService", "Server", "Rules", "LayoutRules" }, {
@@ -84,7 +84,7 @@ mock({ "ServerScriptService", "Server", "Rules", "EncounterSim" }, {
 			if self.Steps == 1 then
 				return { { Kind = "Spawn" } }
 			end
-			self.Result = "Defeated"
+			self.Result = simResult
 			return {}
 		end
 		return sim
@@ -198,6 +198,31 @@ test("the current run keeps its tier snapshot and the next run uses the selected
 	end
 	expectEq(run1Fx and run1Fx.Threat, 1, "first end event keeps tier 1")
 	expectEq(run2Fx and run2Fx.Threat, 2, "second end event keeps tier 2")
+	EncounterService.CancelForBuild(player)
+end)
+
+test("an escape or robbery is followed by the next visitor at once (no interval)", function()
+	for _, result in { "Escaped", "Robbed" } do
+		simResult = result
+		now += 10
+		attrs.State, attrs.NextVisitorAt = "Idle", now
+		local before = profile.Stats.Encounters
+		Heartbeat.Callback(0.1) -- spawn
+		expectEq(attrs.State, "Encounter", result .. ": visitor spawned")
+		now += 1
+		Heartbeat.Callback(0.1) -- resolves
+		expectEq(profile.Stats.Encounters, before + 1, result .. ": one encounter ended")
+		expectEq(attrs.State, "Idle", result .. ": idle between visitors")
+		expectEq(attrs.NextVisitorAt, now, result .. ": next visitor is due immediately")
+		now += 0.1
+		Heartbeat.Callback(0.1)
+		expectEq(attrs.State, "Encounter", result .. ": next visitor chained")
+		expect(profile.Stats.Encounters == before + 1, result .. ": exactly one visitor per step")
+		simResult = "Defeated"
+		now += 1
+		Heartbeat.Callback(0.1) -- resolve the chained one
+	end
+	expect(profile.Stats.Escapes >= 1 and profile.Stats.Robberies >= 1, "escape and robbery were counted")
 	EncounterService.CancelForBuild(player)
 end)
 

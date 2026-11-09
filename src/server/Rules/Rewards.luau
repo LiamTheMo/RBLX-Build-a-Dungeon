@@ -73,7 +73,7 @@ function Rewards.Context(profile, eventId: string?, unlockAll: boolean?)
 		Effects = effects,
 		LuckMult = Economy.VaultLuckMultiplier(Progression.VaultBonus(profile)),
 		EventId = if Events.Get(eventId) then eventId else nil,
-		VariantMult = Threat.VariantMultiplier(Progression.VaultBonus(profile), effects.Variants, Progression.VariantBonus(profile)),
+		VariantMult = Threat.VariantMultiplier(Progression.VaultBonus(profile), effects.Variants, Progression.VariantBonus(profile), Progression.VariantChanceBonus(profile)),
 	}
 end
 
@@ -120,7 +120,7 @@ function Rewards.Table(profile, visitorId: string, ctx)
 	end
 	return {
 		Coins = Rewards.CoinRange(visitorId, ctx),
-		Xp = Progression.XpFor(visitorId, ctx.Bonuses.Xp, ctx.Scale.Xp),
+		Xp = Progression.XpFor(visitorId, ctx.Bonuses.Xp, ctx.Scale.Xp, ctx.Effects.Xp),
 		Drops = Loot.DropTable(visitorId, ctx.Bonuses.Loot, Rewards.DropScale(ctx), profile.Level),
 		Variants = variants,
 	}
@@ -149,7 +149,7 @@ function Rewards.Defeat(profile, visitorId: string, rng, ctx, base: number, vari
 			addBlueprints(profile, drop.RoomId, 1)
 		end
 	end
-	local xp = Progression.XpFor(visitorId, ctx.Bonuses.Xp, ctx.Scale.Xp)
+	local xp = Progression.XpFor(visitorId, ctx.Bonuses.Xp, ctx.Scale.Xp, ctx.Effects.Xp)
 	local levelUp, levelDrops = Rewards.GrantXp(profile, xp)
 	table.move(levelDrops, 1, #levelDrops, #drops + 1, drops)
 	return { Amount = amount, Capped = if amount < requested then true else nil, Drops = drops, Xp = xp, LevelUp = levelUp }

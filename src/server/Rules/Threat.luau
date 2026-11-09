@@ -79,11 +79,13 @@ function Threat.PickVisitor(tier: number, rng: any): string
 end
 
 -- Variant multiplier from the vault bonus (in percent), the event's Variants
--- effect and the treasure room's VariantBonus (a fraction, e.g. Dragon Hoard 0.25).
-function Threat.VariantMultiplier(vaultBonus: number?, eventMult: number?, treasureBonus: number?): number
+-- effect, the treasure room's VariantBonus (a fraction, e.g. Dragon Hoard 0.25)
+-- and the Rare Lure permanent bonus (a fraction).
+function Threat.VariantMultiplier(vaultBonus: number?, eventMult: number?, treasureBonus: number?, lureBonus: number?): number
 	return Economy.VaultLuckMultiplier(vaultBonus)
 		* math.max(0, eventMult or 1)
 		* (1 + math.max(0, treasureBonus or 0))
+		* (1 + math.max(0, lureBonus or 0))
 end
 
 -- {{Id, Chance}} rarest first, each base chance times `mult`; the running total

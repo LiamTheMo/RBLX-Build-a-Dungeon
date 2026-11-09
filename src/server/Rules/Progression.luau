@@ -25,14 +25,14 @@ function Progression.XpToNext(level: number): number
 	return P.XpBase + P.XpPerLevel * (level - 1)
 end
 
--- XP for defeating `visitorId`, after the threat tier's Xp multiplier and the
--- XP bonus (whole, rounded down).
-function Progression.XpFor(visitorId: string, xpBonus: number?, threatXp: number?): number
+-- XP for defeating `visitorId`, after the threat tier's Xp multiplier, the
+-- XP bonus and the event's Xp effect (whole, rounded down).
+function Progression.XpFor(visitorId: string, xpBonus: number?, threatXp: number?, eventXp: number?): number
 	local base = P.Xp[visitorId]
 	if base == nil then
 		return 0
 	end
-	return math.floor(base * (threatXp or 1) * (1 + math.max(0, xpBonus or 0)) + EPS)
+	return math.floor(base * (threatXp or 1) * (1 + math.max(0, xpBonus or 0)) * math.max(0, eventXp or 1) + EPS)
 end
 
 -- Adds XP: returns (level, xp, levelsGained: {number}). XP stops at MaxLevel.
@@ -131,9 +131,9 @@ function Progression.DefenderHealthBonus(profile: any): number
 	return Progression.PermanentEffect(profile, "DefenderHealth")
 end
 
--- Lure: seconds removed from the visitor interval.
-function Progression.IntervalReduction(profile: any): number
-	return Progression.PermanentEffect(profile, "VisitorInterval")
+-- Rare Lure: fraction added to the Elite/Shiny/Gilded visitor chances.
+function Progression.VariantChanceBonus(profile: any): number
+	return Progression.PermanentEffect(profile, "VariantChance")
 end
 
 -- The treasure-kind room instance on the route (any tier), or nil (an off-route
@@ -170,7 +170,7 @@ function Progression.TheftScale(profile: any): number
 	return stats and stats.TheftScale or 1
 end
 
--- Spawn-rate bonus in percent from the coins actually at risk.
+-- Vault bonus in percent (a luck source) from the coins actually at risk.
 function Progression.VaultBonus(profile: any): number
 	return Economy.VaultBonus(Economy.Vaulted(profile.Coins, profile.VaultPercent or 0, Progression.Treasure(profile) ~= nil), Progression.VaultRate(profile))
 end
@@ -178,11 +178,6 @@ end
 -- Coins currently at risk (0 without a treasure room on the route).
 function Progression.Vaulted(profile: any): number
 	return Economy.Vaulted(profile.Coins, profile.VaultPercent or 0, Progression.Treasure(profile) ~= nil)
-end
-
--- Seconds between visitors right now (vault bonus, Lure and the event's Interval effect).
-function Progression.VisitorInterval(profile: any, eventEffects: any): number
-	return Economy.VisitorInterval(Progression.VaultBonus(profile), Progression.IntervalReduction(profile), eventEffects and eventEffects.Interval)
 end
 
 -- Highest unlocked threat tier (`all` = admin override).

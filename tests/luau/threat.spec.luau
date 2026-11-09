@@ -78,12 +78,13 @@ test("variant chances: base 5% / 1% / 0.2%, scaled, capped, never Practice", fun
 	expectNear(base[1].Chance, 0.002, 1e-12, "gilded")
 	expectNear(base[2].Chance, 0.01, 1e-12, "shiny")
 	expectNear(base[3].Chance, 0.05, 1e-12, "elite")
-	-- Vault bonus 100% (x1.5) and Rare Invasion (x3).
+	-- Vault bonus 100% (x2 luck) and Rare Invasion (x3).
 	local mult = Threat.VariantMultiplier(100, 3)
-	expectNear(mult, 4.5, 1e-9, "multiplier")
+	expectNear(mult, 6, 1e-9, "multiplier")
 	expectNear(Threat.VariantMultiplier(0, 1, 0.25), 1.25, 1e-9, "Dragon Hoard +25%")
-	expectNear(Threat.VariantMultiplier(100, 3, 0.25), 4.5 * 1.25, 1e-9, "stacks")
-	expectNear(Threat.VariantChances("Novice", mult)[3].Chance, 0.225, 1e-9, "elite scaled")
+	expectNear(Threat.VariantMultiplier(100, 3, 0.25), 6 * 1.25, 1e-9, "stacks")
+	expectNear(Threat.VariantMultiplier(0, 1, 0, 0.5), 1.5, 1e-9, "Rare Lure +50%")
+	expectNear(Threat.VariantChances("Novice", mult)[3].Chance, 0.30, 1e-9, "elite scaled")
 	local huge = Threat.VariantChances("Novice", 1e6)
 	expectNear(huge[1].Chance + huge[2].Chance + huge[3].Chance, 1, 1e-9, "never above 1 in total")
 	for _, v in Threat.VariantChances("Practice", 100) do

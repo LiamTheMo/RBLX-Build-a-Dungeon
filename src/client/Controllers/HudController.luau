@@ -475,7 +475,7 @@ local function build()
 	-- Settings gear: Round.Purple, top-right.
 	local gear = Kit.Button(gui, { Text = "", Icon = "Settings", IconScale = 0.66, Style = "Secondary", Round = true, Size = UDim2.fromOffset(56, 56), Tip = "Settings" })
 
-	-- Next visitor chip: clock + countdown, portrait and trait icons.
+	-- Next visitor chip: portrait + name (crossed swords during an encounter); a countdown only for a real fixed delay.
 	local chipBar = make("Frame", { Name = "ChipBar", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.fromOffset(0, 0) }, gui)
 	hlist(chipBar, 8, { HorizontalAlignment = Enum.HorizontalAlignment.Center })
 	local chip = Kit.Panel(chipBar, { Sprite = "Pill", AutomaticSize = X, LayoutOrder = 1 })
@@ -1048,18 +1048,27 @@ local function build()
 			local s = State.Current
 			local text, upcoming, icon = "", nil, "Clock"
 			if s and s.Building then
-				text = ""
+				text, icon = "", nil -- nothing while building
 			elseif plot:GetAttribute("State") == "Encounter" or (plot:GetAttribute("VisitorId") or "") ~= "" then
-				text, icon = "", "Sword" -- a visitor is inside: crossed swords instead of the countdown
+				text, icon = "", "Sword" -- a visitor is inside: crossed swords
 			else
+				-- Visitors arrive back to back: a timer shows only for a real fixed delay (first visitor, build resume).
 				local at = plot:GetAttribute("NextVisitorAt")
-				text = if type(at) == "number" and at > 0 then formatTime(at - workspace:GetServerTimeNow()) else "-:--"
+				local left = if type(at) == "number" then at - workspace:GetServerTimeNow() else 0
 				local id = plot:GetAttribute("NextVisitorId")
 				upcoming = if type(id) == "string" and id ~= "" then id else nil
+				if left > 0.25 then
+					text = formatTime(left)
+				else
+					icon = nil
+					local def = upcoming and Catalog.Visitor(upcoming)
+					text = if def then def.DisplayName else ""
+				end
 			end
 			status.Text = text
 			status.Visible = text ~= ""
-			if chipIcon:IsA("ImageLabel") then Kit.SetIcon(chipIcon, icon) end
+			chipIcon.Visible = icon ~= nil
+			if icon and chipIcon:IsA("ImageLabel") then Kit.SetIcon(chipIcon, icon) end
 			showNext(upcoming)
 			infoButton.Instance.Visible = upcoming ~= nil
 			nextInfoId = upcoming

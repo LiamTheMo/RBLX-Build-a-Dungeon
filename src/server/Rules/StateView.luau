@@ -100,7 +100,7 @@ function StateView.Derived(profile: any, world: any?): any
 		VaultRate = Progression.VaultRate(profile),
 		VaultBonus = Progression.VaultBonus(profile), -- percent
 		VaultLuck = ctx.LuckMult,
-		VisitorInterval = Progression.VisitorInterval(profile, ctx.Effects),
+		VariantChance = ctx.VariantMult, -- all rare-visitor boosts combined (x1 with none)
 		Threat = profile.Threat,
 		ThreatActive = ctx.Threat,
 		ThreatUnlocked = unlocked,

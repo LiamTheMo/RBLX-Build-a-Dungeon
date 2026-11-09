@@ -86,7 +86,7 @@ State fields: `Coins`, `Vault`, `VaultBonus`, `Building`, plot attributes `State
 
 Desktop:
 - Currency panel: AnchorPoint (0.5,0), Position `UDim2.new(0.5,0,0,8)`, Size `UDim2.fromOffset(520,64)`. Two cells in a UIListLayout horizontal: Banked (coin icon + number) and Vault (chest icon + number + bonus pill "+25%"). The vault cell and bonus pill are hidden (`Visible=false`) until a treasure room is placed (`Vault` unlocked / bonus exists); never show a bonus of 0.
-- Visitor status chip: AnchorPoint (0.5,0), Position `UDim2.new(0.5,0,0,80)`, Size `UDim2.fromOffset(360,40)`. Clock icon + text: "Next visitor in 0:42" (idle), "Visitor inside!" (encounter), "Building: visitors paused" (building). Computed from `NextVisitorAt - workspace:GetServerTimeNow()`, display only.
+- Visitor status chip: AnchorPoint (0.5,0), Position `UDim2.new(0.5,0,0,80)`, Size `UDim2.fromOffset(360,40)`. Next visitor portrait + name when idle (no countdown: visitors arrive back to back), crossed swords while a visitor is inside, nothing while building. A Clock icon and "0:07" countdown appear only while a fixed delay is active (first visitor, build resume), computed from `NextVisitorAt - workspace:GetServerTimeNow()`, display only.
 - Action bar: AnchorPoint (0.5,1), Position `UDim2.new(0.5,0,1,-16)`, Size `UDim2.fromOffset(760,72)`, five buttons 140x56 each with icon + label: Build, Bank, Shop, Invite Challenger (crown, label "Challenger"), Settings (gear, label can shrink to icon + "Settings"). Invite Challenger is shown disabled with reason text until `ChallengerUnlocked`, and shows "Queued" when `ChallengerQueued`.
 
 Phone landscape:
