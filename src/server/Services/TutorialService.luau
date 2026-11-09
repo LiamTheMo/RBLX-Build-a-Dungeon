@@ -44,7 +44,7 @@ function TutorialService.Notify(player: Player, event: string)
 	end
 	local hadSpike = RoomInventory.Owns(profile, "SpikeHall") or profile.Discovered.SpikeHall == true
 	if TutorialRules.Rank(step) >= TutorialRules.Rank("PlaceSpike") and not hadSpike then
-		if RoomInventory.Count(profile) >= RoomInventory.MAX_ROOMS then
+		if RoomInventory.StorageLeft(profile) < 1 then
 			notice(player, "Your room storage is full, so the Spike Hall wasn't granted. Scrap a room to make space.", "Bad")
 		elseif not RoomInventory.CanAdd(profile, 1) then
 			notice(player, "Room storage is unavailable. Please contact support.", "Bad")

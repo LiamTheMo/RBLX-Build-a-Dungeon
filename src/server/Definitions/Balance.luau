@@ -462,6 +462,7 @@ Balance.Loot = table.freeze({
 	-- no event boost), then a room of that tier like a box.
 	BlueprintTierBox = "Dungeon",
 	MaxStack = 999, -- most boxes of one type or blueprints of one room held
+	RoomStorage = 100, -- most spare (unplaced) room instances held; placed rooms never count
 	-- A box earned while its stack is full converts to this many coins (banked).
 	BoxOverflowCoins = table.freeze({ Dungeon = 100, Rare = 300, Crystal = 600 }),
 })

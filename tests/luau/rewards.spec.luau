@@ -140,7 +140,7 @@ end)
 test("a full inventory leaves the box unopened", function()
 	local p = ProfileSchema.Default()
 	p.Boxes.Dungeon = 1
-	while RoomInventory.Count(p) < RoomInventory.MAX_ROOMS do
+	while RoomInventory.StoredCount(p) < RoomInventory.MAX_STORED do
 		RoomInventory.Add(p, "SlimeNest")
 	end
 	local ok, reason = Rewards.OpenBox(p, "Dungeon", Random.new(1))
@@ -148,6 +148,28 @@ test("a full inventory leaves the box unopened", function()
 	expectEq(reason, "TooManyRooms", "reason")
 	expectEq(p.Boxes.Dungeon, 1, "box kept")
 	expectEq(p.BoxPity, 0, "pity untouched")
+end)
+
+test("the room cap counts stored rooms only, never placed ones", function()
+	local p = ProfileSchema.Default()
+	p.Boxes.Dungeon = 5
+	p.Layout = {}
+	for i = 1, 19 do
+		p.Layout["c" .. i] = RoomInventory.Add(p, "SlimeNest")
+	end
+	while RoomInventory.StoredCount(p) < RoomInventory.MAX_STORED - 1 do
+		RoomInventory.Add(p, "SpikeHall")
+	end
+	expect(RoomInventory.Count(p) > 100, "total rooms exceed the storage cap")
+	expectEq(RoomInventory.StorageLeft(p), 1, "one slot left")
+	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", 2, Random.new(1))), "TooManyRooms", "batch respects remaining storage")
+	expectEq(p.Boxes.Dungeon, 5, "refused batch keeps boxes")
+	expect(Rewards.OpenBox(p, "Dungeon", Random.new(1)), "opens at 19 placed + 99 stored")
+	expectEq(RoomInventory.StoredCount(p), RoomInventory.MAX_STORED, "now 100 stored")
+	expectEq(select(2, Rewards.OpenBox(p, "Dungeon", Random.new(1))), "TooManyRooms", "refused at 100 stored")
+	p.Layout["x"] = "r1" -- placing a stored room frees its slot
+	expectEq(RoomInventory.StoredCount(p), RoomInventory.MAX_STORED - 1, "placed room is not stored")
+	expect(Rewards.OpenBox(p, "Dungeon", Random.new(1)), "opens again")
 end)
 
 test("pity through OpenBox: the 10th box after nine low ones is Rare or better", function()
@@ -181,9 +203,9 @@ test("bulk box opening is bounded, all-or-nothing, and advances pity per box", f
 	expectEq(p.Boxes.Dungeon, boxes, "stock unchanged")
 	expectEq(p.BoxPity, pity, "pity unchanged")
 	expectEq(RoomInventory.Count(p), rooms, "rooms unchanged")
-	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", 31, rng)), "BadArgs", "request cap")
+	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", RoomInventory.MAX_STORED + 1, rng)), "BadArgs", "request cap")
 	p.Boxes.Dungeon = 1
-	while RoomInventory.Count(p) < RoomInventory.MAX_ROOMS do RoomInventory.Add(p, "SpikeHall") end
+	while RoomInventory.StoredCount(p) < RoomInventory.MAX_STORED do RoomInventory.Add(p, "SpikeHall") end
 	local pityBeforeFull, boxesBeforeFull = p.BoxPity, p.Boxes.Dungeon
 	expectEq(select(2, Rewards.OpenBoxes(p, "Dungeon", 1, rng)), "TooManyRooms", "capacity checked")
 	expectEq(p.BoxPity, pityBeforeFull, "full capacity leaves pity unchanged")
@@ -234,7 +256,7 @@ test("crafting costs the tier's blueprints and respects the cap", function()
 	expectEq(select(2, Rewards.Craft(p, "Entrance")), "NotCraftable", "entrance")
 	expectEq(select(2, Rewards.Craft(p, "Hacked")), "NotCraftable", "unknown")
 	p.Blueprints.MonsterDen = 8
-	while RoomInventory.Count(p) < RoomInventory.MAX_ROOMS do
+	while RoomInventory.StoredCount(p) < RoomInventory.MAX_STORED do
 		RoomInventory.Add(p, "SlimeNest")
 	end
 	expectEq(select(2, Rewards.Craft(p, "MonsterDen")), "TooManyRooms", "full")

@@ -11,6 +11,7 @@ local Economy = require(script.Parent.Economy)
 local Events = require(script.Parent.Events)
 local Loot = require(script.Parent.Loot)
 local Progression = require(script.Parent.Progression)
+local RoomInventory = require(script.Parent.RoomInventory)
 local Rewards = require(script.Parent.Rewards)
 local Threat = require(script.Parent.Threat)
 
@@ -108,6 +109,7 @@ function StateView.Derived(profile: any, world: any?): any
 		XpToNext = Progression.XpToNext(profile.Level),
 		Bonuses = ctx.Bonuses,
 		Rooms = rooms(profile),
+		RoomStorage = { Used = RoomInventory.StoredCount(profile), Max = RoomInventory.MAX_STORED }, -- spare rooms only
 		BoxOdds = boxOdds,
 		PermanentNextCost = permanentNext,
 		DropChances = drops,

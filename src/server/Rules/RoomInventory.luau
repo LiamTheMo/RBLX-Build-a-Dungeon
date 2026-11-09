@@ -1,9 +1,34 @@
 -- Pure helpers for a profile's owned room instances (no Instances, no yielding).
 
+local Balance = require(script.Parent.Parent.Definitions.Balance)
+
 local RoomInventory = {}
 
-RoomInventory.MAX_ROOMS = 30
+-- Storage cap: spare rooms (not placed in the layout). Placed rooms never count.
+RoomInventory.MAX_STORED = Balance.Loot.RoomStorage
+-- Hard bound on one batch of room ids: a full store plus every grid cell (5x4).
+RoomInventory.MAX_BATCH = RoomInventory.MAX_STORED + 20
 RoomInventory.MAX_SERIAL = 99999999999
+
+-- Rooms owned but not placed in profile.Layout.
+function RoomInventory.StoredCount(profile: any): number
+	local placed = {}
+	for _, instanceId in profile.Layout or {} do
+		placed[instanceId] = true
+	end
+	local n = 0
+	for instanceId in profile.Rooms do
+		if not placed[instanceId] then
+			n += 1
+		end
+	end
+	return n
+end
+
+-- Free storage slots (never negative).
+function RoomInventory.StorageLeft(profile: any): number
+	return math.max(0, RoomInventory.MAX_STORED - RoomInventory.StoredCount(profile))
+end
 
 function RoomInventory.Count(profile: any): number
 	local n = 0

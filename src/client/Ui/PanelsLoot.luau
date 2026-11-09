@@ -680,10 +680,11 @@ local function buildOdds(scroll: ScrollingFrame, state: any, nxt: () -> number)
 	make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(10, 16), LayoutOrder = nxt() }, scroll)
 end
 
-local function ownedRoomCount(state: any): number
-	local owned = 0
-	for _ in state.Rooms or {} do owned += 1 end
-	return owned
+-- Free spare-room slots, from the server's State.RoomStorage (placed rooms never count).
+local function storageLeft(state: any): number
+	local storage = state.RoomStorage
+	if type(storage) ~= "table" then return 0 end
+	return math.max(0, (storage.Max or 0) - (storage.Used or 0))
 end
 
 -- Loot Chests tab ---------------------------------------------------------------------------------------------------
@@ -786,7 +787,7 @@ local function buildChests(scroll: ScrollingFrame, state: any, catalog: any, nxt
 	local controls = {}
 	local function refreshControls()
 		local stock = (state.Boxes or {})[selectedBox] or 0
-		local maxOpen = math.min(stock, math.max(0, 30 - ownedRoomCount(state)))
+		local maxOpen = math.min(stock, storageLeft(state))
 		selectedQty[selectedBox] = math.clamp(selectedQty[selectedBox] or 1, if maxOpen > 0 then 1 else 0, maxOpen)
 		return selectedQty[selectedBox], maxOpen
 	end

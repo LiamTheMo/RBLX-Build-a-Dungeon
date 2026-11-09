@@ -187,3 +187,14 @@ test("drop tables follow the threat tier and the event; box odds follow Blessed 
 	expect(chance(blessed.BoxOdds.Dungeon, "Epic") > chance(plain.BoxOdds.Dungeon, "Epic") * 1.9, "Epic boosted")
 	expect(chance(blessed.BoxOdds.Dungeon, "Common") < chance(plain.BoxOdds.Dungeon, "Common"), "Common lower")
 end)
+
+test("RoomStorage counts spare rooms only", function()
+	local profile = ProfileSchema.Default()
+	local base = RoomInventory.StoredCount(profile)
+	local placed = RoomInventory.Add(profile, "SlimeNest")
+	profile.Layout["0,0"] = placed
+	RoomInventory.Add(profile, "SpikeHall")
+	local view = StateView.Derived(profile)
+	expectEq(view.RoomStorage.Max, Balance.Loot.RoomStorage, "max")
+	expectEq(view.RoomStorage.Used, base + 1, "only the unplaced room counts")
+end)

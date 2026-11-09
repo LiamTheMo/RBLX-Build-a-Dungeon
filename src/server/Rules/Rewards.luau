@@ -181,7 +181,7 @@ function Rewards.OpenBox(profile, boxType: string, rng, eventId: string?)
 	if (profile.Boxes[boxType] or 0) < 1 then
 		return false, "NoBox"
 	end
-	if RoomInventory.Count(profile) >= RoomInventory.MAX_ROOMS then
+	if RoomInventory.StorageLeft(profile) < 1 then
 		return false, "TooManyRooms"
 	end
 	if not RoomInventory.CanAdd(profile, 1) then return false, "RoomIdsExhausted" end
@@ -204,11 +204,11 @@ end
 -- Opens exactly `count` boxes, preserving pity between rolls. Stock and room
 -- capacity are checked first so a rejected batch consumes nothing.
 function Rewards.OpenBoxes(profile, boxType: string, count: number, rng, eventId: string?)
-	if Loot.Odds(boxType, 0, profile.Level) == nil or type(count) ~= "number" or count % 1 ~= 0 or count < 1 or count > RoomInventory.MAX_ROOMS then
+	if Loot.Odds(boxType, 0, profile.Level) == nil or type(count) ~= "number" or count % 1 ~= 0 or count < 1 or count > RoomInventory.MAX_STORED then
 		return false, "BadArgs"
 	end
 	if (profile.Boxes[boxType] or 0) < count then return false, "NoBox" end
-	if RoomInventory.Count(profile) + count > RoomInventory.MAX_ROOMS then return false, "TooManyRooms" end
+	if count > RoomInventory.StorageLeft(profile) then return false, "TooManyRooms" end
 	if not RoomInventory.CanAdd(profile, count) then return false, "RoomIdsExhausted" end
 	local opened = {}
 	for _ = 1, count do
@@ -230,7 +230,7 @@ function Rewards.Craft(profile, roomId: string)
 	if (profile.Blueprints[roomId] or 0) < cost then
 		return false, "NotEnoughBlueprints"
 	end
-	if RoomInventory.Count(profile) >= RoomInventory.MAX_ROOMS then
+	if RoomInventory.StorageLeft(profile) < 1 then
 		return false, "TooManyRooms"
 	end
 	if not RoomInventory.CanAdd(profile, 1) then return false, "RoomIdsExhausted" end
@@ -274,7 +274,7 @@ end
 -- Sell selected unplaced loot rooms atomically. The starter Coin Cache and last
 -- defender stay protected.
 function Rewards.SellRooms(profile, instanceIds: { string })
-	if type(instanceIds) ~= "table" or #instanceIds < 1 or #instanceIds > RoomInventory.MAX_ROOMS then
+	if type(instanceIds) ~= "table" or #instanceIds < 1 or #instanceIds > RoomInventory.MAX_BATCH then
 		return false, "BadArgs"
 	end
 	local length, keys = #instanceIds, 0
